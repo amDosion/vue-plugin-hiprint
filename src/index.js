@@ -33,7 +33,7 @@ let disAutoConnect = function() {
 
 let hiPrintPlugin = {
   disAutoConnect,
-  install: function (Vue, name = '$hiPrint', autoConnect = true) {
+  install: function (Vue, name = '$hiPrint', autoConnect = false) {
     if (!autoConnect) {
       disAutoConnect();
     }
@@ -77,12 +77,25 @@ let hiPrintPlugin = {
 hiprint.version = version
 
 window.hiprint = hiprint;
+let setDynamicFields = hiprint.setDynamicFields;
+let removeDynamicFields = hiprint.removeDynamicFields;
+let setElementTypeGroups = hiprint.setElementTypeGroups;
+let appendElementTypeGroups = hiprint.appendElementTypeGroups;
+let renameElementType = hiprint.renameElementType;
+let buildToolbar = hiprint.buildToolbar;
+let buildDesigner = hiprint.buildDesigner;
+
 export {
   autoConnect,
   disAutoConnect,
   hiprint,
   hiPrintPlugin,
   defaultElementTypeProvider,
+  setDynamicFields,
+  removeDynamicFields,
+  setElementTypeGroups,
+  appendElementTypeGroups,
+  renameElementType,
+  buildToolbar,
+  buildDesigner,
 }
-
-

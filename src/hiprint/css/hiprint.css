@@ -122,6 +122,10 @@
   border-style: none;
   box-shadow: none;
   border-color: #e6e6e6;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 .prop-tabs .prop-tab-items {
   height: 31px;
@@ -132,9 +136,7 @@
   border: 0;
   text-decoration: none;
   font-size: 100%;
-  margin: 0;
-  border-bottom: 1px solid #ddd;
-  /*box-shadow: 0 1px 3px rgba(26, 26, 26, .1);*/
+  margin-bottom: 2px;
   box-sizing: content-box;
 }
 .prop-tabs .prop-tab-items .prop-tab-item {
@@ -165,6 +167,7 @@
 
 .prop-tabs .hiprint-option-items.active {
   display: flex;
+  min-height: 0;
 }
 
 .prop-tabs .hiprint-option-items {
@@ -175,6 +178,23 @@
   overflow: auto;
   /*height: calc(100vh - 150px);*/
   padding: 0;
+}
+
+.hiprint-setting-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.hiprint-setting-panel > .hiprint-option-items {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.hiprint-setting-panel > .prop-tabs {
+  flex: 1;
 }
 /* 元素双击编辑 */
 .design .editing {
@@ -401,7 +421,6 @@ font-weight: normal;*/
     .hiprint-option-items .hiprint-option-item {
         box-sizing: border-box;
         width: 50%;
-        padding: 4px 6px;
         border-radius: 4px;
         transition: background-color 0.15s ease;
         display: flex;
@@ -427,9 +446,6 @@ font-weight: normal;*/
 
     .hiprint-option-items .hiprint-option-item-row {
         width: 100%;
-        padding: 6px 6px;
-        border-top: 1px solid #ebeef2;
-        margin-top: 2px;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -446,7 +462,10 @@ font-weight: normal;*/
         width: 35%;
         flex-shrink: 0;
         margin: 0;
+        padding-right: 8px;
         line-height: 28px;
+        gap: 6px;
+        box-sizing: border-box;
     }
 
     .hiprint-option-items .hiprint-option-item-row > .hiprint-option-item-field {
@@ -454,9 +473,11 @@ font-weight: normal;*/
         flex-shrink: 0;
     }
 
-    /* 复杂 row（水印/面板排列等有多个 field 或 wrapper）恢复纵向 */
+    /* 复杂 row（水印/网格/边距等有多个 field 或 wrapper）恢复纵向 */
     .hiprint-option-items .hiprint-option-item-row > .hiprint-option-item-field ~ .hiprint-option-item-field,
-    .hiprint-option-items .hiprint-option-item-row > .watermark-fields-wrapper {
+    .hiprint-option-items .hiprint-option-item-row > .watermark-fields-wrapper,
+    .hiprint-option-items .hiprint-option-item-row > .grid-fields-wrapper,
+    .hiprint-option-items .hiprint-option-item-row > .margin-fields-wrapper {
         width: 100%;
     }
     .hiprint-option-items .hiprint-option-item-row > .hiprint-option-item-field ~ .hiprint-option-item-field ~ .hiprint-option-item-field {
@@ -512,8 +533,6 @@ font-weight: normal;*/
 }
 
 .hiprint-option-items .hiprint-option-item-field textarea {
-    height: auto;
-    min-height: 56px;
     resize: vertical;
 }
 
@@ -555,6 +574,261 @@ font-weight: normal;*/
 
 .hiprint-option-item-deleteBtn:active {
     background: #e64d4d;
+}
+
+.hiprint-option-actions {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 4px 4px;
+    border-top: 1px solid #ebeef5;
+    background: #fff;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+.hiprint-option-actions .hiprint-option-item-settingBtn {
+    margin: 0;
+}
+
+.hiprint-option-items .hiprint-option-item-row.hiprint-paper-line-inline > .hiprint-paper-line-inline-field {
+    width: 65%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hiprint-option-items .hiprint-paper-line-inline-field input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    flex: 0 0 auto;
+    cursor: pointer;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+.hiprint-option-items .hiprint-paper-line-inline-field input[type="number"] {
+    margin: 0;
+}
+
+.hiprint-option-items .hiprint-paper-line-inline-field input[type="number"]:disabled {
+    background: #f5f7fa;
+    cursor: not-allowed;
+}
+
+/* Right property panel: compact, consistent spacing */
+.params_setting_container .hiprint-designer-panel-body {
+    padding: 6px;
+}
+
+.params_setting_container .prop-tabs .prop-tab-items {
+    padding: 2px 6px 1px;
+    margin-bottom: 4px;
+}
+
+.params_setting_container .prop-tabs .hiprint-option-items,
+.params_setting_container .hiprint-setting-panel > .hiprint-option-items {
+    padding: 10px;
+    gap: 6px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item:not(.hiprint-option-item-row) {
+    width: auto;
+    min-width: 150px;
+    flex: 1 1 calc(50% - 3px);
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item,
+.params_setting_container .hiprint-option-items .hiprint-option-item-row {
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:not(:has(> .hiprint-option-item-label)) {
+    padding: 2px 4px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item > .hiprint-option-item-label,
+.params_setting_container .hiprint-option-items .hiprint-option-item-row > .hiprint-option-item-label {
+    padding-right: 6px;
+    line-height: 26px;
+}
+
+.params_setting_container .hiprint-option-title {
+    width: 100% !important;
+    padding-right: 0 !important;
+    font-size: 12px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 22px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row > .hiprint-option-item-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.coord-pos-lock) > .hiprint-option-item-field,
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.wh-size-lock) > .hiprint-option-item-field {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.coord-pos-lock) > .hiprint-option-item-field > input[type="number"],
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.wh-size-lock) > .hiprint-option-item-field > input[type="number"] {
+    width: calc((100% - 22px) / 2) !important;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.coord-pos-lock) > .hiprint-option-item-field > label,
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.wh-size-lock) > .hiprint-option-item-field > label {
+    width: 18px !important;
+    min-width: 18px !important;
+    margin: 0 !important;
+    text-align: center;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.hiprint-option-item-datatype) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 6px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.hiprint-option-item-datatype) > .hiprint-option-item {
+    width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+    padding: 0;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-datatype-input-format {
+    margin-top: 4px;
+}
+
+.params_setting_container .watermark-fields-wrapper,
+.params_setting_container .grid-fields-wrapper,
+.params_setting_container .margin-fields-wrapper {
+    width: 100%;
+    box-sizing: border-box;
+    padding-top: 2px;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field,
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-item {
+    width: 100%;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px;
+    margin-top: 0 !important;
+}
+
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-main {
+    width: 65%;
+}
+
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-main > select {
+    width: 100% !important;
+}
+
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-sub {
+    width: 100%;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field,
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-item + .hiprint-panel-layout-item {
+    margin-top: 4px !important;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > div:first-child,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > div:first-child,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > div:first-child,
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-item > div:first-child {
+    width: 36% !important;
+    min-width: 0;
+    box-sizing: border-box;
+    color: #606a78;
+    font-size: 12px;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > input:not([type="checkbox"]),
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > select,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > input:not([type="checkbox"]),
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > select,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > input:not([type="checkbox"]),
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > select,
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-sub > input,
+.params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-sub > select {
+    width: 64% !important;
+    min-width: 0;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > .minicolors,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > .minicolors,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > .minicolors {
+    width: 64% !important;
+    min-width: 0;
+    flex: 0 0 64%;
+    display: block;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > .minicolors > .minicolors-input,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > .minicolors > .minicolors-input,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > .minicolors > .minicolors-input {
+    width: 100% !important;
+    min-width: 0;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > input[type="range"] {
+    height: 22px;
+    padding: 0;
+}
+
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field > input[type="checkbox"],
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field > input[type="checkbox"],
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field > input[type="checkbox"] {
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.hiprint-option-table-selected-columns) {
+    padding: 2px 4px;
+}
+
+.params_setting_container .hiprint-option-items .hiprint-option-item-row:has(.hiprint-option-table-selected-columns) > div {
+    width: 100%;
+}
+
+.params_setting_container .hiprint-option-table-selected-columns .hiprint-option-table-selected-item {
+    border-color: #dcdfe6;
+    border-radius: 4px;
+    line-height: 22px;
+    padding: 2px 6px;
+    margin: 4px 0;
+    background: #fff;
+}
+
+.params_setting_container .hiprint-option-actions {
+    padding: 8px 6px 6px;
+}
+
+.params_setting_container .hinnn-layout-sider,
+.params_setting_container #PrintElementOptionSetting {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* 鎖定位置 / 解鎖位置 toggle 按鈕 */
@@ -1010,25 +1284,143 @@ font-weight: normal;*/
 	box-sizing: content-box!important;
 }
 
-    .hiprint_rul_wrapper .h_img {
+    .hiprint_rul_wrapper .hiprint-ruler-track {
         position: absolute;
-        top: 0px;
+        overflow: hidden;
+        pointer-events: none;
+        background: #f7f7f7;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-track-h {
+        top: 0;
         left: 15px;
-        width: 400mm;
         height: 15px;
-        max-width: none;
+        border-bottom: 1px solid #d4d4d4;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-track-v {
+        top: 15px;
+        left: 0;
+        width: 15px;
+        border-right: 1px solid #d4d4d4;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark {
+        position: absolute;
+        background: #7b7b7b;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.h {
+        bottom: 0;
+        width: 1px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.v {
+        right: 0;
+        height: 1px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.h.minor {
+        height: 4px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.h.mid {
+        height: 7px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.h.major {
+        height: 10px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.v.minor {
+        width: 4px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.v.mid {
+        width: 7px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-mark.v.major {
+        width: 10px;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-text {
+        position: absolute;
+        color: #666;
+        font-size: 8px;
+        line-height: 1;
+        pointer-events: none;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-text.h {
+        top: 1px;
+        transform: translateX(-50%);
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-text.v {
+        left: 1px;
+        transform: translateY(-50%) rotate(-90deg);
+        transform-origin: left top;
     }
 
-    .hiprint_rul_wrapper .v_img {
-        width: 400mm;
-        max-width: none;
-        transform: rotate(90deg);
-        transform-origin: 0 100%;
-        height: 15px;
+    .hiprint_rul_wrapper .hiprint-ruler-handle {
         position: absolute;
-        top: -2px;
-        left: 0px;
+        pointer-events: auto;
+        z-index: 3;
+        background: transparent;
     }
+    .hiprint_rul_wrapper .hiprint-ruler-handle-h {
+        top: 0;
+        left: 15px;
+        right: 0;
+        height: 15px;
+        cursor: ns-resize;
+    }
+    .hiprint_rul_wrapper .hiprint-ruler-handle-v {
+        top: 15px;
+        left: 0;
+        bottom: 0;
+        width: 15px;
+        cursor: ew-resize;
+    }
+
+.hiprint-guide-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 15;
+}
+
+.hiprint-guide-line {
+    position: absolute;
+    background: rgba(245, 108, 108, 0.95);
+    pointer-events: auto;
+}
+
+.hiprint-guide-line.h {
+    left: 0;
+    right: 0;
+    height: 1px;
+    cursor: ns-resize;
+}
+
+.hiprint-guide-line.v {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    cursor: ew-resize;
+}
+
+.hiprint-guide-line.h::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -3px;
+    height: 7px;
+}
+
+.hiprint-guide-line.v::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    width: 7px;
+}
+
+body.hiprint-guide-dragging {
+    user-select: none;
+}
 
 /*hiprint-option-table*/
 
@@ -1272,6 +1664,8 @@ font-weight: normal;*/
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  cursor: move;
+  user-select: none;
 }
 .hiprint-el-list-panel-header .el-count {
   font-weight: 400;
@@ -1366,6 +1760,11 @@ font-weight: normal;*/
   font-size: 12px;
 }
 
+body.hiprint-el-list-dragging {
+  user-select: none;
+  cursor: move;
+}
+
 /* ==================== 组件拖拽面板（核心自动生成） ==================== */
 .hiprint-ep-type-container {
   padding: 4px;
@@ -1381,8 +1780,35 @@ font-weight: normal;*/
 }
 .hiprint-ep-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
   gap: 6px;
+}
+.hiprint-ep-slot-empty {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #909399;
+  background: #fafafa;
+  padding: 4px;
+}
+.hiprint-ep-group-slot .hiprint-ep-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hiprint-ep-group-badge {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: #fff;
+  background: #409eff;
 }
 .hiprint-ep-card {
   display: flex;
@@ -1427,4 +1853,486 @@ font-weight: normal;*/
   line-height: 1;
   z-index: 10;
   pointer-events: none;
+}
+
+/* ==================== 核心工具栏 ==================== */
+.hiprint-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  user-select: none;
+}
+.hiprint-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+}
+.hiprint-toolbar-group:last-child {
+  border-right: none;
+}
+.hiprint-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  outline: none;
+}
+.hiprint-toolbar-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+.hiprint-toolbar-btn.active {
+  background: #409eff;
+  border-color: #409eff;
+  color: #fff;
+}
+.hiprint-toolbar-btn-primary {
+  background: #409eff;
+  border-color: #409eff;
+  color: #fff;
+}
+.hiprint-toolbar-btn-primary:hover {
+  background: #66b1ff;
+  border-color: #66b1ff;
+  color: #fff;
+}
+.hiprint-toolbar-btn-danger {
+  color: #f56c6c;
+  border-color: #f56c6c;
+}
+.hiprint-toolbar-btn-danger:hover {
+  background: #f56c6c;
+  color: #fff;
+}
+.hiprint-toolbar-icon-btn {
+  width: 28px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.hiprint-toolbar-scale-label {
+  display: inline-block;
+  width: 48px;
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+}
+.hiprint-toolbar-input {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: none;
+}
+.hiprint-toolbar-input:focus {
+  border-color: #409eff;
+}
+.hiprint-toolbar-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #e8ecf0;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 1000;
+  white-space: nowrap;
+}
+.hiprint-toolbar-popover-content {
+  display: flex;
+  align-items: center;
+}
+.hiprint-toolbar-custom-wrap {
+  position: relative;
+  display: inline-block;
+}
+.hiprint-toolbar-template-dialog-wrap {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3000;
+}
+.hiprint-toolbar-template-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.hiprint-toolbar-template-dialog {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(880px, calc(100vw - 48px));
+  max-height: calc(100vh - 72px);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.hiprint-toolbar-template-header {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid #eceff3;
+  color: #303133;
+  font-size: 15px;
+  font-weight: 600;
+}
+.hiprint-toolbar-template-close {
+  width: 26px;
+  height: 26px;
+  line-height: 24px;
+  border: 1px solid #dcdfe6;
+  border-radius: 50%;
+  background: #fff;
+  color: #606266;
+  font-size: 16px;
+  cursor: pointer;
+}
+.hiprint-toolbar-template-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+.hiprint-toolbar-template-footer {
+  height: 52px;
+  border-top: 1px solid #eceff3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 14px;
+}
+.hiprint-toolbar-template-state {
+  min-height: 220px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  font-size: 13px;
+}
+.hiprint-toolbar-template-state.error {
+  color: #f56c6c;
+}
+.hiprint-toolbar-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.hiprint-toolbar-template-card {
+  border: 1px solid #e5e9ef;
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+  min-height: 146px;
+  display: flex;
+  flex-direction: column;
+}
+.hiprint-toolbar-template-card-title {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hiprint-toolbar-template-card-desc {
+  margin-top: 8px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 18px;
+  min-height: 36px;
+  max-height: 36px;
+  overflow: hidden;
+}
+.hiprint-toolbar-template-card-meta {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hiprint-toolbar-template-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hiprint-toolbar-template-card-actions .hiprint-toolbar-btn {
+  height: 26px;
+  padding: 0 8px;
+}
+.hiprint-toolbar-save-dialog-wrap {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3001;
+}
+.hiprint-toolbar-save-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.32);
+}
+.hiprint-toolbar-save-dialog {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 48px));
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.hiprint-toolbar-save-header {
+  height: 48px;
+  line-height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid #eceff3;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.hiprint-toolbar-save-body {
+  padding: 14px 16px;
+}
+.hiprint-toolbar-save-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+.hiprint-toolbar-save-input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 13px;
+  outline: none;
+}
+.hiprint-toolbar-save-input:focus {
+  border-color: #409eff;
+}
+.hiprint-toolbar-save-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #f56c6c;
+}
+.hiprint-toolbar-save-footer {
+  height: 52px;
+  border-top: 1px solid #eceff3;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ==================== Designer Layout ==================== */
+.hiprint-designer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.hiprint-designer-toolbar {
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.hiprint-designer-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.hiprint-designer-panel-left,
+.hiprint-designer-panel-right {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  transition: width 0.25s ease;
+}
+.hiprint-designer-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.hiprint-designer-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e8e8e8;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  flex-shrink: 0;
+}
+.hiprint-designer-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.hiprint-designer-panel-body::-webkit-scrollbar {
+  width: 5px;
+}
+.hiprint-designer-panel-body::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+.hiprint-designer-resize-bar {
+  position: relative;
+  width: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hiprint-designer-resize-handle {
+  width: 100%;
+  height: 100%;
+  cursor: col-resize;
+}
+.hiprint-designer-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 30px;
+  background: #d9d9d9;
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+.hiprint-designer-resize-handle:hover::after {
+  background: #409eff;
+}
+.hiprint-designer-edge-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  cursor: pointer;
+  z-index: 20;
+  color: #909399;
+  font-size: 10px;
+  transition: all 0.2s;
+}
+.hiprint-designer-edge-toggle:hover {
+  color: #409eff;
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.hiprint-designer-edge-toggle-left {
+  right: -4px;
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+.hiprint-designer-edge-toggle-right {
+  left: -4px;
+  border-radius: 4px 0 0 4px;
+  border-right: none;
+}
+.hiprint-designer-panel-center {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  height: 100%;
+}
+.hiprint-designer-card {
+  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: auto;
+  height: 100%;
+  /* Reserve gutter for ruler wrapper (which is rendered with negative margin). */
+  padding: 18px 12px 12px 18px;
+  box-sizing: border-box;
+}
+.hiprint-designer-card .hiprint-printTemplate {
+  min-width: max-content;
+}
+.hiprint_rul_wrapper {
+  z-index: 2;
+}
+
+/* Left component panel compact mode */
+.hiprint-designer-panel-left .hiprint-designer-panel-body {
+  padding: 4px;
+}
+.hiprint-designer-panel-left .hiprint-ep-type-container {
+  padding: 0;
+}
+.hiprint-designer-panel-left .hiprint-ep-group {
+  margin-bottom: 6px;
+}
+.hiprint-designer-panel-left .hiprint-ep-group-title {
+  padding: 4px 2px;
+  margin-bottom: 2px;
+}
+.hiprint-designer-panel-left .hiprint-ep-grid {
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 4px;
+}
+.hiprint-designer-panel-left .hiprint-ep-card {
+  min-height: 52px;
+  padding: 5px 3px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.hiprint-designer-panel-left .hiprint-ep-card .glyphicon {
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.hiprint-designer-panel-left .hiprint-ep-card > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

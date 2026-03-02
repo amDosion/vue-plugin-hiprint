@@ -1,256 +1,9 @@
 <template>
-  <a-card>
-    <div style="display: flex;flex-direction: column">
-      <a-space style="margin-bottom: 10px">
-        <a-button-group>
-          <template v-for="(value,type) in paperTypes">
-            <a-button :type="curPaperType === type ? 'primary' : 'info'" @click="setPaper(type,value)" :key="type">
-              {{ type }}
-            </a-button>
-          </template>
-          <a-popover v-model="paperPopVisible" title="设置纸张宽高(mm)" trigger="click">
-            <div slot="content">
-              <a-input-group compact style="margin: 10px 10px">
-                <a-input type="number" v-model="paperWidth" style=" width: 100px; text-align: center"
-                         placeholder="宽(mm)"/>
-                <a-input style=" width: 30px; border-left: 0; pointer-events: none; backgroundColor: #fff"
-                         placeholder="~" disabled
-                />
-                <a-input type="number" v-model="paperHeight" style="width: 100px; text-align: center; border-left: 0"
-                         placeholder="高(mm)"/>
-              </a-input-group>
-              <a-button type="primary" style="width: 100%" @click="otherPaper">确定</a-button>
-            </div>
-            <a-button :type="'other'==curPaperType?'primary':''">自定义纸张</a-button>
-          </a-popover>
-        </a-button-group>
-        <a-button type="text" icon="zoom-out" @click="changeScale(false)"></a-button>
-        <a-input-number
-          :value="scaleValue"
-          :min="scaleMin"
-          :max="scaleMax"
-          :step="0.1"
-          disabled
-          style="width: 70px;"
-          :formatter="value => `${(value * 100).toFixed(0)}%`"
-          :parser="value => value.replace('%', '')"
-        />
-        <a-button type="text" icon="zoom-in" @click="changeScale(true)"></a-button>
-        <a-button type="primary" icon="redo" @click="rotatePaper()">旋转</a-button>
-        <a-divider type="vertical"/>
-        <a-button-group size="small">
-          <a-tooltip title="左对齐"><a-button icon="align-left" @click="alignElements('left')"/></a-tooltip>
-          <a-tooltip title="水平居中"><a-button icon="align-center" @click="alignElements('horizontalCenter')"/></a-tooltip>
-          <a-tooltip title="右对齐"><a-button icon="align-right" @click="alignElements('right')"/></a-tooltip>
-          <a-tooltip title="顶对齐"><a-button icon="vertical-align-top" @click="alignElements('top')"/></a-tooltip>
-          <a-tooltip title="垂直居中"><a-button icon="vertical-align-middle" @click="alignElements('verticalCenter')"/></a-tooltip>
-          <a-tooltip title="底对齐"><a-button icon="vertical-align-bottom" @click="alignElements('bottom')"/></a-tooltip>
-          <a-tooltip title="水平等距分布"><a-button icon="column-width" @click="alignElements('distributeHorizontal')"/></a-tooltip>
-          <a-tooltip title="垂直等距分布"><a-button icon="column-height" @click="alignElements('distributeVertical')"/></a-tooltip>
-        </a-button-group>
-        <a-button type="primary" icon="eye" @click="preView">
-          预览
-        </a-button>
-        <a-popconfirm
-          title="是否确认清空?"
-          okType="danger"
-          okText="确定清空"
-          @confirm="clearPaper"
-        >
-          <a-icon slot="icon" type="question-circle-o" style="color: red"/>
-          <a-button type="danger">
-            清空
-            <a-icon type="close"/>
-          </a-button>
-        </a-popconfirm>
-        <json-view :template="template"/>
-        <a-dropdown>
-          <a-menu slot="overlay" @click="handleMenuClick">
-            <a-menu-item key="0">都不看,我就不看</a-menu-item>
-            <a-menu-item v-for="item in keyList" :key="item.key"> {{ item.name }}</a-menu-item>
-          </a-menu>
-          <a-button style="margin-left: 8px"> 更多功能示例
-            <a-icon type="down"/>
-          </a-button>
-        </a-dropdown>
-      </a-space>
-      <a-space v-if="'1' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">直接打印/api打印:</div>
-        <a-button type="primary" icon="printer" @click="print">
-          直接打印
-        </a-button>
-        <a-button type="primary" icon="printer" @click="printByFragments">
-          分批直接打印
-        </a-button>
-        <a-button type="primary" @click="onlyPrint">
-          Api单独打印
-        </a-button>
-        <a-button type="primary" @click="onlyPrint2">
-          Api单独直接打印
-        </a-button>
-      </a-space>
-      <a-space v-if="'2' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">导出PDF文件/流:</div>
-        <a-button type="primary" @click="exportPdf('')">
-          导出获取pdf(Blob)
-        </a-button>
-        <a-button type="primary" @click="exportPdf('arraybuffer')">
-          导出获取pdf(ArrayBuffer)
-        </a-button>
-        <a-button type="primary" @click="exportPdf('dataurl')">
-          导出获取pdf(DataUrl)
-        </a-button>
-        <a-button type="primary" @click="exportPdf('bloburl')">
-          导出获取pdf(BlobUrl)
-        </a-button>
-        <a-button type="primary" @click="exportPdf('dataurlstring')">
-          导出获取pdf(DataUrlString)
-        </a-button>
-        <a-button type="primary" @click="exportPdf('pdfobjectnewwindow')">
-          导出查看pdf(PdfObjectNewWindow)
-        </a-button>
-      </a-space>
-      <a-space v-if="'3' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">ipp打印(需打印机支持):</div>
-        <a-button type="primary" @click="ippPrintAttr">
-          ipp获取 打印机 参数情况
-        </a-button>
-        <a-button type="primary" @click="ippPrintTest">
-          ipp打印测试
-        </a-button>
-        <a-button type="primary" @click="ippRequestTest">
-          ipp请求 获取 打印机 参数情况
-        </a-button>
-        <a-button type="primary" @click="ippRequestPrint">
-          ipp请求 打印测试
-        </a-button>
-      </a-space>
-      <a-space v-if="'4' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">元素参数操作:</div>
-        <a-button type="primary" @click="setOptionConfig(-1)"> 测试隐藏参数[看代码]
-        </a-button>
-        <a-button type="primary" @click="setOptionConfig(1)"> 隐藏[文本] "边框"、"高级"
-        </a-button>
-        <a-button type="primary" @click="setOptionConfig(2)"> [图片]不分组
-        </a-button>
-        <a-button type="primary" @click="setOptionConfig(3)"> 重写[文本] "字体大小"、"元素层级"
-        </a-button>
-        <a-button type="primary" @click="setOptionConfig(4)"> [文本]新增 "缩放"
-        </a-button>
-        <a-button type="primary" @click="setOptionConfig(0)"> 还原配置
-        </a-button>
-      </a-space>
-      <a-space v-if="'5' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">模板导入导出:</div>
-        <a-textarea style="width:30vw" v-model="jsonIn" @pressEnter="updateJson"
-                    placeholder="复制json模板到此后 点击右侧更新"
-                    allow-clear/>
-        <a-button type="primary" @click="updateJson">
-          更新json模板
-        </a-button>
-        <a-button type="primary" @click="exportJson">
-          导出json模板到 textArea
-        </a-button>
-        <a-textarea style="width:30vw" v-model="jsonOut" placeholder="点击左侧导出json" allow-clear/>
-      </a-space>
-      <a-space v-if="'6' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">元素获取/更新参数:</div>
-        <a-button type="primary" @click="getSelectEls">
-          获取选中元素
-        </a-button>
-        <a-button type="primary" @click="setEleSelectByField">
-          设置根据field选中文本元素
-        </a-button>
-
-        <a-button type="primary" @click="updateFontSize">
-          选中元素字体12pt
-        </a-button>
-        <a-button type="primary" @click="updateFontWeight">
-          选中元素字体Bolder
-        </a-button>
-      </a-space>
-      <a-space v-if="'7' == curKey" style="margin-bottom: 10px">
-        <div class="btn-text-desc">元素对齐/间距(需先选中):</div>
-        <a-button type="primary" @click="setElsSpace(true)"> 水平间距10
-        </a-button>
-        <a-button type="primary" @click="setElsSpace(false)"> 垂直间距10
-        </a-button>
-        <a-radio-group>
-          <a-radio-button @click="setElsAlign('left')" title="左对齐">
-            <span class="glyphicon glyphicon-object-align-left"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('vertical')" title="居中">
-            <span class="glyphicon glyphicon-object-align-vertical"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('right')" title="右对齐">
-            <span class="glyphicon glyphicon-object-align-right"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('top')" title="顶部对齐">
-            <span class="glyphicon glyphicon-object-align-top"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('horizontal')" title="垂直居中">
-            <span class="glyphicon glyphicon-object-align-horizontal"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('bottom')" title="底部对齐">
-            <span class="glyphicon glyphicon-object-align-bottom"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('distributeHor')" title="横向分散">
-            <span class="glyphicon glyphicon-resize-horizontal"></span>
-          </a-radio-button>
-          <a-radio-button @click="setElsAlign('distributeVer')" title="纵向分散">
-            <span class="glyphicon glyphicon-resize-vertical"></span>
-          </a-radio-button>
-        </a-radio-group>
-      </a-space>
-    </div>
-    <div class="three-panel-layout">
-      <!-- 左侧组件栏 -->
-      <div class="panel-left" :style="{ width: leftCollapsed ? '0px' : leftWidth + 'px' }">
-        <div class="sidebar-panel">
-          <div class="panel-header">
-            <span>组件</span>
-          </div>
-          <div class="panel-body rect-printElement-types hiprintEpContainer" id="hiprintEpContainer">
-          </div>
-        </div>
-      </div>
-      <!-- 左侧拖拽条 + 折叠箭头 -->
-      <div class="resize-bar">
-        <div v-if="!leftCollapsed" class="resize-handle" @mousedown="startResizeLeft"></div>
-        <div class="edge-toggle edge-toggle-left" @click="leftCollapsed = !leftCollapsed" :title="leftCollapsed ? '展开组件栏' : '折叠组件栏'">
-          <span class="glyphicon" :class="leftCollapsed ? 'glyphicon-chevron-right' : 'glyphicon-chevron-left'"></span>
-        </div>
-      </div>
-      <!-- 中间设计区域 -->
-      <div class="panel-center">
-        <a-card class="card-design">
-          <div id="hiprint-printTemplate" class="hiprint-printTemplate"></div>
-        </a-card>
-      </div>
-      <!-- 右侧拖拽条 + 折叠箭头 -->
-      <div class="resize-bar">
-        <div v-if="!rightCollapsed" class="resize-handle" @mousedown="startResizeRight"></div>
-        <div class="edge-toggle edge-toggle-right" @click="rightCollapsed = !rightCollapsed" :title="rightCollapsed ? '展开属性栏' : '折叠属性栏'">
-          <span class="glyphicon" :class="rightCollapsed ? 'glyphicon-chevron-left' : 'glyphicon-chevron-right'"></span>
-        </div>
-      </div>
-      <!-- 右侧属性栏 -->
-      <div class="panel-right params_setting_container" :style="{ width: rightCollapsed ? '0px' : rightWidth + 'px' }">
-        <div class="sidebar-panel">
-          <div class="panel-header">
-            <span>属性</span>
-          </div>
-          <div class="panel-body">
-            <div class="hinnn-layout-sider">
-              <div id="PrintElementOptionSetting"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div class="print-design-page">
+    <div id="hiprintDesigner"></div>
     <!-- 预览 -->
     <print-preview ref="preView"/>
-  </a-card>
+  </div>
 </template>
 
 <script defer>
@@ -317,11 +70,6 @@ export default {
       jsonOut: '',
       // 功能
       curKey: '',
-      // 三栏布局
-      leftCollapsed: false,
-      rightCollapsed: false,
-      leftWidth: 200,
-      rightWidth: 280,
       keyList: [
         {key: 1, name: '直接打印/api打印'},
         {key: 2, name: '导出PDF文件/流'},
@@ -381,6 +129,16 @@ export default {
      * @description: 加载 panel
      */
     getPanel() {
+      // 默认启动空模板；设置 hiprintEmptyTemplateOnStart=0 可恢复按版本加载 panel.js
+      const emptyFlagKey = 'hiprintEmptyTemplateOnStart'
+      if (sessionStorage.getItem(emptyFlagKey) === null) {
+        sessionStorage.setItem(emptyFlagKey, '1')
+      }
+      const useEmptyTemplate = sessionStorage.getItem(emptyFlagKey) !== '0'
+      if (useEmptyTemplate) {
+        panel = {}
+        return
+      }
       // 加载所有 panel
       const panels = require.context('./', true, /panel.*\.js$/)
       // 对所有 panel 进行版本解析
@@ -440,64 +198,75 @@ export default {
       });
       // 还原配置
       hiprint.setConfig()
-      // eslint-disable-next-line no-undef
-      $('#hiprintEpContainer').empty();
-      hiprint.PrintElementTypeManager.build('#hiprintEpContainer', 'defaultModule');
-      $('#hiprint-printTemplate').empty()
       let that = this;
-      this.template = hiprintTemplate = new hiprint.PrintTemplate({
-        template: panel,
-        // 图片选择功能
-        onImageChooseClick: (target) => {
-          // 测试 3秒后修改图片地址值
-          setTimeout(() => {
-            // target.refresh(url,options,callback)
-            // callback(el, width, height) // 原元素,宽,高
-            // target.refresh(url,false,(el,width,height)=>{
-            //   el.options.width = width;
-            //   el.designTarget.css('width', width + "pt");
-            //   el.designTarget.children('.resize-panel').trigger($.Event('click'));
-            // })
-            target.refresh("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAtAAAAIIAQMAAAB99EudAAAABlBMVEUmf8vG2O41LStnAAABD0lEQVR42u3XQQqCQBSAYcWFS4/QUTpaHa2jdISWLUJjjMpclJoPGvq+1WsYfiJCZ4oCAAAAAAAAAAAAAAAAAHin6pL9c6H/fOzHbRrP0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0u/SY9LS0tLS0tLS0tLS0n+edm+UlpaWlpaWlpaWlpaW/tl0Ndyzbno7/+tPTJdd1wal69dNa6abx+Lq6TSeYtK7BX/Diek0XULSZZrakPRtV0i6Hu/KIt30q4fM0pvBqvR9mvsQkZaW9gyJT+f5lsnzjR54xAk8mAUeJyMPwYFH98ALx5Jr0kRLLndT7b64UX9QR/0eAAAAAAAAAAAAAAAAAAD/4gpryzr/bja4QgAAAABJRU5ErkJggg==", {
-              // auto: true, // 根据图片宽高自动等比(宽>高?width:height)
-              // width: true, // 按宽调整高
-              // height: true, // 按高调整宽
-              real: true // 根据图片实际尺寸调整(转pt)
-            })
-          }, 3000)
-          // target.getValue()
-          // target.refresh(url)
+      // 使用核心 buildDesigner 构建完整设计器
+      this.designerCtrl = hiprint.buildDesigner('#hiprintDesigner', {
+        componentModule: 'defaultModule',
+        templateOptions: {
+          template: panel,
+          // 图片选择功能
+          onImageChooseClick: (target) => {
+            // 测试 3秒后修改图片地址值
+            setTimeout(() => {
+              target.refresh("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAtAAAAIIAQMAAAB99EudAAAABlBMVEUmf8vG2O41LStnAAABD0lEQVR42u3XQQqCQBSAYcWFS4/QUTpaHa2jdISWLUJjjMpclJoPGvq+1WsYfiJCZ4oCAAAAAAAAAAAAAAAAAHin6pL9c6H/fOzHbRrP0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0u/SY9LS0tLS0tLS0tLS0n+edm+UlpaWlpaWlpaWlpaW/tl0Ndyzbno7/+tPTJdd1wal69dNa6abx+Lq6TSeYtK7BX/Diek0XULSZZrakPRtV0i6Hu/KIt30q4fM0pvBqvR9mvsQkZaW9gyJT+f5lsnzjR54xAk8mAUeJyMPwYFH98ALx5Jr0kRLLndT7b64UX9QR/0eAAAAAAAAAAAAAAAAAAD/4gpryzr/bja4QgAAAABJRU5ErkJggg==", {
+                real: true
+              })
+            }, 3000)
+          },
+          fontList: [
+            {title: '微软雅黑', value: 'Microsoft YaHei'},
+            {title: '黑体', value: 'STHeitiSC-Light'},
+            {title: '思源黑体', value: 'SourceHanSansCN-Normal'},
+            {title: '王羲之书法体', value: '王羲之书法体'},
+            {title: '宋体', value: 'SimSun'},
+            {title: '华为楷体', value: 'STKaiti'},
+            {title: 'cursive', value: 'cursive'},
+          ],
+          dataMode: 1,
+          history: true,
+          willOutOfBounds: true,
+          qtDesigner: true,
+          onDataChanged: (type, json) => {
+            console.log(type);
+            console.log(json);
+          },
+          onUpdateError: (e) => {
+            console.log(e);
+          },
         },
-        // 自定义可选字体
-        // 或者使用 hiprintTemplate.setFontList([])
-        // 或元素中 options.fontList: []
-        fontList: [
-          {title: '微软雅黑', value: 'Microsoft YaHei'},
-          {title: '黑体', value: 'STHeitiSC-Light'},
-          {title: '思源黑体', value: 'SourceHanSansCN-Normal'},
-          {title: '王羲之书法体', value: '王羲之书法体'},
-          {title: '宋体', value: 'SimSun'},
-          {title: '华为楷体', value: 'STKaiti'},
-          {title: 'cursive', value: 'cursive'},
-        ],
-        dataMode: 1, // 1:getJson 其他：getJsonTid 默认1
-        history: true, // 是否需要 撤销重做功能
-        willOutOfBounds: true, // 是否允许组件内的控件超出范围
-        qtDesigner: true, // 是否开启类似QT Designer的唯一field生成模式
-        onDataChanged: (type, json) => {
-          console.log(type); // 新增、移动、删除、修改(参数调整)、大小、旋转
-          console.log(json); // 返回 template
+        toolbarOptions: {
+          onPreview: function (tpl) {
+            that.$refs.preView.show(tpl, printData);
+          },
+          onPrint: function () {
+            that.onlyPrint();
+          },
+          onClear: function (tpl) {
+            that.$confirm({
+              title: '是否确认清空?',
+              content: '清空后将无法恢复，是否继续?',
+              okText: '确定',
+              cancelText: '取消',
+              centered: true,
+              getContainer: function () {
+                return document.querySelector('#hiprintDesigner') || document.body;
+              },
+              onOk: function () {
+                tpl.clear();
+              }
+            });
+          },
+          onScaleChange: function (val) {
+            that.scaleValue = val;
+          }
         },
-        onUpdateError: (e) => {
-          console.log(e);
-        },
-        settingContainer: '#PrintElementOptionSetting',
-        paginationContainer: '.hiprint-printPagination'
+        onReady: function (tpl, toolbarCtrl) {
+          that.template = hiprintTemplate = tpl;
+          that.toolbarCtrl = toolbarCtrl;
+          that.scaleValue = tpl.editingPanel.scale || 1;
+          console.log(hiprintTemplate);
+        }
       });
-      hiprintTemplate.design('#hiprint-printTemplate', {});
-      console.log(hiprintTemplate);
-      // 获取当前放大比例, 当zoom时传true 才会有
-      this.scaleValue = hiprintTemplate.editingPanel.scale || 1;
     },
     setOptionConfig(type) {
       switch (type) {
@@ -750,44 +519,6 @@ export default {
       if (hiprintTemplate) {
         hiprintTemplate.alignElements(type)
       }
-    },
-    startResizeLeft(e) {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = this.leftWidth;
-      const onMouseMove = (ev) => {
-        const newWidth = Math.max(140, Math.min(400, startWidth + ev.clientX - startX));
-        this.leftWidth = newWidth;
-      };
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    },
-    startResizeRight(e) {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = this.rightWidth;
-      const onMouseMove = (ev) => {
-        const newWidth = Math.max(200, Math.min(500, startWidth - (ev.clientX - startX)));
-        this.rightWidth = newWidth;
-      };
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
     },
     preView() {
       // 测试, 点预览更新拖拽元素
@@ -1123,10 +854,29 @@ export default {
 
 <style lang="less" scoped>
 
+.print-design-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .btn-text-desc {
   width: 12vw;
   text-align: right;
   white-space: nowrap;
+}
+
+/deep/ #hiprintDesigner {
+  position: relative;
+  padding: 10px;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+}
+
+/deep/ #hiprintDesigner .ant-modal-mask,
+/deep/ #hiprintDesigner .ant-modal-wrap {
+  position: absolute;
 }
 
 // 默认图片
@@ -1156,141 +906,5 @@ export default {
   border: 0;
   border-left: 1px dashed purple;
 }
-
-// ==================== 三栏布局 ====================
-.three-panel-layout {
-  display: flex;
-  height: calc(100vh - 10px);
-  overflow: hidden;
-}
-
-// 左右侧栏通用
-.panel-left, .panel-right {
-  flex-shrink: 0;
-  height: 100%;
-  overflow: hidden;
-  transition: width 0.25s ease;
-}
-
-.sidebar-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 4px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid #e8e8e8;
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  flex-shrink: 0;
-}
-
-.panel-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  &::-webkit-scrollbar {
-    width: 5px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: #d9d9d9;
-    border-radius: 3px;
-  }
-}
-
-// 拖拽条 + 边缘折叠箭头容器
-.resize-bar {
-  position: relative;
-  width: 8px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.resize-handle {
-  width: 100%;
-  height: 100%;
-  cursor: col-resize;
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 3px;
-    height: 30px;
-    background: #d9d9d9;
-    border-radius: 2px;
-    transition: background 0.2s;
-  }
-  &:hover::after {
-    background: #409eff;
-  }
-}
-
-// 边缘小箭头按钮
-.edge-toggle {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  cursor: pointer;
-  z-index: 20;
-  color: #909399;
-  font-size: 10px;
-  transition: all 0.2s;
-  &:hover {
-    color: #409eff;
-    border-color: #409eff;
-    background: #ecf5ff;
-  }
-}
-
-.edge-toggle-left {
-  right: -4px;
-  border-radius: 0 4px 4px 0;
-  border-left: none;
-}
-
-.edge-toggle-right {
-  left: -4px;
-  border-radius: 4px 0 0 4px;
-  border-right: none;
-}
-
-// 中间设计区域
-.panel-center {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
-  height: 100%;
-}
-
-.card-design {
-  overflow: hidden;
-  overflow-x: auto;
-  overflow-y: auto;
-  height: 100%;
-}
-
-// ==================== 左侧拖拽组件 ====================
 
 </style>

@@ -47,9 +47,6 @@ import bwipjs from "bwip-js"
 import watermark from "./plugins/watermark.js";
 // 直接打印需要
 import {io} from "socket.io-client";
-//引入标尺
-import lImg from "./css/image/l_img.svg";
-import vImg from "./css/image/v_img.svg";
 // pdf
 import {jsPDF} from "jspdf";
 import domtoimage from 'dom-to-image-more'
@@ -61,7 +58,7 @@ import Canvg from 'canvg';
 import defaultTypeProvider from "./etypes/default-etyps-provider";
 
 window.$ = window.jQuery = $;
-window.autoConnect = true;
+window.autoConnect = false;
 window.io = io;
 
 var languages = {}
@@ -721,6 +718,12 @@ var hiprint = function (t) {
       }, BasePrintElement.prototype.getDesignTarget = function (t) {
         var e = this, lastTimeStamp = 0;
         return this.designTarget = this.getHtml(t)[0].target, this.designPaper = t, this.designTarget.click(function (ev) {
+          // 元素列表触发的仅视觉选中，不在这里重复触发属性事件
+          if (ev._listOnlySelect) {
+            lastTimeStamp = ev.timeStamp;
+            ev.stopPropagation();  // 阻止事件冒泡到画布，避免触发画布属性面板
+            return;
+          }
           if (ev.timeStamp - lastTimeStamp > 500) {
             hinnn.event.trigger(e.getPrintElementSelectEventKey(), {
               printElement: e
@@ -787,6 +790,38 @@ var hiprint = function (t) {
           var draggable = !e.options.positionLocked && (e.options.draggable == undefined || true == e.options.draggable);
           e.designTarget.hidraggable('update', {draggable: draggable});
         }
+      }, BasePrintElement.prototype.selectFromList = function (appendSelect) {
+        if (!this.designTarget || !this.designTarget.length) return;
+        if (this.designTarget.css("display") === "none") return;
+        var append = !!appendSelect;
+        var panelHandle = this.designTarget.children("div[panelindex]");
+        // 使用 triggerHandler 避免冒泡到面板容器，误触发“画布属性”
+        this.designTarget.triggerHandler($.Event('click', {
+          _listOnlySelect: true,
+          ctrlKey: append,
+          metaKey: append
+        }));
+        // 正常情况下，上面的 click 会完成选中；这里做兜底，避免某些场景事件链被中断
+        if (!panelHandle.hasClass("selected")) {
+          if (!append) {
+            this.designTarget.siblings().children("div[panelindex]").removeClass("selected").css({
+              display: "none"
+            });
+          }
+          panelHandle.addClass("selected").css({
+            display: "block"
+          });
+          var designTarget = this.designTarget[0];
+          var dragData = $.data(designTarget, "hidraggable");
+          if (dragData && dragData.options && typeof dragData.options.onBeforeSelectAllDrag === "function") {
+            dragData.options.onBeforeSelectAllDrag.call(designTarget, {});
+          }
+        }
+        // 显式触发属性同步事件，确保右侧属性面板必定刷新
+        var selectPayload = {
+          printElement: this
+        };
+        hinnn.event.trigger(this.getPrintElementSelectEventKey(), selectPayload);
       }, BasePrintElement.prototype.getPrintElementSelectEventKey = function () {
         return "PrintElementSelectEventKey_" + this.templateId;
       }, BasePrintElement.prototype.design = function (t, e) {
@@ -1421,7 +1456,6 @@ var hiprint = function (t) {
       }, BasePrintElement.prototype.copyJson = function () {
         try {
           var n = this;
-          // 使用textarea 存储复制的元素信息
           var copyArea = $('#copyArea');
           if (!copyArea.length) copyArea = $('<textarea id="copyArea" style="position: absolute; left: 0px; top: 0px;opacity: 0"></textarea>');
           $("body").append(copyArea);
@@ -1437,25 +1471,25 @@ var hiprint = function (t) {
             }
           })
           var json = JSON.stringify(copyElements)
-          // var json = JSON.stringify({
-          //   options: n.options,
-          //   printElementType: n.printElementType,
-          //   id: n.id,
-          //   templateId: n.templateId
-          // });
           copyArea.text(json);
-          // 元素需可见才能选中复制到剪切板
-          copyArea.css('visibility', 'visible');
-          // 尝试修复对复制元素的自动聚焦
-          // copyArea.focus();
-          if (copyArea.setSelectionRange)
-            copyArea.setSelectionRange(0, copyArea.value.length);
-          else
-            copyArea.select();
+          // 优先使用 Clipboard API，降级使用 execCommand
           var flag = false;
-          flag = document.execCommand("copy");
-          copyArea.css('visibility', 'hidden');
-          // 获取元素焦点，不然无法粘贴（keydown问题）
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(json).then(function () {
+              console.log('copyJson success (clipboard API)');
+            }).catch(function () {
+              console.log('clipboard API failed, fallback to execCommand');
+            });
+            flag = true;
+          } else {
+            copyArea.css('visibility', 'visible');
+            if (copyArea[0].setSelectionRange)
+              copyArea[0].setSelectionRange(0, copyArea[0].value.length);
+            else
+              copyArea.select();
+            flag = document.execCommand("copy");
+            copyArea.css('visibility', 'hidden');
+          }
           n.designTarget.focus();
           console.log('copyJson success');
         } catch (e) {
@@ -3539,7 +3573,7 @@ var hiprint = function (t) {
         var n = this;
         n.posLocked = !!(o.positionLocked);
         n.target = $(`<div class="hiprint-option-item hiprint-option-item-row">
-          <div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('位置坐标')}<input type="checkbox" class="coord-pos-lock" title="${i18n.__('锁定位置')}" style="width:14px;height:14px;margin:0;cursor:pointer;" ${n.posLocked ? 'checked' : ''}></div>
+          <div class="hiprint-option-item-label" style="display:flex;align-items:center;">${i18n.__('位置坐标')}<input type="checkbox" class="coord-pos-lock" title="${i18n.__('锁定位置')}" style="width:14px;height:14px;margin:0 0 0 auto;cursor:pointer;" ${n.posLocked ? 'checked' : ''}></div>
           <div class="hiprint-option-item-field" style="display: flex;align-items: baseline;">
           <input type="number" style="width:48%" placeholder="${i18n.__('X位置(左)')}" class="auto-submit" ${n.posLocked ? 'disabled' : ''} />
           <input type="number" style="width:48%" placeholder="${i18n.__('Y位置(上)')}" class="auto-submit" ${n.posLocked ? 'disabled' : ''} />
@@ -3618,7 +3652,7 @@ var hiprint = function (t) {
         n.sizeLocked = !!(o.sizeLocked);
         n.ownSizeLocked = n.sizeLocked; // 记录自身的锁定状态（不受位置锁定影响）
         n.target = $(`<div class="hiprint-option-item hiprint-option-item-row">
-          <div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('宽高大小')}<input type="checkbox" class="wh-size-lock" title="${i18n.__('锁定大小')}" style="width:14px;height:14px;margin:0;cursor:pointer;" ${n.sizeLocked ? 'checked' : ''}></div>
+          <div class="hiprint-option-item-label" style="display:flex;align-items:center;">${i18n.__('宽高大小')}<input type="checkbox" class="wh-size-lock" title="${i18n.__('锁定大小')}" style="width:14px;height:14px;margin:0 0 0 auto;cursor:pointer;" ${n.sizeLocked ? 'checked' : ''}></div>
           <div class="hiprint-option-item-field" style="display: flex;align-items: baseline;">
           <input type="number" style="width:48%" placeholder="${i18n.__('宽')}" class="auto-submit" ${n.sizeLocked ? 'disabled' : ''} />
           <input type="number" style="width:48%" placeholder="${i18n.__('高')}" class="auto-submit" ${n.sizeLocked ? 'disabled' : ''} />
@@ -3841,7 +3875,7 @@ var hiprint = function (t) {
         this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('水印功能')}<input type="checkbox" class="watermark-toggle" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
         this.fieldsWrapper = $(`<div class="watermark-fields-wrapper" style="display:none;"></div>`);
         this.content = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: baseline;"><div style="width:25%">${i18n.__('水印内容')}:</div><input style="width:75%" type="text" placeholder="${i18n.__('水印内容')}" class="auto-submit"></div>`);
-        this.fillStyle = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;margin-top: 4px"><div style="width:25%">${i18n.__('字体颜色')}:</div><input style="width:110%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('字体颜色')}" class="auto-submit"></div>`);
+        this.fillStyle = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;margin-top: 4px"><div style="width:25%">${i18n.__('字体颜色')}:</div><input style="width:100%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('字体颜色')}" class="auto-submit"></div>`);
         this.fontSize = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;"><div style="width:25%">${i18n.__('字体大小')}:</div><input style="width:75%" type="range" min="10" max="80" placeholder="${i18n.__('字体大小')}" class="auto-submit"></div>`);
         this.rotate = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;"><div style="width:25%">${i18n.__('旋转角度')}:</div><input style="width:75%" type="range" min="0" max="180" placeholder="${i18n.__('旋转角度')}" class="auto-submit"></div>`);
         this.width = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;"><div style="width:25%">${i18n.__('水平密度')}:</div><input style="width:75%" type="range" min="100" max="800" placeholder="${i18n.__('水平密度')}" class="auto-submit"></div>`);
@@ -3927,7 +3961,7 @@ var hiprint = function (t) {
         this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('网格设置')}<input type="checkbox" class="grid-toggle" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
         this.fieldsWrapper = $(`<div class="grid-fields-wrapper" style="display:none;"></div>`);
         this.gridSize = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('网格大小')}:</div><input style="width:65%" type="number" min="1" max="20" step="0.5" value="5" placeholder="mm" class="auto-submit"></div>`);
-        this.gridColor = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:center;margin-top:4px"><div style="width:35%">${i18n.__('网格颜色')}:</div><input style="width:110%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('颜色')}" class="auto-submit"></div>`);
+        this.gridColor = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:center;margin-top:4px"><div style="width:35%">${i18n.__('网格颜色')}:</div><input style="width:100%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('颜色')}" class="auto-submit"></div>`);
         this.fieldsWrapper.append(this.gridSize);
         this.fieldsWrapper.append(this.gridColor);
         this.target.append(this.fieldsWrapper);
@@ -3975,7 +4009,7 @@ var hiprint = function (t) {
         this.marginBottom = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('下边距')}:</div><input style="width:65%" type="number" min="0" max="100" step="1" value="15" placeholder="pt" class="auto-submit"></div>`);
         this.marginLeft = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('左边距')}:</div><input style="width:65%" type="number" min="0" max="100" step="1" value="15" placeholder="pt" class="auto-submit"></div>`);
         this.marginRight = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('右边距')}:</div><input style="width:65%" type="number" min="0" max="100" step="1" value="15" placeholder="pt" class="auto-submit"></div>`);
-        this.marginColor = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:center;margin-top:4px"><div style="width:35%">${i18n.__('边距颜色')}:</div><input style="width:110%" data-format="rgb" data-opacity="0.5" type="text" placeholder="${i18n.__('颜色')}" class="auto-submit"></div>`);
+        this.marginColor = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:center;margin-top:4px"><div style="width:35%">${i18n.__('边距颜色')}:</div><input style="width:100%" data-format="rgb" data-opacity="0.5" type="text" placeholder="${i18n.__('颜色')}" class="auto-submit"></div>`);
         this.fieldsWrapper.append(this.marginTop);
         this.fieldsWrapper.append(this.marginBottom);
         this.fieldsWrapper.append(this.marginLeft);
@@ -4396,7 +4430,8 @@ var hiprint = function (t) {
 
       return t.prototype.css = function (t, e) {
         if (t && t.length) {
-          if (e) return t.css('border-raduis', e);
+          if (e) return t.css('border-radius', e), "border-radius:" + e;
+          t[0].style.borderRadius = "";
         }
         return null;
       }, t.prototype.createTarget = function () {
@@ -5126,13 +5161,78 @@ var hiprint = function (t) {
         this.name = "paperHeader";
       }
 
-      return t.prototype.createTarget = function () {
-        return this.target = $(`<div class="hiprint-option-item hiprint-option-item-row">\n        <div class="hiprint-option-item-label">\n        ${i18n.__('页眉线(pt)')}\n        </div>\n        <div class="hiprint-option-item-field">\n        <input type="number" placeholder="${i18n.__('页眉线位置')}pt" class="auto-submit" min="0" step="1">\n        </div>\n    </div>`), this.target;
+      return t.prototype.getPanelInfo = function () {
+        var panel = this.printTemplate && this.printTemplate.editingPanel;
+        var designPaper = panel && panel.designPaper;
+        var height = designPaper && designPaper.height;
+        var header = panel && panel.paperHeader;
+        var footer = panel && panel.paperFooter;
+        return {
+          height: height != null && !isNaN(parseFloat(height)) ? parseFloat(height) : undefined,
+          header: header != null && !isNaN(parseFloat(header)) ? parseFloat(header) : 0,
+          footer: footer != null && !isNaN(parseFloat(footer)) ? parseFloat(footer) : undefined
+        };
+      }, t.prototype.getPeerFooterValue = function () {
+        var info = this.getPanelInfo();
+        var fallback = info.footer != null ? info.footer : info.height;
+        var root = this.target && this.target.closest(".hiprint-option-items");
+        if (!root || !root.length) return fallback;
+        var checked = root.find(".paper-footer-toggle").is(":checked");
+        if (!checked) return info.height;
+        var v = parseFloat(root.find(".paper-footer-input").val());
+        return isNaN(v) ? fallback : v;
+      }, t.prototype.normalizeHeader = function (val) {
+        var info = this.getPanelInfo();
+        var footer = this.getPeerFooterValue();
+        if (isNaN(val) || val < 0) val = 0;
+        var max = Number.MAX_SAFE_INTEGER;
+        if (info.height != null) max = Math.min(max, info.height - 1);
+        if (footer != null && !isNaN(footer)) max = Math.min(max, footer - 1);
+        if (!isFinite(max) || max < 0) max = 0;
+        if (val > max) val = max;
+        return val;
+      }, t.prototype.syncInputConstraint = function () {
+        var info = this.getPanelInfo();
+        var footer = this.getPeerFooterValue();
+        var max = Number.MAX_SAFE_INTEGER;
+        if (info.height != null) max = Math.min(max, info.height - 1);
+        if (footer != null && !isNaN(footer)) max = Math.min(max, footer - 1);
+        if (!isFinite(max) || max < 0) max = 0;
+        this.headerInput.attr("min", 0).attr("max", max);
+      }, t.prototype.createTarget = function (printTemplate) {
+        var self = this;
+        this.printTemplate = printTemplate;
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row hiprint-paper-line-inline"><div class="hiprint-option-item-label">${i18n.__('页眉线(pt)')}</div><div class="hiprint-option-item-field hiprint-paper-line-inline-field"><input type="checkbox" class="paper-header-toggle auto-submit"><input type="number" placeholder="pt" class="paper-header-input auto-submit" min="0" step="1"></div></div>`);
+        this.headerInput = this.target.find(".paper-header-input");
+        this.target.find('.paper-header-toggle').on('change', function () {
+          if ($(this).is(':checked')) {
+            var current = parseFloat(self.headerInput.val());
+            if (isNaN(current) || current <= 0) {
+              self.headerInput.val(self.normalizeHeader(10));
+            }
+            self.syncInputConstraint();
+            self.headerInput.prop('disabled', !1);
+          } else {
+            self.headerInput.prop('disabled', !0);
+          }
+        });
+        this.target.find('.paper-header-toggle').prop('checked', !0);
+        this.headerInput.prop('disabled', !1);
+        return this.target;
       }, t.prototype.getValue = function () {
-        var t = this.target.find("input").val();
-        if (t !== '' && t !== undefined && t !== null) return parseFloat(t.toString());
+        if (!this.target.find('.paper-header-toggle').is(':checked')) return void 0;
+        this.syncInputConstraint();
+        var t = this.normalizeHeader(parseFloat(this.headerInput.val()));
+        this.headerInput.val(t);
+        return t;
       }, t.prototype.setValue = function (t) {
-        this.target.find("input").val(t);
+        var val = parseFloat(t);
+        var enabled = !(void 0 === t || null === t);
+        isNaN(val) && (val = 10);
+        this.target.find('.paper-header-toggle').prop('checked', !!enabled);
+        this.syncInputConstraint();
+        this.headerInput.prop('disabled', !enabled);
+        this.headerInput.val(enabled ? this.normalizeHeader(val) : this.normalizeHeader(10));
       }, t.prototype.destroy = function () {
         this.target.remove();
       }, t;
@@ -5142,13 +5242,85 @@ var hiprint = function (t) {
         this.name = "paperFooter";
       }
 
-      return t.prototype.createTarget = function () {
-        return this.target = $(`<div class="hiprint-option-item hiprint-option-item-row">\n        <div class="hiprint-option-item-label">\n        ${i18n.__('页脚线(pt)')}\n        </div>\n        <div class="hiprint-option-item-field">\n        <input type="number" placeholder="${i18n.__('页脚线位置')}pt" class="auto-submit" min="0" step="1">\n        </div>\n    </div>`), this.target;
+      return t.prototype.getPanelInfo = function () {
+        var panel = this.printTemplate && this.printTemplate.editingPanel;
+        var designPaper = panel && panel.designPaper;
+        var height = designPaper && designPaper.height;
+        var header = panel && panel.paperHeader;
+        var footer = panel && panel.paperFooter;
+        return {
+          height: height != null && !isNaN(parseFloat(height)) ? parseFloat(height) : undefined,
+          header: header != null && !isNaN(parseFloat(header)) ? parseFloat(header) : 0,
+          footer: footer != null && !isNaN(parseFloat(footer)) ? parseFloat(footer) : undefined
+        };
+      }, t.prototype.getPeerHeaderValue = function () {
+        var info = this.getPanelInfo();
+        var root = this.target && this.target.closest(".hiprint-option-items");
+        if (!root || !root.length) return info.header || 0;
+        var checked = root.find(".paper-header-toggle").is(":checked");
+        if (!checked) return 0;
+        var v = parseFloat(root.find(".paper-header-input").val());
+        return isNaN(v) ? info.header || 0 : v;
+      }, t.prototype.normalizeFooter = function (val) {
+        var info = this.getPanelInfo();
+        var header = this.getPeerHeaderValue();
+        if (isNaN(val)) {
+          return info.height != null ? info.height : 0;
+        }
+        var min = Math.max(0, (header || 0) + 1);
+        if (val < min) val = min;
+        if (info.height != null && val > info.height) val = info.height;
+        return val;
+      }, t.prototype.syncInputConstraint = function () {
+        var info = this.getPanelInfo();
+        var header = this.getPeerHeaderValue();
+        var min = Math.max(0, (header || 0) + 1);
+        this.footerInput.attr("min", min);
+        if (info.height != null) this.footerInput.attr("max", info.height);
+      }, t.prototype.createTarget = function (printTemplate) {
+        var self = this;
+        this.printTemplate = printTemplate;
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row hiprint-paper-line-inline"><div class="hiprint-option-item-label">${i18n.__('页脚线(pt)')}</div><div class="hiprint-option-item-field hiprint-paper-line-inline-field"><input type="checkbox" class="paper-footer-toggle auto-submit"><input type="number" placeholder="pt" class="paper-footer-input auto-submit" min="0" step="1"></div></div>`);
+        this.footerInput = this.target.find(".paper-footer-input");
+        this.target.find('.paper-footer-toggle').on('change', function () {
+          if ($(this).is(':checked')) {
+            var panelInfo = self.getPanelInfo();
+            var current = parseFloat(self.footerInput.val());
+            if (isNaN(current)) {
+              self.footerInput.val(panelInfo.height ? Math.max(panelInfo.height - 10, 1) : 10);
+            } else {
+              self.footerInput.val(self.normalizeFooter(current));
+            }
+            self.syncInputConstraint();
+            self.footerInput.prop('disabled', !1);
+          } else {
+            self.footerInput.prop('disabled', !0);
+          }
+        });
+        this.target.find('.paper-footer-toggle').prop('checked', !0);
+        this.footerInput.prop('disabled', !1);
+        return this.target;
       }, t.prototype.getValue = function () {
-        var t = this.target.find("input").val();
-        if (t !== '' && t !== undefined && t !== null) return parseFloat(t.toString());
+        if (!this.target.find('.paper-footer-toggle').is(':checked')) {
+          return void 0;
+        }
+        this.syncInputConstraint();
+        var t = this.normalizeFooter(parseFloat(this.footerInput.val()));
+        this.footerInput.val(t);
+        return t;
       }, t.prototype.setValue = function (t) {
-        this.target.find("input").val(t);
+        var panelInfo = this.getPanelInfo();
+        var val = parseFloat(t);
+        var enabled = !(void 0 === t || null === t);
+        isNaN(val) && (val = panelInfo.height ? Math.max(panelInfo.height - 10, 1) : 10);
+        this.target.find('.paper-footer-toggle').prop('checked', !!enabled);
+        this.syncInputConstraint();
+        this.footerInput.prop('disabled', !enabled);
+        if (enabled) {
+          this.footerInput.val(this.normalizeFooter(val));
+        } else {
+          this.footerInput.val(panelInfo.height ? Math.max(panelInfo.height - 10, 1) : 10);
+        }
       }, t.prototype.destroy = function () {
         this.target.remove();
       }, t;
@@ -5158,10 +5330,10 @@ var hiprint = function (t) {
         this.name = "panelLayoutOptions";
       }
       return t.prototype.createTarget = function () {
-        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label">${i18n.__('面板排列')}</div></div>`);
-        this.layoutType = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: baseline;"><select style="width:100%" class="auto-submit"><option value="column" >${i18n.__('纵向')}</option><option value="row" >${i18n.__('横向')}</option></select></div>`)
-        this.layoutRowGap = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: baseline;margin-top: 4px"><div style="width:25%">${i18n.__('垂直间距')}:</div><input style="width:75%" type="text" placeholder="${i18n.__('垂直间距mm')}" class="auto-submit"></div>`);
-        this.layoutColumnGap = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: baseline;margin-top: 4px"><div style="width:25%">${i18n.__('水平间距')}:</div><input style="width:75%" type="text" placeholder="${i18n.__('水平间距mm')}" class="auto-submit"></div>`);
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row hiprint-panel-layout-group"><div class="hiprint-option-item-label">${i18n.__('面板排列')}</div></div>`);
+        this.layoutType = $(`<div class="hiprint-option-item-field hiprint-panel-layout-item hiprint-panel-layout-main" style="display: flex;align-items: baseline;"><select style="width:100%" class="auto-submit"><option value="column" >${i18n.__('纵向')}</option><option value="row" >${i18n.__('横向')}</option></select></div>`)
+        this.layoutRowGap = $(`<div class="hiprint-option-item-field hiprint-panel-layout-item hiprint-panel-layout-sub" style="display: flex;align-items: baseline;"><div style="width:25%">${i18n.__('垂直间距')}</div><input style="width:75%" type="text" placeholder="${i18n.__('垂直间距mm')}" class="auto-submit"></div>`);
+        this.layoutColumnGap = $(`<div class="hiprint-option-item-field hiprint-panel-layout-item hiprint-panel-layout-sub" style="display: flex;align-items: baseline;"><div style="width:25%">${i18n.__('水平间距')}</div><input style="width:75%" type="text" placeholder="${i18n.__('水平间距mm')}" class="auto-submit"></div>`);
         this.target.append(this.layoutType)
         this.target.append(this.layoutRowGap)
         this.target.append(this.layoutColumnGap)
@@ -8663,14 +8835,16 @@ var hiprint = function (t) {
       return t.prototype.createPrintElementTypeHtml = function (t, e) {
         var n = $('<div class="hiprint-ep-type-container"></div>');
         return e.forEach(function (t) {
-          var group = $('<div class="hiprint-ep-group"></div>');
-          group.append('<div class="hiprint-ep-group-title">' + t.name + "</div>");
+          var e = !!t.isDynamicSlot,
+            group = $('<div class="hiprint-ep-group' + (e ? " hiprint-ep-group-slot" : "") + '"></div>'),
+            titleHtml = '<div class="hiprint-ep-group-title">' + t.name + (e ? '<span class="hiprint-ep-group-badge">动态</span>' : "") + "</div>";
+          group.append(titleHtml);
           var grid = $('<div class="hiprint-ep-grid"></div>');
           group.append(grid);
-          t.printElementTypes.forEach(function (t) {
+          t.printElementTypes && t.printElementTypes.length ? t.printElementTypes.forEach(function (t) {
             var iconHtml = t.icon ? '<span class="glyphicon ' + t.icon + '"></span>' : '';
             grid.append('<a class="ep-draggable-item hiprint-ep-card" tid="' + t.tid + '">' + iconHtml + '<span>' + t.getText() + '</span></a>');
-          });
+          }) : e && grid.append('<div class="hiprint-ep-slot-empty">' + (t.emptyTip || "暂无动态字段") + "</div>");
           n.append(group);
         }), $(t).append(n), n.find(".ep-draggable-item");
       }, t;
@@ -8848,7 +9022,7 @@ var hiprint = function (t) {
           beginPrintPaperIndex: 0,
           printTopInPaper: 0,
           endPrintPaperIndex: 0
-        });
+        }), this.guideLines = [], this.guideLayer = null, this.guideDragState = null, this.onGuideLinesChanged = null, this.guideLineIdSeed = 0;
       }
 
       return t.prototype.subscribePaperBaseInfoChanged = function (t) {
@@ -8966,6 +9140,8 @@ var hiprint = function (t) {
         this.paperNumberTop = this.paperNumberTop > this.height ? this.paperNumberTop = parseInt((this.height - 22).toString()) : this.paperNumberTop;
         this.paperNumberTarget.css("top", this.paperNumberTop + "pt"),
           this.paperNumberTarget.css("left", this.paperNumberLeft + "pt"),
+          this.createRuler(),
+          this.normalizeGuideLinesByPaperSize(),
           this.triggerOnPaperBaseInfoChanged("调整大小");
       }, t.prototype.zoom = function (s) {
         if (s) {
@@ -8982,8 +9158,169 @@ var hiprint = function (t) {
         return 0 == e ? this.firstPaperFooter ? this.firstPaperFooter : this.oddPaperFooter ? this.oddPaperFooter : this.paperFooter : e % 2 == 0 ? this.oddPaperFooter ? this.oddPaperFooter : this.paperFooter : e % 2 == 1 ? this.evenPaperFooter ? this.evenPaperFooter : this.paperFooter : void 0;
       }, t.prototype.getContentHeight = function (t) {
         return this.getPaperFooter(t) - this.paperHeader;
+      }, t.prototype.subscribeGuideLinesChanged = function (t) {
+        this.onGuideLinesChanged = t;
+      }, t.prototype.triggerGuideLinesChanged = function (t) {
+        this.onGuideLinesChanged && this.onGuideLinesChanged(this.getGuideLines(), t || "参考线");
+      }, t.prototype.getGuideLines = function () {
+        return (this.guideLines || []).map(function (t) {
+          return {
+            id: t.id,
+            type: t.type,
+            pos: t.pos
+          };
+        });
+      }, t.prototype.setGuideLines = function (t, e) {
+        var n = this;
+        this.guideLines = (t || []).map(function (t) {
+          if (!t) return null;
+          var e = "h" === t.type || "horizontal" === t.type ? "h" : "v" === t.type || "vertical" === t.type ? "v" : null;
+          if (!e) return null;
+          var i = Number(t.pos);
+          if (!isFinite(i)) return null;
+          var r = "h" === e ? n.height : n.width;
+          i = n.roundGuidePos(Math.max(0, Math.min(r, i)));
+          return {
+            id: t.id || n.createGuideId(e),
+            type: e,
+            pos: i
+          };
+        }).filter(function (t) {
+          return !!t;
+        }), this.renderGuideLines(), e || this.triggerGuideLinesChanged("参考线");
+      }, t.prototype.createGuideId = function (t) {
+        var e = "";
+        do {
+          this.guideLineIdSeed = (this.guideLineIdSeed || 0) + 1, e = "guide_" + (t || "g") + "_" + this.panelIdx + "_" + this.index + "_" + this.guideLineIdSeed;
+        } while (this.getGuideLineById(e));
+        return e;
+      }, t.prototype.roundGuidePos = function (t) {
+        return Math.round(100 * t) / 100;
+      }, t.prototype.getGuideLineById = function (t) {
+        return (this.guideLines || []).find(function (e) {
+          return e.id === t;
+        });
+      }, t.prototype.getGuidePointer = function (t) {
+        var e = this.target.offset() || {
+            left: 0,
+            top: 0
+          },
+          n = this.scale || 1;
+        return {
+          x: o.a.px.toPt((t.pageX - e.left) / n),
+          y: o.a.px.toPt((t.pageY - e.top) / n)
+        };
+      }, t.prototype.createGuideLayer = function () {
+        return this.guideLayer && this.guideLayer.length || (this.guideLayer = $('<div class="hiprint-guide-layer"></div>'), this.target.append(this.guideLayer)), this.guideLayer;
+      }, t.prototype.createGuideLineTarget = function (t) {
+        var e = $('<div class="hiprint-guide-line ' + t.type + '" data-guide-id="' + t.id + '" data-guide-type="' + t.type + '"></div>');
+        return "h" === t.type ? e.css("top", t.pos + "pt") : e.css("left", t.pos + "pt"), e;
+      }, t.prototype.renderGuideLines = function () {
+        var t = this.createGuideLayer(),
+          e = this;
+        t && (t.empty(), (this.guideLines || []).forEach(function (n) {
+          ("h" === n.type || "v" === n.type) && t.append(e.createGuideLineTarget(n));
+        }));
+      }, t.prototype.bindGuideEvents = function () {
+        var t = this;
+        this._guideEventsBound || (this._guideEventsBound = !0, this.target.on("click.hiprintGuide", ".hiprint-ruler-handle,.hiprint-guide-line", function (t) {
+          t.preventDefault(), t.stopPropagation();
+        }), this.target.on("mousedown.hiprintGuide", ".hiprint-ruler-handle", function (e) {
+          if (1 !== e.which) return;
+          e.preventDefault(), e.stopPropagation();
+          var n = $(this).attr("data-guide-type");
+          ("h" === n || "v" === n) && t.startGuideDrag(n, e);
+        }), this.target.on("mousedown.hiprintGuide", ".hiprint-guide-line", function (e) {
+          if (1 !== e.which) return;
+          e.preventDefault(), e.stopPropagation();
+          var n = $(this).attr("data-guide-id"),
+            i = $(this).attr("data-guide-type");
+          n && ("h" === i || "v" === i) && t.startGuideDrag(i, e, n);
+        }), this.target.on("dblclick.hiprintGuide", ".hiprint-guide-line", function (e) {
+          e.preventDefault(), e.stopPropagation();
+          var n = $(this).attr("data-guide-id");
+          n && t.removeGuide(n, !1, "删除参考线");
+        }));
+      }, t.prototype.startGuideDrag = function (t, e, n) {
+        if ("h" !== t && "v" !== t) return;
+        var i = this.getGuideLineById(n),
+          r = !1;
+        if (!i) {
+          i = {
+            id: this.createGuideId(t),
+            type: t,
+            pos: 0
+          }, this.guideLines.push(i), r = !0;
+        }
+        i.type = t, this.guideDragState = {
+          id: i.id,
+          type: t,
+          isNew: r
+        }, this.updateGuideDrag(e), this.renderGuideLines();
+        var a = this,
+          p = ".hiprintGuideDrag_" + this.templateId + "_" + this.panelIdx + "_" + this.index;
+        this._guideDragNamespace = p, $(document).off("mousemove" + p).off("mouseup" + p), $(document).on("mousemove" + p, function (t) {
+          a.updateGuideDrag(t);
+        }), $(document).on("mouseup" + p, function (t) {
+          a.finishGuideDrag(t);
+        }), s.a.instance.draging = !0, $("body").addClass("hiprint-guide-dragging");
+      }, t.prototype.updateGuideDrag = function (t) {
+        if (!this.guideDragState) return;
+        var e = this.getGuideLineById(this.guideDragState.id);
+        if (!e) return;
+        var n = this.getGuidePointer(t);
+        e.pos = this.roundGuidePos("h" === e.type ? n.y : n.x), this.renderGuideLines();
+      }, t.prototype.finishGuideDrag = function (t) {
+        if (!this.guideDragState) return;
+        this.updateGuideDrag(t);
+        var e = this.getGuideLineById(this.guideDragState.id),
+          n = this.guideDragState;
+        this._guideDragNamespace && ($(document).off("mousemove" + this._guideDragNamespace).off("mouseup" + this._guideDragNamespace), this._guideDragNamespace = null), this.guideDragState = null, s.a.instance.draging = !1, $("body").removeClass("hiprint-guide-dragging");
+        if (!e) return;
+        var i = "h" === e.type ? this.height : this.width;
+        if (e.pos < 0 || e.pos > i) return void this.removeGuide(e.id, !1, "删除参考线");
+        e.pos = this.roundGuidePos(Math.max(0, Math.min(i, e.pos))), this.renderGuideLines(), this.triggerGuideLinesChanged(n && n.isNew ? "新增参考线" : "移动参考线");
+      }, t.prototype.removeGuide = function (t, e, n) {
+        var i = (this.guideLines || []).length;
+        this.guideLines = (this.guideLines || []).filter(function (e) {
+          return e.id !== t;
+        }), this.guideLines.length !== i && (this.renderGuideLines(), e || this.triggerGuideLinesChanged(n || "删除参考线"));
+      }, t.prototype.normalizeGuideLinesByPaperSize = function () {
+        var t = this,
+          e = !1;
+        this.guideLines = (this.guideLines || []).map(function (n) {
+          if (!n || "h" !== n.type && "v" !== n.type) return null;
+          var i = "h" === n.type ? t.height : t.width,
+            o = t.roundGuidePos(Math.max(0, Math.min(i, Number(n.pos) || 0)));
+          return o !== n.pos && (e = !0), {
+            id: n.id || t.createGuideId(n.type),
+            type: n.type,
+            pos: o
+          };
+        }).filter(function (t) {
+          return !!t;
+        }), this.renderGuideLines(), e && this.triggerGuideLinesChanged("调整参考线");
+      }, t.prototype.buildRulerScaleHtml = function (t, e) {
+        var n = o.a.mm.toPt(1),
+          i = Math.max(0, Number(e) || 0),
+          r = Math.ceil(i / n),
+          a = [],
+          p = [];
+        for (var s = 0; s <= r; s++) {
+          var l = this.roundGuidePos(Math.min(i, s * n)),
+            u = 0 == s % 10 ? "major" : 0 == s % 5 ? "mid" : "minor",
+            d = "h" === t ? "left:" + l + "pt;" : "top:" + l + "pt;";
+          a.push('<span class="hiprint-ruler-mark ' + t + " " + u + '" style="' + d + '"></span>'), 0 == s % 10 && p.push('<span class="hiprint-ruler-text ' + t + '" style="' + d + '">' + s + "</span>");
+        }
+        return {
+          marks: a.join(""),
+          texts: p.join("")
+        };
       }, t.prototype.createRuler = function () {
-        this.target.append('<div class="hiprint_rul_wrapper">\n                     <img class="h_img" src="' + lImg + '" />\n                     <img class="v_img" src="' + vImg + '" />\n                    </div>');
+        var t = this.buildRulerScaleHtml("h", this.width),
+          e = this.buildRulerScaleHtml("v", this.height),
+          n = ['<div class="hiprint_rul_wrapper">', '<div class="hiprint-ruler-track hiprint-ruler-track-h" style="width:' + this.width + 'pt;">', '<div class="hiprint-ruler-marks">' + t.marks + '</div>', '<div class="hiprint-ruler-texts">' + t.texts + '</div>', '</div>', '<div class="hiprint-ruler-track hiprint-ruler-track-v" style="height:' + this.height + 'pt;">', '<div class="hiprint-ruler-marks">' + e.marks + '</div>', '<div class="hiprint-ruler-texts">' + e.texts + '</div>', '</div>', '<div class="hiprint-ruler-handle hiprint-ruler-handle-h" data-guide-type="h"></div>', '<div class="hiprint-ruler-handle hiprint-ruler-handle-v" data-guide-type="v"></div>', "</div>"].join("");
+        this.target.find(".hiprint_rul_wrapper").remove(), this.target.append(n), this.bindGuideEvents(), this.renderGuideLines();
       }, t.prototype.createWaterMark = function (watch, idx, opts) {
         var e = this;
         var options = Object.assign({}, opts || {}, {
@@ -9971,13 +10308,41 @@ var hiprint = function (t) {
         return t.type = t.type || "text", "text" == t.type ? new et(t) : "table" == t.type ? new h(t) : new j(t);
       }, t;
     }(),
+    SUPPORTED_ELEMENT_TYPES = ['text', 'image', 'longText', 'table', 'barcode', 'qrcode', 'hline', 'vline', 'rect', 'oval', 'html'],
     it = function () {
       function t() {
       }
 
       return t.getElementTypeGroups = function (e) {
-        var n = t.formatterModule(e);
-        return a.instance[n] || [];
+        var n = t.formatterModule(e),
+          i = (a.instance[n] || []).slice(),
+          o = t._panelSlotOptions;
+        if (o && o.enabled && o.moduleName) {
+          var r = t.formatterModule(o.moduleName),
+            p = a.instance[r] || [],
+            s = [];
+          p.forEach(function (t) {
+            t && t.printElementTypes && (s = s.concat(t.printElementTypes));
+          });
+          var l = {
+              name: o.groupName || "动态字段",
+              printElementTypes: s,
+              isDynamicSlot: !0,
+              emptyTip: o.emptyTip || "暂无动态字段"
+            },
+            u = o.anchorGroupName,
+            d = -1;
+          if (u) {
+            for (var c = 0; c < i.length; c++) {
+              if (i[c] && i[c].name == u) {
+                d = c;
+                break;
+              }
+            }
+          }
+          d >= 0 ? i.splice(d + 1, 0, l) : i.push(l);
+        }
+        return i;
       }, t.getElementType = function (t, e) {
         if (t) return a.instance.getElementType(t);
         nt.createPrintElementType({
@@ -9987,6 +10352,17 @@ var hiprint = function (t) {
         var i = t.formatterModule(n),
           o = new l().createPrintElementTypeHtml(e, this.getElementTypeGroups(i));
         this.enableDrag(o);
+      }, t.setPanelSlot = function (e) {
+        var n = $.extend({
+          enabled: !0,
+          moduleName: "",
+          anchorGroupName: "辅助",
+          groupName: "动态字段",
+          emptyTip: "暂无动态字段"
+        }, e || {});
+        t._panelSlotOptions = n;
+      }, t.clearPanelSlot = function () {
+        t._panelSlotOptions = null;
       }, t.buildByHtml = function (t) {
         this.enableDrag(t);
       }, t.enableDrag = function (e) {
@@ -10042,7 +10418,7 @@ var hiprint = function (t) {
           t.height ? (this.height = t.height, this.width = t.width) : (this.height = e.height, this.width = e.width);
         } else this.height = t.height, this.width = t.width;
 
-        this.paperHeader = t.paperHeader || 0, this.paperFooter = t.paperFooter || o.a.mm.toPt(this.height), this.printElements = t.printElements || [], this.paperNumberLeft = t.paperNumberLeft, this.paperNumberTop = t.paperNumberTop, this.paperNumberDisabled = t.paperNumberDisabled, this.paperNumberContinue = t.paperNumberContinue, this.paperNumberFormat = t.paperNumberFormat, this.panelPaperRule = t.panelPaperRule, this.panelPageRule = t.panelPageRule, this.rotate = t.rotate || void 0, this.firstPaperFooter = t.firstPaperFooter, this.evenPaperFooter = t.evenPaperFooter, this.oddPaperFooter = t.oddPaperFooter, this.lastPaperFooter = t.lastPaperFooter, this.topOffset = t.topOffset, this.fontFamily = t.fontFamily, this.leftOffset = t.leftOffset, this.orient = t.orient, this.scale = t.scale, this.watermarkOptions= t.watermarkOptions, this.panelLayoutOptions = t.panelLayoutOptions, this.printMarginOptions = t.printMarginOptions, this.gridOptions = t.gridOptions;
+        this.paperHeader = t.paperHeader || 0, this.paperFooter = t.paperFooter || o.a.mm.toPt(this.height), this.printElements = t.printElements || [], this.paperNumberLeft = t.paperNumberLeft, this.paperNumberTop = t.paperNumberTop, this.paperNumberDisabled = t.paperNumberDisabled, this.paperNumberContinue = t.paperNumberContinue, this.paperNumberFormat = t.paperNumberFormat, this.panelPaperRule = t.panelPaperRule, this.panelPageRule = t.panelPageRule, this.rotate = t.rotate || void 0, this.firstPaperFooter = t.firstPaperFooter, this.evenPaperFooter = t.evenPaperFooter, this.oddPaperFooter = t.oddPaperFooter, this.lastPaperFooter = t.lastPaperFooter, this.topOffset = t.topOffset, this.fontFamily = t.fontFamily, this.leftOffset = t.leftOffset, this.orient = t.orient, this.scale = t.scale, this.watermarkOptions= t.watermarkOptions, this.panelLayoutOptions = t.panelLayoutOptions, this.printMarginOptions = t.printMarginOptions, this.gridOptions = t.gridOptions, this.guideLines = t.guideLines || [];
       };
     }(),
     at = function () {
@@ -10068,21 +10444,28 @@ var hiprint = function (t) {
     }(),
     pt = function () {
       function t(t, e) {
-        this.templateId = e, this.index = t.index, this.name = t.name, this.width = t.width, this.height = t.height, this.paperType = t.paperType, this.paperHeader = t.paperHeader, this.paperFooter = t.paperFooter, this.initPrintElements(t.printElements), this.paperNumberLeft = t.paperNumberLeft, this.paperNumberTop = t.paperNumberTop, this.paperNumberDisabled = t.paperNumberDisabled, this.paperNumberContinue = t.paperNumberContinue == void 0 ? true : t.paperNumberContinue, this.paperNumberFormat = t.paperNumberFormat, this.panelPaperRule = t.panelPaperRule, this.panelPageRule = t.panelPageRule, this.firstPaperFooter = t.firstPaperFooter, this.evenPaperFooter = t.evenPaperFooter, this.oddPaperFooter = t.oddPaperFooter, this.lastPaperFooter = t.lastPaperFooter, this.topOffset = t.topOffset, this.leftOffset = t.leftOffset, this.fontFamily = t.fontFamily, this.orient = t.orient, this.target = this.createTarget(), this.rotate = t.rotate, this.scale = t.scale, this.watermarkOptions = t.watermarkOptions || {}, this.panelLayoutOptions = t.panelLayoutOptions || {}, this.printMarginOptions = t.printMarginOptions || {}, this.gridOptions = t.gridOptions || {};
+        this.templateId = e, this.index = t.index, this.name = t.name, this.width = t.width, this.height = t.height, this.paperType = t.paperType, this.paperHeader = t.paperHeader, this.paperFooter = t.paperFooter, this.initPrintElements(t.printElements), this.paperNumberLeft = t.paperNumberLeft, this.paperNumberTop = t.paperNumberTop, this.paperNumberDisabled = t.paperNumberDisabled, this.paperNumberContinue = t.paperNumberContinue == void 0 ? true : t.paperNumberContinue, this.paperNumberFormat = t.paperNumberFormat, this.panelPaperRule = t.panelPaperRule, this.panelPageRule = t.panelPageRule, this.firstPaperFooter = t.firstPaperFooter, this.evenPaperFooter = t.evenPaperFooter, this.oddPaperFooter = t.oddPaperFooter, this.lastPaperFooter = t.lastPaperFooter, this.topOffset = t.topOffset, this.leftOffset = t.leftOffset, this.fontFamily = t.fontFamily, this.orient = t.orient, this.target = this.createTarget(), this.rotate = t.rotate, this.scale = t.scale, this.watermarkOptions = t.watermarkOptions || {}, this.panelLayoutOptions = t.panelLayoutOptions || {}, this.printMarginOptions = t.printMarginOptions || {}, this.gridOptions = t.gridOptions || {}, this.guideLines = t.guideLines || [];
       }
 
       return t.prototype.design = function (t) {
         var e = this;
         this.orderPrintElements(), this.designPaper = this.createNewPage(0), this.target.html(""), this.target.append(this.designPaper.getTarget()), this.droppablePaper(this.designPaper), this.designPaper.design(t), this.designPaper.subscribePaperBaseInfoChanged(function (t) {
-          e.paperHeader = t.paperHeader, e.paperFooter = t.paperFooter, e.paperNumberLeft = t.paperNumberLeft, e.paperNumberTop = t.paperNumberTop, e.paperNumberDisabled = t.paperNumberDisabled, e.paperNumberFormat = t.paperNumberFormat;
-        }), this.printElements.forEach(function (n) {
+          var headerHidden = e.designPaper && e.designPaper.headerLinetarget && e.designPaper.headerLinetarget.hasClass("hideheaderLinetarget");
+          var footerHidden = e.designPaper && e.designPaper.footerLinetarget && e.designPaper.footerLinetarget.hasClass("hidefooterLinetarget");
+          e.paperHeader = headerHidden ? void 0 : t.paperHeader, e.paperFooter = footerHidden ? void 0 : t.paperFooter, e.paperNumberLeft = t.paperNumberLeft, e.paperNumberTop = t.paperNumberTop, e.paperNumberDisabled = t.paperNumberDisabled, e.paperNumberFormat = t.paperNumberFormat;
+        }), this.designPaper.subscribeGuideLinesChanged(function (t, n) {
+          e.guideLines = t || [], o.a.event.trigger("hiprintTemplateDataChanged_" + e.templateId, n || "参考线");
+        }), this.designPaper.setGuideLines(this.guideLines || [], !0), this.printElements.forEach(function (n) {
           e.appendDesignPrintElement(e.designPaper, n), n.design(t, e.designPaper);
         }), this.target.bind("click.hiprint", function (t) {
+          if ($(t.target).closest(".hiprint-printElement, .hiprint-el-list-panel, .hiprint-el-list-toggle").length) {
+            return;
+          }
           let panelOptions = {
             panelPaperRule: e.panelPaperRule,
             panelPageRule: e.panelPageRule,
-            paperHeader: e.paperHeader,
-            paperFooter: e.paperFooter,
+            paperHeader: e.designPaper && e.designPaper.headerLinetarget && e.designPaper.headerLinetarget.hasClass("hideheaderLinetarget") ? void 0 : e.paperHeader,
+            paperFooter: e.designPaper && e.designPaper.footerLinetarget && e.designPaper.footerLinetarget.hasClass("hidefooterLinetarget") ? void 0 : e.paperFooter,
             firstPaperFooter: e.firstPaperFooter,
             evenPaperFooter: e.evenPaperFooter,
             oddPaperFooter: e.oddPaperFooter,
@@ -10110,25 +10493,39 @@ var hiprint = function (t) {
               e.gridOptions = t.gridOptions || void 0; e.designPaper.applyGridOptions(t.gridOptions);
               e.panelPaperRule = t.panelPaperRule, e.panelPageRule = t.panelPageRule, e.firstPaperFooter = t.firstPaperFooter, e.evenPaperFooter = t.evenPaperFooter, e.oddPaperFooter = t.oddPaperFooter, e.lastPaperFooter = t.lastPaperFooter, e.leftOffset = t.leftOffset, e.topOffset = t.topOffset, e.fontFamily = t.fontFamily, e.orient = t.orient, e.paperNumberDisabled = e.designPaper.paperNumberDisabled = !!t.paperNumberDisabled || void 0, e.paperNumberContinue = e.designPaper.paperNumberContinue = t.paperNumberContinue, e.paperNumberFormat = t.paperNumberFormat, e.designPaper.paperNumberFormat = t.paperNumberFormat, (t.paperNumberFormat && (e.designPaper.paperNumberTarget = e.designPaper.createPaperNumber(e.designPaper.formatPaperNumber(1, 1), true))), e.designPaper.setOffset(e.leftOffset, e.topOffset), e.css(e.target), e.designPaper.resetPaperNumber(e.designPaper.paperNumberTarget);
               // 页眉线/页脚线
-              if (t.paperHeader !== undefined) {
-                e.paperHeader = t.paperHeader;
-                e.designPaper.paperHeader = t.paperHeader;
-                e.designPaper.headerLinetarget.css("top", (t.paperHeader || -1) + "pt");
-                if (t.paperHeader == 0) {
+              if (Object.prototype.hasOwnProperty.call(t, "paperHeader")) {
+                if (t.paperHeader === undefined || t.paperHeader === null) {
+                  e.paperHeader = void 0;
+                  e.designPaper.paperHeader = 0;
+                  e.designPaper.headerLinetarget.css("top", "-1pt");
                   e.designPaper.headerLinetarget.addClass("hideheaderLinetarget");
                 } else {
-                  e.designPaper.headerLinetarget.removeClass("hideheaderLinetarget");
+                  e.paperHeader = t.paperHeader;
+                  e.designPaper.paperHeader = t.paperHeader;
+                  e.designPaper.headerLinetarget.css("top", (t.paperHeader || -1) + "pt");
+                  if (t.paperHeader == 0) {
+                    e.designPaper.headerLinetarget.addClass("hideheaderLinetarget");
+                  } else {
+                    e.designPaper.headerLinetarget.removeClass("hideheaderLinetarget");
+                  }
                 }
               }
-              if (t.paperFooter !== undefined) {
-                e.paperFooter = t.paperFooter;
-                e.designPaper.paperFooter = t.paperFooter;
-                if (t.paperFooter == e.designPaper.height) {
+              if (Object.prototype.hasOwnProperty.call(t, "paperFooter")) {
+                if (t.paperFooter === undefined || t.paperFooter === null) {
+                  e.paperFooter = void 0;
+                  e.designPaper.paperFooter = e.designPaper.height;
                   e.designPaper.footerLinetarget.css("top", e.designPaper.mmheight - p.a.instance.paperHeightTrim + "mm");
                   e.designPaper.footerLinetarget.addClass("hidefooterLinetarget");
                 } else {
-                  e.designPaper.footerLinetarget.css("top", parseInt(t.paperFooter.toString()) + "pt");
-                  e.designPaper.footerLinetarget.removeClass("hidefooterLinetarget");
+                  e.paperFooter = t.paperFooter;
+                  e.designPaper.paperFooter = t.paperFooter;
+                  if (t.paperFooter == e.designPaper.height) {
+                    e.designPaper.footerLinetarget.css("top", e.designPaper.mmheight - p.a.instance.paperHeightTrim + "mm");
+                    e.designPaper.footerLinetarget.addClass("hidefooterLinetarget");
+                  } else {
+                    e.designPaper.footerLinetarget.css("top", parseInt(t.paperFooter.toString()) + "pt");
+                    e.designPaper.footerLinetarget.removeClass("hidefooterLinetarget");
+                  }
                 }
               }
               e.designPaper.contentHeight = (e.paperFooter || e.designPaper.height) - (e.paperHeader || 0);
@@ -10159,6 +10556,9 @@ var hiprint = function (t) {
           // 打印边距参数
           this.printMarginOptions = t.printMarginOptions || {};
           if (this.printMarginOptions && this.printMarginOptions.enabled) { this.designPaper.createPrintMargins(this.printMarginOptions); } else { this.designPaper.destroyPrintMargins(); }
+          // 网格参数
+          this.gridOptions = t.gridOptions || {};
+          this.designPaper.applyGridOptions(this.gridOptions);
           // 页码
           this.paperNumberLeft = t.paperNumberLeft, this.paperNumberTop = t.paperNumberTop, this.paperNumberDisabled = t.paperNumberDisabled, this.paperNumberContinue = t.paperNumberContinue, this.paperNumberFormat = t.paperNumberFormat;
           this.designPaper.paperNumberLeft = this.paperNumberLeft, this.designPaper.paperNumberTop = this.paperNumberTop, this.designPaper.paperNumberDisabled = this.paperNumberDisabled, this.designPaper.paperNumberContinue = this.paperNumberContinue, this.designPaper.paperNumberFormat = this.paperNumberFormat;
@@ -10179,6 +10579,10 @@ var hiprint = function (t) {
           this.target.parent().css("height", t.height - p.a.instance.paperHeightTrim + "mm"),
           this.designPaper.target.css("width", t.width + "mm"),
           this.designPaper.target.css("height", t.height - p.a.instance.paperHeightTrim + "mm");
+          // 标尺与参考线
+          this.designPaper.createRuler();
+          this.guideLines = t.guideLines || [];
+          this.designPaper.setGuideLines(this.guideLines, !0);
           var end = Date.now();
           console.log('更新参数 end', end)
           console.log('更新参数 time:', end - start)
@@ -10205,15 +10609,62 @@ var hiprint = function (t) {
           console.log(e)
         }
       }, t.prototype.bindShortcutKeyEvent = function () {
+        if (this._shortcutKeyBound) return;
+        this._shortcutKeyBound = true;
         var n = this;
         $(document).keydown(function (e) {
-          if ('INPUT' == e.target.tagName) return;
-          // ctrl/command + z 撤销 / ctrl/command + shift + z 重做
+          // ctrl/command + z 撤销 / ctrl/command + shift + z 重做 (在input中也生效)
           if ((e.ctrlKey || e.metaKey) && 90 == e.keyCode) {
             if (e.shiftKey) {
               o.a.event.trigger("hiprintTemplateDataShortcutKey_" + n.templateId, "redo");
             } else {
               o.a.event.trigger("hiprintTemplateDataShortcutKey_" + n.templateId, "undo");
+            }
+            e.preventDefault();
+            return;
+          }
+          if ('INPUT' == e.target.tagName || 'TEXTAREA' == e.target.tagName) return;
+          // ctrl/command + a 全选
+          if ((e.ctrlKey || e.metaKey) && 65 == e.keyCode) {
+            n.printElements.forEach(function (el) {
+              if (el.printElementType.type.includes('table')) return;
+              el.designTarget.children("div[panelindex]").addClass("selected");
+              el.designTarget.children().last().css({ display: "block" });
+            });
+            e.preventDefault();
+          }
+          // Esc 取消选择
+          if (27 == e.keyCode) {
+            n.printElements.forEach(function (el) {
+              el.designTarget.children("div[panelindex]").removeClass("selected");
+              el.designTarget.children().last().css({ display: "none" });
+            });
+            if (n.mouseRect && n.mouseRect.target) {
+              n.mouseRect.target.remove();
+              n.mouseRect = null;
+            }
+            e.preventDefault();
+          }
+          // ctrl/command + ] 上移一层 / ctrl/command + [ 下移一层
+          if ((e.ctrlKey || e.metaKey) && (221 == e.keyCode || 219 == e.keyCode)) {
+            var selectedEls = n.getSelectedElements();
+            if (selectedEls && selectedEls.length) {
+              var delta = 221 == e.keyCode ? 1 : -1;
+              if (e.shiftKey) {
+                // shift: 置顶/置底
+                if (delta > 0) {
+                  var maxZ = 0;
+                  n.printElements.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; if (z > maxZ) maxZ = z; });
+                  selectedEls.forEach(function (el, i) { el.updateOption('zIndex', maxZ + 1 + i, true); });
+                } else {
+                  var otherEls = n.printElements.filter(function (el) { return selectedEls.indexOf(el) === -1; });
+                  selectedEls.forEach(function (el, i) { el.updateOption('zIndex', i, true); });
+                  otherEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; el.updateOption('zIndex', z + selectedEls.length + 1, true); });
+                }
+              } else {
+                selectedEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; el.updateOption('zIndex', Math.max(0, z + delta), true); });
+              }
+              o.a.event.trigger("hiprintTemplateDataChanged_" + n.templateId, "层级");
             }
             e.preventDefault();
           }
@@ -10401,8 +10852,24 @@ var hiprint = function (t) {
         return this.target;
       }, t.prototype.enable = function () {
         this.target.removeClass("hipanel-disable");
+        if (this._elListToggle) {
+          this._elListToggle.show();
+        }
+        if (this._elListPanel) {
+          if (this._elListPanel.hasClass("visible")) {
+            this._elListPanel.show();
+          } else {
+            this._elListPanel.hide();
+          }
+        }
       }, t.prototype.disable = function () {
         this.target.addClass("hipanel-disable");
+        if (this._elListPanel) {
+          this._elListPanel.removeClass("visible").hide();
+        }
+        if (this._elListToggle) {
+          this._elListToggle.removeClass("active").hide();
+        }
       }, t.prototype.getPanelEntity = function (t) {
         var e = [];
         return this.printElements.forEach(function (n) {
@@ -10436,7 +10903,8 @@ var hiprint = function (t) {
           leftOffset: this.leftOffset,
           panelLayoutOptions: this.panelLayoutOptions || {},
           printMarginOptions: this.printMarginOptions ? this.printMarginOptions : void 0,
-          gridOptions: this.gridOptions ? this.gridOptions : void 0
+          gridOptions: this.gridOptions ? this.gridOptions : void 0,
+          guideLines: this.guideLines || []
         });
       }, t.prototype.createTarget = function () {
         var t = $('<div class="hiprint-printPanel panel-index-' + this.index + '"></div>');
@@ -10613,40 +11081,45 @@ var hiprint = function (t) {
           e.preventDefault();
           e.stopPropagation();
           var selectedEls = panel.getSelectedElements();
-          if (!selectedEls || !selectedEls.length) return;
+          var hasSelection = selectedEls && selectedEls.length > 0;
+          var hasCopy = !!panel._contextCopyElements;
+          // 没有选中元素且没有复制数据时不弹菜单
+          if (!hasSelection && !hasCopy) return;
           $(".hiprint-ctx-menu").remove();
           var menu = $('<div class="hiprint-ctx-menu"></div>');
+          // 复制/粘贴始终显示
           var groupTitle1 = $('<div class="hiprint-ctx-menu-group">' + i18n.__('元素操作') + '</div>');
           menu.append(groupTitle1);
           // 复制元素
-          var copyItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('复制元素') + ' (' + selectedEls.length + ')</div>');
+          var copyItem = $('<div class="hiprint-ctx-menu-item' + (!hasSelection ? ' disabled' : '') + '">' + i18n.__('复制元素') + '</div>');
           copyItem.on("click", function () {
             $(".hiprint-ctx-menu").remove();
-            panel._contextCopyElements = selectedEls.map(function (el) {
-              return el.getPrintElementEntity(true);
-            });
+            if (!hasSelection) return;
+            // 直接存储元素引用，粘贴时用 clone
+            panel._contextCopyElements = selectedEls.slice();
           });
           menu.append(copyItem);
           // 粘贴元素
-          var pasteItem = $('<div class="hiprint-ctx-menu-item' + (!panel._contextCopyElements ? ' disabled' : '') + '">' + i18n.__('粘贴元素') + '</div>');
+          var pasteItem = $('<div class="hiprint-ctx-menu-item' + (!hasCopy ? ' disabled' : '') + '">' + i18n.__('粘贴元素') + '</div>');
           pasteItem.on("click", function () {
             $(".hiprint-ctx-menu").remove();
-            if (!panel._contextCopyElements) return;
-            panel._contextCopyElements.forEach(function (entity) {
-              var opts = $.extend(true, {}, entity.options);
-              opts.left = (opts.left || 0) + 10;
-              opts.top = (opts.top || 0) + 10;
-              var typeObj = panel.getElementType(entity.printElementType.tid || entity.printElementType.type, entity.printElementType.type);
-              if (typeObj) {
-                var newEl = typeObj.createPrintElement(opts);
-                panel.appendDesignPrintElement(panel.designPaper, newEl);
-                newEl.design(undefined, panel.designPaper);
-                panel.printElements.push(newEl);
-              }
+            if (!panel._contextCopyElements || !panel._contextCopyElements.length) return;
+            panel._contextCopyElements.forEach(function (srcEl) {
+              var newEl = srcEl.clone();
+              if (!newEl) return;
+              newEl.options.setLeft(srcEl.options.getLeft() + 10);
+              newEl.options.setTop(srcEl.options.getTop() + 10);
+              newEl.setTemplateId(panel.templateId);
+              newEl.setPanel(panel);
+              panel.appendDesignPrintElement(panel.designPaper, newEl, false);
+              panel.printElements.push(newEl);
+              newEl.design(undefined, panel.designPaper);
             });
             o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "粘贴");
           });
           menu.append(pasteItem);
+          // 以下菜单项仅在有选中元素时显示
+          if (hasSelection) {
           menu.append('<div class="hiprint-ctx-menu-divider"></div>');
           // 元素参数更新
           var groupTitle2 = $('<div class="hiprint-ctx-menu-group">' + i18n.__('参数更新') + '</div>');
@@ -10668,6 +11141,116 @@ var hiprint = function (t) {
           });
           menu.append(fontWeightItem);
           menu.append('<div class="hiprint-ctx-menu-divider"></div>');
+          // 层级操作
+          var groupTitle3 = $('<div class="hiprint-ctx-menu-group">' + i18n.__('层级操作') + '</div>');
+          menu.append(groupTitle3);
+          var bringTopItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('置于顶层') + '</div>');
+          bringTopItem.on("click", function () {
+            $(".hiprint-ctx-menu").remove();
+            var maxZ = 0;
+            panel.printElements.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; if (z > maxZ) maxZ = z; });
+            selectedEls.forEach(function (el, i) { el.updateOption('zIndex', maxZ + 1 + i, true); });
+            o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "层级");
+          });
+          menu.append(bringTopItem);
+          var sendBottomItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('置于底层') + '</div>');
+          sendBottomItem.on("click", function () {
+            $(".hiprint-ctx-menu").remove();
+            var otherEls = panel.printElements.filter(function (el) { return selectedEls.indexOf(el) === -1; });
+            var minZ = 0;
+            otherEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; if (z < minZ) minZ = z; });
+            var baseZ = Math.max(0, minZ);
+            selectedEls.forEach(function (el, i) { el.updateOption('zIndex', baseZ + i, true); });
+            otherEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; el.updateOption('zIndex', z + selectedEls.length + 1, true); });
+            o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "层级");
+          });
+          menu.append(sendBottomItem);
+          var layerUpItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('上移一层') + '</div>');
+          layerUpItem.on("click", function () {
+            $(".hiprint-ctx-menu").remove();
+            selectedEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; el.updateOption('zIndex', z + 1, true); });
+            o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "层级");
+          });
+          menu.append(layerUpItem);
+          var layerDownItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('下移一层') + '</div>');
+          layerDownItem.on("click", function () {
+            $(".hiprint-ctx-menu").remove();
+            selectedEls.forEach(function (el) { var z = parseInt(el.options.zIndex) || 0; el.updateOption('zIndex', Math.max(0, z - 1), true); });
+            o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "层级");
+          });
+          menu.append(layerDownItem);
+          menu.append('<div class="hiprint-ctx-menu-divider"></div>');
+          // 锁定/解锁
+          var hasLocked = selectedEls.some(function (el) { return el.options.positionLocked; });
+          var lockText = hasLocked ? i18n.__('解锁元素') : i18n.__('锁定元素');
+          var lockItem = $('<div class="hiprint-ctx-menu-item">' + lockText + '</div>');
+          lockItem.on("click", function () {
+            $(".hiprint-ctx-menu").remove();
+            selectedEls.forEach(function (el) {
+              var newVal = !hasLocked;
+              el.options.positionLocked = newVal;
+              if (newVal) el.options.sizeLocked = true;
+              el.updateDesignViewFromOptions();
+              var lockEvt = $.Event("change");
+              el.designTarget.find('.auto-submit').first().trigger(lockEvt);
+            });
+            o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "锁定");
+          });
+          menu.append(lockItem);
+          // 对齐操作（多选时显示）
+          if (selectedEls.length >= 2) {
+            menu.append('<div class="hiprint-ctx-menu-divider"></div>');
+            var groupTitle4 = $('<div class="hiprint-ctx-menu-group">' + i18n.__('对齐操作') + '</div>');
+            menu.append(groupTitle4);
+            var alignOps = [
+              { type: 'left', text: i18n.__('左对齐') },
+              { type: 'right', text: i18n.__('右对齐') },
+              { type: 'top', text: i18n.__('顶对齐') },
+              { type: 'bottom', text: i18n.__('底对齐') },
+              { type: 'horizontalCenter', text: i18n.__('水平居中') },
+              { type: 'verticalCenter', text: i18n.__('垂直居中') }
+            ];
+            if (selectedEls.length >= 3) {
+              alignOps.push({ type: 'distributeHorizontal', text: i18n.__('水平等距') });
+              alignOps.push({ type: 'distributeVertical', text: i18n.__('垂直等距') });
+            }
+            alignOps.forEach(function (op) {
+              var alignItem = $('<div class="hiprint-ctx-menu-item">' + op.text + '</div>');
+              alignItem.on("click", function () {
+                $(".hiprint-ctx-menu").remove();
+                panel.alignElements(op.type);
+                o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "对齐");
+              });
+              menu.append(alignItem);
+            });
+            // 等宽/等高
+            menu.append('<div class="hiprint-ctx-menu-divider"></div>');
+            var sameWidthItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('等宽') + '</div>');
+            sameWidthItem.on("click", function () {
+              $(".hiprint-ctx-menu").remove();
+              var refW = selectedEls[0].options.getWidth();
+              selectedEls.forEach(function (el) {
+                el.options.width = refW;
+                el.designTarget.css("width", el.options.displayWidth());
+                el.updateDesignViewFromOptions();
+              });
+              o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "等宽");
+            });
+            menu.append(sameWidthItem);
+            var sameHeightItem = $('<div class="hiprint-ctx-menu-item">' + i18n.__('等高') + '</div>');
+            sameHeightItem.on("click", function () {
+              $(".hiprint-ctx-menu").remove();
+              var refH = selectedEls[0].options.getHeight();
+              selectedEls.forEach(function (el) {
+                el.options.height = refH;
+                el.designTarget.css("height", el.options.displayHeight());
+                el.updateDesignViewFromOptions();
+              });
+              o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "等高");
+            });
+            menu.append(sameHeightItem);
+          }
+          menu.append('<div class="hiprint-ctx-menu-divider"></div>');
           // 删除选中元素
           var deleteItem = $('<div class="hiprint-ctx-menu-item danger">' + i18n.__('删除选中元素') + ' (' + selectedEls.length + ')</div>');
           deleteItem.on("click", function () {
@@ -10684,6 +11267,7 @@ var hiprint = function (t) {
             o.a.event.trigger("hiprintTemplateDataChanged_" + panel.templateId, "删除");
           });
           menu.append(deleteItem);
+          } // end if (hasSelection)
           $("body").append(menu);
           menu.css({ left: e.pageX + 2, top: e.pageY + 2 });
           $(document).one("click", function () { $(".hiprint-ctx-menu").remove(); });
@@ -10758,6 +11342,41 @@ var hiprint = function (t) {
         var listPanel = $('<div class="hiprint-el-list-panel"></div>');
         var header = $('<div class="hiprint-el-list-panel-header"><span>' + i18n.__('元素列表') + '</span><span class="el-count"></span></div>');
         var body = $('<div class="hiprint-el-list-panel-body"></div>');
+        var isDragging = false;
+        var dragOffsetX = 0;
+        var dragOffsetY = 0;
+
+        function clamp(num, min, max) {
+          return Math.min(Math.max(num, min), max);
+        }
+
+        function applyPanelPosition(left, top) {
+          var parentWidth = panel.target.innerWidth() || panel.target.width() || 0;
+          var parentHeight = panel.target.innerHeight() || panel.target.height() || 0;
+          var panelWidth = listPanel.outerWidth() || 0;
+          var panelHeight = listPanel.outerHeight() || 0;
+          var maxLeft = Math.max(0, parentWidth - panelWidth);
+          var maxTop = Math.max(0, parentHeight - panelHeight);
+          listPanel.css({
+            left: clamp(left, 0, maxLeft) + "px",
+            top: clamp(top, 0, maxTop) + "px",
+            right: "auto"
+          });
+        }
+
+        function ensurePanelPosition() {
+          if (listPanel.data("positioned")) return;
+          var panelWidth = listPanel.outerWidth();
+          if (!panelWidth) return;
+          var parentWidth = panel.target.innerWidth() || panel.target.width() || 0;
+          var right = parseFloat(listPanel.css("right"));
+          var top = parseFloat(listPanel.css("top"));
+          if (!isFinite(right)) right = 6;
+          if (!isFinite(top)) top = 40;
+          applyPanelPosition(parentWidth - panelWidth - right, top);
+          listPanel.data("positioned", true);
+        }
+
         listPanel.append(header).append(body);
         this.target.css("position", "relative");
         this.target.append(toggleBtn).append(listPanel);
@@ -10765,23 +11384,68 @@ var hiprint = function (t) {
         this._elListBody = body;
         this._elListHeader = header;
         this._elListToggle = toggleBtn;
+        if (this.target.hasClass("hipanel-disable")) {
+          toggleBtn.hide();
+          listPanel.hide();
+        }
+        function stopDragging() {
+          if (!isDragging) return;
+          isDragging = false;
+          $("body").removeClass("hiprint-el-list-dragging");
+          $(document).off(".hiprintElListDrag");
+          $(window).off(".hiprintElListDrag");
+        }
+
+        // 列表面板在 panel.target 内部，阻止冒泡到画布容器点击事件（否则会触发画布属性面板）
+        // 注意：不要拦截 mouseup，否则会导致 document 上的 mouseup 无法触发，拖拽状态无法释放。
+        listPanel.on("click mousedown", function (e) {
+          e.stopPropagation();
+        });
+        header.on("mousedown", function (e) {
+          if (e.which !== 1) return;
+          if (!listPanel.hasClass("visible")) return;
+          ensurePanelPosition();
+          var parentOffset = panel.target.offset() || { left: 0, top: 0 };
+          var pos = listPanel.position();
+          dragOffsetX = e.pageX - parentOffset.left - pos.left;
+          dragOffsetY = e.pageY - parentOffset.top - pos.top;
+          isDragging = true;
+          e.preventDefault();
+          e.stopPropagation();
+          $("body").addClass("hiprint-el-list-dragging");
+          $(document).off(".hiprintElListDrag");
+          $(window).off(".hiprintElListDrag");
+          $(document).on("mousemove.hiprintElListDrag", function (evt) {
+            if (!isDragging) return;
+            var moveParentOffset = panel.target.offset() || { left: 0, top: 0 };
+            applyPanelPosition(evt.pageX - moveParentOffset.left - dragOffsetX, evt.pageY - moveParentOffset.top - dragOffsetY);
+          });
+          $(document).on("mouseup.hiprintElListDrag", stopDragging);
+          $(window).on("mouseup.hiprintElListDrag blur.hiprintElListDrag", stopDragging);
+        });
         // 切换显示/隐藏
         toggleBtn.on("click", function (e) {
           e.stopPropagation();
           var isVisible = listPanel.hasClass("visible");
           if (isVisible) {
-            listPanel.removeClass("visible");
+            stopDragging();
+            listPanel.removeClass("visible").hide();
             toggleBtn.removeClass("active");
           } else {
-            panel.refreshElementList();
-            listPanel.addClass("visible");
+            listPanel.addClass("visible").show();
             toggleBtn.addClass("active");
+            ensurePanelPosition();
+            panel.refreshElementList();
           }
         });
         // 监听元素变化自动刷新
         o.a.event.on("hiprintTemplateDataChanged_" + panel.templateId, function () {
           if (panel._elListPanel && panel._elListPanel.hasClass("visible")) {
             panel.refreshElementList();
+            if (listPanel.data("positioned")) {
+              var pos = listPanel.position();
+              applyPanelPosition(pos.left, pos.top);
+            }
           }
         });
         // 监听元素选中事件，同步高亮列表行
@@ -10808,23 +11472,28 @@ var hiprint = function (t) {
         var panel = this;
         var body = this._elListBody;
         if (!body) return;
+        var header = this._elListHeader;
         body.empty();
-        var els = this.printElements;
-        this._elListHeader.find(".el-count").text(els.length + " " + i18n.__('个'));
+        var els = Array.isArray(this.printElements) ? this.printElements.filter(function (item) { return !!item; }) : [];
+        if (header && header.length) {
+          header.find(".el-count").text(els.length + " " + i18n.__('个'));
+        }
         if (!els.length) {
           body.append('<div class="hiprint-el-list-empty">' + i18n.__('暂无元素') + '</div>');
           return;
         }
         var typeNames = { text: '文本', longText: '长文本', image: '图片', table: '表格', barcode: '条码', qrcode: '二维码', hline: '横线', vline: '竖线', rect: '矩形', oval: '椭圆', html: 'HTML' };
         els.forEach(function (el, idx) {
-          var type = el.printElementType.type || 'text';
+          var typeInfo = el.printElementType || {};
+          var options = el.options || {};
+          var type = typeInfo.type || options.type || 'text';
           var typeName = typeNames[type] || type;
-          var title = el.options.title || el.printElementType.title || '';
-          var field = el.options.field || el.printElementType.field || '';
+          var title = options.title || typeInfo.title || '';
+          var field = options.field || typeInfo.field || '';
           var desc = title || field || (typeName + ' ' + (idx + 1));
-          var isHidden = el.designTarget && el.designTarget.css("display") === "none";
-          var posLocked = !!el.options.positionLocked;
-          var sizeLocked = !!el.options.sizeLocked;
+          var isHidden = el.designTarget && el.designTarget.css && el.designTarget.css("display") === "none";
+          var posLocked = !!options.positionLocked;
+          var sizeLocked = !!options.sizeLocked;
           var row = $('<div class="hiprint-el-list-row' + (isHidden ? ' hidden-el' : '') + '"></div>');
           var cb = $('<input type="checkbox"' + (isHidden ? '' : ' checked') + '>');
           var tag = $('<span class="el-type-tag tag-' + type + '">' + typeName + '</span>');
@@ -10836,18 +11505,27 @@ var hiprint = function (t) {
           cb.on("change", function (e) {
             e.stopPropagation();
             if (this.checked) {
-              el.designTarget && el.designTarget.show();
+              el.designTarget && el.designTarget.show && el.designTarget.show();
               row.removeClass("hidden-el");
             } else {
-              el.designTarget && el.designTarget.hide();
+              el.designTarget && el.designTarget.hide && el.designTarget.hide();
               row.addClass("hidden-el");
             }
           });
-          // 点击行高亮元素
+          cb.on("click mousedown mouseup", function (e) {
+            e.stopPropagation();
+          });
+          // 点击行 → 选中设计器元素 + 同步属性面板
           row.on("click", function (e) {
+            e.stopPropagation();
             if ($(e.target).is("input")) return;
-            if (el.designTarget && el.designTarget.css("display") !== "none") {
-              el.designTarget.click();
+            if (el.designTarget && el.designTarget.css && el.designTarget.css("display") !== "none") {
+              // 走统一选中入口，复用设计器手动点击链路（含兜底）
+              if (el.selectFromList) {
+                el.selectFromList(false);
+              } else if (el.select) {
+                el.select();
+              }
               // 闪烁提示
               el.designTarget.css("outline", "2px solid #409eff");
               setTimeout(function () { el.designTarget.css("outline", ""); }, 800);
@@ -10982,7 +11660,9 @@ var hiprint = function (t) {
     ut = function () {
       function t(t, e) {
         var n = this;
-        this.printElementOptionSettingPanel = {}, this.printTemplate = t, this.settingContainer = $(e), o.a.event.on(t.getPrintElementSelectEventKey(), function (t) {
+        this.printElementOptionSettingPanel = {}, this.printTemplate = t, this.settingContainer = $(e);
+        var eventKey = t.getPrintElementSelectEventKey();
+        o.a.event.on(eventKey, function (t) {
           n.buildSetting(t);
         }), o.a.event.on(t.getBuildCustomOptionSettingEventKey(), function (t) {
           n.buildSettingByCustomOptions(t);
@@ -11105,13 +11785,17 @@ var hiprint = function (t) {
             }
           });
         }
+        var rootPanel = $('<div class="hiprint-setting-panel"></div>');
+        rootPanel.append(r);
         var a = $(`<button class="hiprint-option-item-settingBtn hiprint-option-item-submitBtn"\n        type="button">${i18n.__('确定')}</button>`),
-          p = $(`<button  class="hiprint-option-item-settingBtn hiprint-option-item-deleteBtn"\n        type="button">${i18n.__('删除')}</button>`);
-        r.append(a);
+          p = $(`<button  class="hiprint-option-item-settingBtn hiprint-option-item-deleteBtn"\n        type="button">${i18n.__('删除')}</button>`),
+          actions = $('<div class="hiprint-option-actions"></div>');
+        actions.append(a);
         if (i.options.draggable != false || i.options.positionLocked) {
           // 位置锁定的元素仍可删除
-          r.append(p);
+          actions.append(p);
         }
+        rootPanel.append(actions);
         if (tabs.length) {
           r.on('click', '.prop-tab-item', function () {
             var $li = $(this);
@@ -11140,11 +11824,11 @@ var hiprint = function (t) {
           i.submitOption();
         }), r.find(".auto-submit:input").bind("keydown.submitOption", function (t) {
           13 == t.keyCode && i.submitOption();
-        }), this.settingContainer.append(r), tabs.length < 1 && o && o.forEach(function (t) {
+        }), this.settingContainer.append(rootPanel), tabs.length < 1 && o && o.forEach(function (t) {
           var n = t.callback;
           t.callback = function (t) {
             n && (n(t), i.submitOption());
-          }, e.buildSettingByCustomOptions(t, e.settingContainer);
+          }, e.buildSettingByCustomOptions(t, r);
         }), this.lastPrintElement = i;
       }, t.prototype.buildSettingByCustomOptions = function (t, e) {
         var n = this;
@@ -11168,14 +11852,17 @@ var hiprint = function (t) {
             t.callback(n.getValueByOptionItems(o));
           }, r.append(e.createTarget(n.printTemplate, t.options, void 0)), e.setValue(t.options[e.name], t.options, void 0);
         });
-        var a = $(`<button class="hiprint-option-item-settingBtn hiprint-option-item-submitBtn"\n        type="button">${i18n.__('确定')}</button>`);
-        r.append(a), a.bind("click.submitOption", function () {
+        var panelRoot = $('<div class="hiprint-setting-panel"></div>');
+        panelRoot.append(r);
+        var a = $(`<button class="hiprint-option-item-settingBtn hiprint-option-item-submitBtn"\n        type="button">${i18n.__('确定')}</button>`),
+          actions = $('<div class="hiprint-option-actions"></div>');
+        actions.append(a), panelRoot.append(actions), a.bind("click.submitOption", function () {
           t.callback(n.getValueByOptionItems(o));
         }), r.find(".auto-submit").change(function (e) {
           t.callback(n.getValueByOptionItems(o));
         }), r.find(".auto-submit:input").bind("keydown.submitOption", function (e) {
           13 == e.keyCode && t.callback(n.getValueByOptionItems(o));
-        }), i.append(r);
+        }), i.append(panelRoot);
       }, t.prototype.getValueByOptionItems = function (t) {
         var e = {};
         return t.forEach(function (t) {
@@ -11244,7 +11931,7 @@ var hiprint = function (t) {
         this.willOutOfBounds = n.willOutOfBounds != void 0 ? n.willOutOfBounds : !0;
         this.onDataChanged = n.onDataChanged;
         this.onUpdateError = n.onUpdateError;
-        this.lastJson = n.template || {};
+        this.lastJson = n.template ? JSON.parse(JSON.stringify(n.template)) : {};
         this.historyList = [{id: s.a.instance.guid(), type: '初始', json: this.lastJson}];
         this.historyPos = 0;
         this.defaultPanelName = n.defaultPanelName;
@@ -11276,7 +11963,7 @@ var hiprint = function (t) {
           e.printPanels.push(new pt(t, e.id));
         }), n.fontList && (this.fontList = n.fontList), n.fields && (this.fields = n.fields), n.onImageChooseClick && (this.onImageChooseClick = n.onImageChooseClick),
           n.onPanelAddClick && (this.onPanelAddClick = n.onPanelAddClick),
-        n.settingContainer && new ut(this, n.settingContainer), n.paginationContainer && (this.printPaginationCreator = new dt(n.paginationContainer, this), this.printPaginationCreator.buildPagination()), this.initAutoSave();
+        n.settingContainer && (this.optionSettingPanel = new ut(this, n.settingContainer)), n.paginationContainer && (this.printPaginationCreator = new dt(n.paginationContainer, this), this.printPaginationCreator.buildPagination()), this.initAutoSave();
       }
 
       return t.prototype.design = function (t, e) {
@@ -11676,34 +12363,27 @@ var hiprint = function (t) {
         return elements
       },
      t.prototype.selectElementsByField = function (fieldsArray){
-            var hiPrintEntity = this
-            var t = $
-            hiPrintEntity.editingPanel.printElements.forEach((e, index) => {
-              if(fieldsArray && fieldsArray.includes(e.options.field)){
-                let designTarget = e.designTarget
-                designTarget.children("div[panelindex]").addClass("selected")
-                designTarget.children().last().css({
-                  display: "block"
-                })
-                designTarget = designTarget[0]
-                t.data(designTarget, "hidraggable").options.onBeforeSelectAllDrag.call(designTarget,{})
+            var hiPrintEntity = this;
+            if (!hiPrintEntity.editingPanel || !Array.isArray(fieldsArray) || !fieldsArray.length) return;
+            var appendSelect = false;
+            hiPrintEntity.editingPanel.printElements.forEach(function (e) {
+              if (!fieldsArray.includes(e.options.field)) return;
+              if (e.designTarget && e.designTarget.css("display") !== "none") {
+                e.selectFromList(appendSelect);
+                appendSelect = true;
               }
-            })
+            });
           },
       t.prototype.selectAllElements = function () {
-        var hiPrintEntity = this
-        var t = $
-        hiPrintEntity.editingPanel.printElements.forEach((e, index) => {
-          let designTarget = e.designTarget
-          designTarget.children("div[panelindex]").addClass("selected")
-          designTarget.children().last().css({
-            display: "block"
-          })
-          designTarget = designTarget[0]
-          t.data(designTarget, "hidraggable").options
-            .onBeforeSelectAllDrag
-            .call(designTarget, {})
-        })
+        var hiPrintEntity = this;
+        if (!hiPrintEntity.editingPanel) return;
+        var appendSelect = false;
+        hiPrintEntity.editingPanel.printElements.forEach(function (e) {
+          if (e.designTarget && e.designTarget.css("display") !== "none") {
+            e.selectFromList(appendSelect);
+            appendSelect = true;
+          }
+        });
       },
       t.prototype.updateOption = function (option, v) { // 批量更新参数
         var elements = this.getSelectEls();
@@ -11820,27 +12500,37 @@ var hiprint = function (t) {
         }
       }, t.prototype.initAutoSave = function () {
         var t = this;
+        t._isUndoRedoing = false;
         o.a.event.on("hiprintTemplateDataShortcutKey_" + this.id, function (key) {
           if (!t.history) return;
-          switch (key) {
-          case "undo":
-            if (t.historyPos > 0) {
-              t.historyPos -= 1;
-              var cur = t.historyList[t.historyPos];
-              t.update(cur.json);
+          t._isUndoRedoing = true;
+          try {
+            switch (key) {
+            case "undo":
+              if (t.historyPos > 0) {
+                t.historyPos -= 1;
+                var cur = t.historyList[t.historyPos];
+                t.update(cur.json);
+              }
+              break;
+            case "redo":
+              if (t.historyPos < t.historyList.length - 1) {
+                t.historyPos += 1;
+                var cur = t.historyList[t.historyPos];
+                t.update(cur.json);
+              }
+              break;
             }
-            break;
-          case "redo":
-            if (t.historyPos < t.historyList.length - 1) {
-              t.historyPos += 1;
-              var cur = t.historyList[t.historyPos];
-              t.update(cur.json);
+          } finally {
+            t._isUndoRedoing = false;
+            // 刷新元素列表面板
+            if (t.editingPanel && t.editingPanel.refreshElementList) {
+              t.editingPanel.refreshElementList();
             }
-            break;
           }
         });
         o.a.event.on("hiprintTemplateDataChanged_" + this.id, function (type) {
-          if (t.history) {
+          if (t.history && !t._isUndoRedoing) {
             var j = 1 == t.dataMode ? t.getJson() : t.getJsonTid()
             t.lastJson = j;
             if (t.historyPos < t.historyList.length - 1) {
@@ -11848,7 +12538,8 @@ var hiprint = function (t) {
             }
             t.historyList.push({id: s.a.instance.guid(), type: type, json: j});
             if (t.historyList.length > 50) {
-              t.historyList = t.historyList.slice(0, 1).concat(t.historyList.slice(1, 50));
+              t.historyList = t.historyList.slice(t.historyList.length - 50);
+              t.historyPos = t.historyList.length - 1;
             } else {
               t.historyPos += 1;
             }
@@ -11875,6 +12566,1051 @@ var hiprint = function (t) {
       var o = $.extend({}, n.options || {});
       t.imgToBase64 && (o.imgToBase64 = o.imgToBase64 ?? false), e ? e.append(n.template.getHtml(n.data, o).html()) : e = n.template.getHtml(n.data, o);
     }), e;
+  }
+
+  function validateFieldGroups(fieldGroups) {
+    if (!Array.isArray(fieldGroups)) return;
+    fieldGroups.forEach(function (group) {
+      if (!group.fields || !group.fields.length) return;
+      group.fields.forEach(function (fieldDef) {
+        if (fieldDef.field === undefined || fieldDef.field === null || fieldDef.field === '') {
+          throw new Error("Dynamic field definition error: 'field' is required but got empty/undefined");
+        }
+        if (fieldDef.type !== undefined && fieldDef.type !== null && SUPPORTED_ELEMENT_TYPES.indexOf(fieldDef.type) === -1) {
+          throw new Error("Dynamic field definition error: unsupported type '" + fieldDef.type + "'");
+        }
+      });
+    });
+  }
+
+  function mapFieldGroupsToElementTypeGroups(moduleName, fieldGroups) {
+    var groups = [];
+    if (!Array.isArray(fieldGroups)) return groups;
+    fieldGroups.forEach(function (group) {
+      if (!group.fields || !group.fields.length) return;
+      var configs = group.fields.map(function (fieldDef) {
+        var opts = { field: fieldDef.field };
+        if (fieldDef.options) {
+          opts = $.extend({}, fieldDef.options, { field: fieldDef.field });
+        }
+        return {
+          tid: moduleName + '.' + fieldDef.field,
+          title: fieldDef.title || fieldDef.field,
+          type: fieldDef.type || 'text',
+          field: fieldDef.field,
+          data: fieldDef.data || '',
+          icon: fieldDef.icon,
+          options: opts
+        };
+      });
+      groups.push(new ot(group.groupName, configs));
+    });
+    return groups;
+  }
+
+  function normalizeElementTypeGroups(moduleName, groups) {
+    var result = [];
+    if (!Array.isArray(groups)) return result;
+    groups.forEach(function (group, groupIndex) {
+      if (!group) return;
+      var groupName = group.groupName || group.name || ("分组" + (groupIndex + 1)),
+        source = group.printElementTypes || group.items || group.fields || [];
+      if (!Array.isArray(source) || !source.length) return;
+      var configs = source.map(function (item, itemIndex) {
+        if (!item) return null;
+        var cfg = $.extend({}, item);
+        if (!cfg.tid) {
+          var base = (cfg.field || cfg.title || cfg.name || ("item_" + (itemIndex + 1))).toString().replace(/[^\w\-]+/g, "_");
+          cfg.tid = moduleName + "." + base;
+        }
+        cfg.title || (cfg.title = cfg.field || cfg.tid), cfg.type || (cfg.type = "text");
+        return cfg;
+      }).filter(function (item) {
+        return !!item;
+      });
+      configs.length && result.push(new ot(groupName, configs));
+    });
+    return result;
+  }
+
+  function setDynamicFields(moduleName, fieldGroups) {
+    validateFieldGroups(fieldGroups);
+    a.instance.removePrintElementTypes(moduleName);
+    var groups = mapFieldGroupsToElementTypeGroups(moduleName, fieldGroups);
+    a.instance.addPrintElementTypes(moduleName, groups);
+  }
+
+  function removeDynamicFields(moduleName) {
+    a.instance.removePrintElementTypes(moduleName);
+  }
+
+  function setElementTypeGroups(moduleName, groups) {
+    if (!moduleName) throw new Error("setElementTypeGroups: moduleName is required");
+    a.instance.removePrintElementTypes(moduleName);
+    var normalizedGroups = normalizeElementTypeGroups(moduleName, groups);
+    a.instance.addPrintElementTypes(moduleName, normalizedGroups);
+  }
+
+  function appendElementTypeGroups(moduleName, groups) {
+    if (!moduleName) throw new Error("appendElementTypeGroups: moduleName is required");
+    var normalizedGroups = normalizeElementTypeGroups(moduleName, groups);
+    a.instance.addPrintElementTypes(moduleName, normalizedGroups);
+  }
+
+  function renameElementType(tid, title) {
+    return uep(tid, function (type) {
+      if (!type) return type;
+      type.title = title;
+      return type;
+    });
+  }
+
+  var _defaultPaperTypes = {
+    'A3': { width: 420, height: 296.6 },
+    'A4': { width: 210, height: 296.6 },
+    'A5': { width: 210, height: 147.6 },
+    'B3': { width: 500, height: 352.6 },
+    'B4': { width: 250, height: 352.6 },
+    'B5': { width: 250, height: 175.6 }
+  };
+
+  function buildToolbar(container, template, options) {
+    var opts = $.extend({
+      paperTypes: _defaultPaperTypes,
+      defaultPaper: 'A4',
+      scaleMin: 0.5,
+      scaleMax: 5,
+      scaleStep: 0.1,
+      showPaperSelect: true,
+      showCustomPaper: true,
+      showScale: true,
+      showRotate: true,
+      showAlign: true,
+      showPreview: true,
+      showClear: true,
+      showPrint: true,
+      onPreview: null,
+      onClear: null,
+      onPrint: null,
+      onSave: null,
+      onPaperChange: null,
+      onScaleChange: null,
+      showTemplateSelect: true,
+      showSave: true,
+      templateButtonText: i18n.__('选择模版'),
+      saveButtonText: i18n.__('保存'),
+      saveDialogTitle: i18n.__('保存模版'),
+      saveDialogNameLabel: i18n.__('模版名称'),
+      saveDialogNamePlaceholder: i18n.__('请输入模版名称'),
+      saveDialogNameRequiredText: i18n.__('请输入模版名称'),
+      saveDialogConfirmText: i18n.__('确定'),
+      saveDialogCancelText: i18n.__('取消'),
+      templateDialogTitle: i18n.__('选择模版'),
+      templateDialogEmptyText: i18n.__('暂无模版'),
+      templateDialogLoadingText: i18n.__('模版加载中...'),
+      templateDialogErrorText: i18n.__('模版加载失败'),
+      templateListProvider: null,
+      templateLoader: null,
+      onTemplateSelect: null,
+      onTemplatePreview: null,
+      onTemplateEdit: null,
+      onTemplateDelete: null,
+      closeTemplateDialogOnSelect: true,
+      extraPosition: 'end',
+      extraButtons: [],
+      renderExtra: null
+    }, options || {});
+
+    var $container = $(container);
+    $container.empty();
+    var $toolbar = $('<div class="hiprint-toolbar"></div>');
+    var scaleValue = 1;
+    var toolbarCtrl = null;
+    var toolbarApi = null;
+    var templateItems = [];
+    var templateLoading = false;
+    var templateError = '';
+    var templateDialogRequestId = 0;
+    var $templateDialog = null;
+    var $saveDialog = null;
+
+    function normalizeTemplateItem(item, index) {
+      if (!item) return null;
+      var name = item.name || item.title || item.templateName || item.label || (i18n.__('未命名模版') + ' ' + (index + 1));
+      var id = item.id || item.templateId || item.key || item.code || ('template_' + index);
+      return $.extend({}, item, {
+        _idx: index,
+        _tid: id,
+        _name: name
+      });
+    }
+
+    function parseTemplateData(data) {
+      if (!data) return null;
+      if (typeof data === 'string') {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          return null;
+        }
+      }
+      return data;
+    }
+
+    function applyTemplateData(data) {
+      var json = parseTemplateData(data);
+      if (!json || typeof json !== 'object') return false;
+      if (template && typeof template.update === 'function') {
+        template.update(json);
+        return true;
+      }
+      return false;
+    }
+
+    function downloadTemplateJson(json, filename) {
+      try {
+        if (!json) return;
+        var name = filename || 'hiprint-template.json';
+        var content = typeof json === 'string' ? json : JSON.stringify(json, null, 2);
+        var blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderTemplateDialog() {
+      if (!$templateDialog || !$templateDialog.length) return;
+      $templateDialog.find('.hiprint-toolbar-template-title').text(opts.templateDialogTitle || i18n.__('选择模版'));
+      var $body = $templateDialog.find('.hiprint-toolbar-template-body');
+      $body.empty();
+      if (templateLoading) {
+        $body.append('<div class="hiprint-toolbar-template-state loading">' + (opts.templateDialogLoadingText || i18n.__('模版加载中...')) + '</div>');
+        return;
+      }
+      if (templateError) {
+        $body.append('<div class="hiprint-toolbar-template-state error">' + templateError + '</div>');
+        return;
+      }
+      if (!templateItems.length) {
+        $body.append('<div class="hiprint-toolbar-template-state empty">' + (opts.templateDialogEmptyText || i18n.__('暂无模版')) + '</div>');
+        return;
+      }
+      var $grid = $('<div class="hiprint-toolbar-template-grid"></div>');
+      templateItems.forEach(function (item, idx) {
+        var desc = item.description || item.desc || item.remark || '';
+        var timeText = item.updatedAt || item.updateTime || item.modifiedAt || '';
+        var $card = $('<div class="hiprint-toolbar-template-card" data-template-index="' + idx + '"></div>');
+        $card.append('<div class="hiprint-toolbar-template-card-title" title="' + item._name + '">' + item._name + '</div>');
+        $card.append('<div class="hiprint-toolbar-template-card-desc" title="' + desc + '">' + (desc || i18n.__('暂无描述')) + '</div>');
+        if (timeText) {
+          $card.append('<div class="hiprint-toolbar-template-card-meta">' + i18n.__('更新时间') + ': ' + timeText + '</div>');
+        }
+        var $actions = $('<div class="hiprint-toolbar-template-card-actions"></div>');
+        $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary hiprint-toolbar-template-action" data-action="select" data-index="' + idx + '">' + i18n.__('选择') + '</button>');
+        $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-template-action" data-action="preview" data-index="' + idx + '">' + i18n.__('预览') + '</button>');
+        $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-template-action" data-action="edit" data-index="' + idx + '">' + i18n.__('编辑') + '</button>');
+        $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-danger hiprint-toolbar-template-action" data-action="delete" data-index="' + idx + '">' + i18n.__('删除') + '</button>');
+        $card.append($actions);
+        $grid.append($card);
+      });
+      $body.append($grid);
+    }
+
+    function refreshTemplateList() {
+      if (typeof opts.templateListProvider !== 'function') {
+        templateItems = [];
+        templateLoading = false;
+        templateError = '';
+        renderTemplateDialog();
+        return Promise.resolve(templateItems);
+      }
+      var reqId = ++templateDialogRequestId;
+      templateLoading = true;
+      templateError = '';
+      renderTemplateDialog();
+      return Promise.resolve(opts.templateListProvider(template, toolbarApi)).then(function (list) {
+        if (reqId !== templateDialogRequestId) return templateItems;
+        if (!Array.isArray(list)) list = [];
+        templateItems = list.map(function (item, index) {
+          return normalizeTemplateItem(item, index);
+        }).filter(function (item) {
+          return !!item;
+        });
+        templateError = '';
+        return templateItems;
+      }).catch(function (err) {
+        if (reqId !== templateDialogRequestId) return templateItems;
+        templateItems = [];
+        templateError = (err && err.message) || opts.templateDialogErrorText || i18n.__('模版加载失败');
+        return templateItems;
+      }).finally(function () {
+        if (reqId !== templateDialogRequestId) return;
+        templateLoading = false;
+        renderTemplateDialog();
+      });
+    }
+
+    function closeTemplateDialog() {
+      if ($templateDialog && $templateDialog.length) {
+        $templateDialog.hide();
+      }
+    }
+
+    function resolveTemplateData(item) {
+      if (typeof opts.templateLoader === 'function') {
+        return Promise.resolve(opts.templateLoader(item, template, toolbarApi));
+      }
+      return Promise.resolve(item && (item.template || item.templateJson || item.json || item.data || null));
+    }
+
+    function handleTemplateSelect(item) {
+      if (!item) return;
+      return resolveTemplateData(item).then(function (rawData) {
+        var json = parseTemplateData(rawData);
+        if (json) {
+          applyTemplateData(json);
+        }
+        if (typeof opts.onTemplateSelect === 'function') {
+          opts.onTemplateSelect(item, json || rawData, template, toolbarApi);
+        }
+        if (opts.closeTemplateDialogOnSelect !== false) {
+          closeTemplateDialog();
+        }
+      }).catch(function (err) {
+        console.error(err);
+      });
+    }
+
+    function handleTemplateDelete(item) {
+      if (!item) return;
+      var executeDelete = function () {
+        if (typeof opts.onTemplateDelete === 'function') {
+          Promise.resolve(opts.onTemplateDelete(item, template, toolbarApi)).then(function (result) {
+            if (result !== false) refreshTemplateList();
+          }).catch(function (err) {
+            console.error(err);
+          });
+          return;
+        }
+        templateItems = templateItems.filter(function (row) {
+          return row._tid !== item._tid;
+        });
+        renderTemplateDialog();
+      };
+      if (confirm(i18n.__('是否确认删除') + '?')) {
+        executeDelete();
+      }
+    }
+
+    function ensureTemplateDialog() {
+      if ($templateDialog && $templateDialog.length) return $templateDialog;
+      $templateDialog = $(
+        '<div class="hiprint-toolbar-template-dialog-wrap" style="display:none;">' +
+          '<div class="hiprint-toolbar-template-mask"></div>' +
+          '<div class="hiprint-toolbar-template-dialog">' +
+            '<div class="hiprint-toolbar-template-header">' +
+              '<span class="hiprint-toolbar-template-title"></span>' +
+            '</div>' +
+            '<div class="hiprint-toolbar-template-body"></div>' +
+            '<div class="hiprint-toolbar-template-footer">' +
+              '<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-template-refresh">' + i18n.__('刷新') + '</button>' +
+              '<button type="button" class="hiprint-toolbar-btn js-template-close">' + i18n.__('关闭') + '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+      $container.append($templateDialog);
+      $templateDialog.on('click', '.hiprint-toolbar-template-mask, .js-template-close', function () {
+        closeTemplateDialog();
+      });
+      $templateDialog.on('click', '.hiprint-toolbar-template-dialog', function (e) {
+        e.stopPropagation();
+      });
+      $templateDialog.on('click', '.hiprint-toolbar-template-refresh', function () {
+        refreshTemplateList();
+      });
+      $templateDialog.on('click', '.hiprint-toolbar-template-action', function () {
+        var idx = parseInt($(this).attr('data-index'));
+        if (isNaN(idx) || !templateItems[idx]) return;
+        var action = $(this).attr('data-action');
+        var item = templateItems[idx];
+        if (action === 'select') {
+          handleTemplateSelect(item);
+        } else if (action === 'preview') {
+          typeof opts.onTemplatePreview === 'function' && opts.onTemplatePreview(item, template, toolbarApi);
+        } else if (action === 'edit') {
+          typeof opts.onTemplateEdit === 'function' && opts.onTemplateEdit(item, template, toolbarApi);
+        } else if (action === 'delete') {
+          handleTemplateDelete(item);
+        }
+      });
+      renderTemplateDialog();
+      return $templateDialog;
+    }
+
+    function openTemplateDialog() {
+      ensureTemplateDialog();
+      $templateDialog.show();
+      renderTemplateDialog();
+      refreshTemplateList();
+    }
+
+    function closeSaveDialog() {
+      if ($saveDialog && $saveDialog.length) {
+        $saveDialog.hide();
+      }
+    }
+
+    function saveTemplateWithName(templateName, event) {
+      var json = typeof template.getJson === 'function' ? template.getJson() : null;
+      var name = (templateName || '').toString().trim();
+      if (!name) {
+        name = i18n.__('未命名模版');
+      }
+      if (typeof opts.onSave === 'function') {
+        return opts.onSave(template, json, event, toolbarApi, { name: name });
+      }
+      if (json) {
+        var filename = name.endsWith('.json') ? name : (name + '.json');
+        downloadTemplateJson(json, filename);
+      }
+      return json;
+    }
+
+    function ensureSaveDialog() {
+      if ($saveDialog && $saveDialog.length) return $saveDialog;
+      $saveDialog = $(
+        '<div class="hiprint-toolbar-save-dialog-wrap" style="display:none;">' +
+          '<div class="hiprint-toolbar-save-mask"></div>' +
+          '<div class="hiprint-toolbar-save-dialog">' +
+            '<div class="hiprint-toolbar-save-header">' + (opts.saveDialogTitle || i18n.__('保存模版')) + '</div>' +
+            '<div class="hiprint-toolbar-save-body">' +
+              '<label class="hiprint-toolbar-save-label">' + (opts.saveDialogNameLabel || i18n.__('模版名称')) + '</label>' +
+              '<input type="text" class="hiprint-toolbar-save-input" placeholder="' + (opts.saveDialogNamePlaceholder || i18n.__('请输入模版名称')) + '" />' +
+              '<div class="hiprint-toolbar-save-error" style="display:none;"></div>' +
+            '</div>' +
+            '<div class="hiprint-toolbar-save-footer">' +
+              '<button type="button" class="hiprint-toolbar-btn js-save-cancel">' + (opts.saveDialogCancelText || i18n.__('取消')) + '</button>' +
+              '<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary js-save-confirm">' + (opts.saveDialogConfirmText || i18n.__('确定')) + '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+      $container.append($saveDialog);
+      $saveDialog.on('click', '.hiprint-toolbar-save-mask, .js-save-cancel', function () {
+        closeSaveDialog();
+      });
+      $saveDialog.on('click', '.hiprint-toolbar-save-dialog', function (e) {
+        e.stopPropagation();
+      });
+      $saveDialog.on('click', '.js-save-confirm', function (e) {
+        var $input = $saveDialog.find('.hiprint-toolbar-save-input');
+        var $error = $saveDialog.find('.hiprint-toolbar-save-error');
+        var name = ($input.val() || '').toString().trim();
+        if (!name) {
+          $error.text(opts.saveDialogNameRequiredText || i18n.__('请输入模版名称')).show();
+          $input.focus();
+          return;
+        }
+        $error.hide();
+        Promise.resolve(saveTemplateWithName(name, e)).finally(function () {
+          closeSaveDialog();
+        });
+      });
+      $saveDialog.on('keydown', '.hiprint-toolbar-save-input', function (e) {
+        if (e.keyCode === 13) {
+          e.preventDefault();
+          $saveDialog.find('.js-save-confirm').trigger('click');
+        }
+      });
+      return $saveDialog;
+    }
+
+    function openSaveDialog(defaultName) {
+      ensureSaveDialog();
+      var $input = $saveDialog.find('.hiprint-toolbar-save-input');
+      var $error = $saveDialog.find('.hiprint-toolbar-save-error');
+      $error.hide();
+      var initName = (defaultName || template.name || '').toString().trim();
+      $input.val(initName);
+      $saveDialog.show();
+      setTimeout(function () {
+        $input.focus();
+        var inputEl = $input[0];
+        if (inputEl && inputEl.setSelectionRange) {
+          var len = initName.length;
+          inputEl.setSelectionRange(len, len);
+        }
+      }, 0);
+    }
+
+    function triggerSave(payload) {
+      if (payload && typeof payload === 'object' && payload.skipPrompt) {
+        return saveTemplateWithName(payload.name, payload.event);
+      }
+      if (typeof payload === 'string') {
+        return saveTemplateWithName(payload, null);
+      }
+      openSaveDialog(payload && payload.name);
+      return null;
+    }
+
+    // --- 模版选择 ---
+    if (opts.showTemplateSelect) {
+      var $templateSelectGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-template-select"></div>');
+      var $templateSelectBtn = $('<button class="hiprint-toolbar-btn">' + (opts.templateButtonText || i18n.__('选择模版')) + '</button>');
+      $templateSelectBtn.on('click', function () {
+        openTemplateDialog();
+      });
+      $templateSelectGroup.append($templateSelectBtn);
+      $toolbar.append($templateSelectGroup);
+    }
+
+    // --- 纸张选择 ---
+    if (opts.showPaperSelect) {
+      var $paperGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-paper"></div>');
+      var curPaper = opts.defaultPaper;
+      $.each(opts.paperTypes, function (name, size) {
+        var $btn = $('<button class="hiprint-toolbar-btn' + (name === curPaper ? ' active' : '') + '" data-paper="' + name + '">' + name + '</button>');
+        $btn.on('click', function () {
+          curPaper = name;
+          $paperGroup.find('.hiprint-toolbar-btn').removeClass('active');
+          $(this).addClass('active');
+          $customBtn && $customBtn.removeClass('active');
+          template.setPaper(size.width, size.height);
+          opts.onPaperChange && opts.onPaperChange(name, size);
+        });
+        $paperGroup.append($btn);
+      });
+
+      if (opts.showCustomPaper) {
+        var $customBtn = $('<button class="hiprint-toolbar-btn" data-paper="custom">' + i18n.__('自定义') + '</button>');
+        var $customPopover = $('<div class="hiprint-toolbar-popover" style="display:none;"></div>');
+        var $customContent = $('<div class="hiprint-toolbar-popover-content"></div>');
+        var $wInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('宽') + '(mm)" style="width:80px;" value="220"/>');
+        var $sep = $('<span style="margin:0 4px;">×</span>');
+        var $hInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('高') + '(mm)" style="width:80px;" value="80"/>');
+        var $okBtn = $('<button class="hiprint-toolbar-btn active" style="margin-left:6px;">' + i18n.__('确定') + '</button>');
+        $okBtn.on('click', function () {
+          var w = parseFloat($wInput.val()), h = parseFloat($hInput.val());
+          if (w > 0 && h > 0) {
+            curPaper = 'custom';
+            $paperGroup.find('.hiprint-toolbar-btn').removeClass('active');
+            $customBtn.addClass('active');
+            template.setPaper(w, h);
+            $customPopover.hide();
+            opts.onPaperChange && opts.onPaperChange('custom', { width: w, height: h });
+          }
+        });
+        $customContent.append($wInput, $sep, $hInput, $okBtn);
+        $customPopover.append($customContent);
+        $customBtn.on('click', function (e) {
+          e.stopPropagation();
+          $customPopover.toggle();
+        });
+        $(document).on('click', function (e) {
+          if (!$(e.target).closest('.hiprint-toolbar-popover, [data-paper="custom"]').length) {
+            $customPopover.hide();
+          }
+        });
+        var $customWrap = $('<div class="hiprint-toolbar-custom-wrap" style="position:relative;display:inline-block;"></div>');
+        $customWrap.append($customBtn, $customPopover);
+        $paperGroup.append($customWrap);
+      }
+      $toolbar.append($paperGroup);
+    }
+
+    // --- 缩放 ---
+    if (opts.showScale) {
+      var $scaleGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-scale"></div>');
+      var $scaleLabel = $('<span class="hiprint-toolbar-scale-label">100%</span>');
+      var updateScaleLabel = function () {
+        $scaleLabel.text(Math.round(scaleValue * 100) + '%');
+      };
+      var $zoomOut = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('缩小') + '">−</button>');
+      var $zoomIn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('放大') + '">+</button>');
+      $zoomOut.on('click', function () {
+        scaleValue = Math.max(opts.scaleMin, +(scaleValue - opts.scaleStep).toFixed(2));
+        template.zoom(scaleValue);
+        updateScaleLabel();
+        opts.onScaleChange && opts.onScaleChange(scaleValue);
+      });
+      $zoomIn.on('click', function () {
+        scaleValue = Math.min(opts.scaleMax, +(scaleValue + opts.scaleStep).toFixed(2));
+        template.zoom(scaleValue);
+        updateScaleLabel();
+        opts.onScaleChange && opts.onScaleChange(scaleValue);
+      });
+      $scaleGroup.append($zoomOut, $scaleLabel, $zoomIn);
+      $toolbar.append($scaleGroup);
+    }
+
+    // --- 旋转 ---
+    if (opts.showRotate) {
+      var $rotateBtn = $('<button class="hiprint-toolbar-btn" title="' + i18n.__('旋转') + '">↻ ' + i18n.__('旋转') + '</button>');
+      $rotateBtn.on('click', function () { template.rotatePaper(); });
+      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($rotateBtn));
+    }
+
+    // --- 对齐 ---
+    if (opts.showAlign) {
+      var alignItems = [
+        { type: 'left', label: i18n.__('左对齐'), icon: '⫷' },
+        { type: 'horizontalCenter', label: i18n.__('水平居中'), icon: '⫿' },
+        { type: 'right', label: i18n.__('右对齐'), icon: '⫸' },
+        { type: 'top', label: i18n.__('顶对齐'), icon: '⫠' },
+        { type: 'verticalCenter', label: i18n.__('垂直居中'), icon: '⫥' },
+        { type: 'bottom', label: i18n.__('底对齐'), icon: '⫡' },
+        { type: 'distributeHorizontal', label: i18n.__('水平等距'), icon: '⇔' },
+        { type: 'distributeVertical', label: i18n.__('垂直等距'), icon: '⇕' }
+      ];
+      var $alignGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-align"></div>');
+      alignItems.forEach(function (item) {
+        var $btn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '">' + item.icon + '</button>');
+        $btn.on('click', function () { template.alignElements(item.type); });
+        $alignGroup.append($btn);
+      });
+      $toolbar.append($alignGroup);
+    }
+
+    // --- 预览 ---
+    if (opts.showPreview) {
+      var $previewBtn = $('<button class="hiprint-toolbar-btn">' + i18n.__('预览') + '</button>');
+      $previewBtn.on('click', function () {
+        if (opts.onPreview) { opts.onPreview(template); }
+      });
+      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($previewBtn));
+    }
+
+    // --- 清空 ---
+    if (opts.showClear) {
+      var $clearBtn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + i18n.__('清空') + '</button>');
+      $clearBtn.on('click', function () {
+        if (opts.onClear) { opts.onClear(template); return; }
+        if (confirm(i18n.__('是否确认清空') + '?')) { template.clear(); }
+      });
+      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($clearBtn));
+    }
+
+    // --- 打印 ---
+    if (opts.showPrint) {
+      var $printBtn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + i18n.__('打印') + '</button>');
+      $printBtn.on('click', function () {
+        if (opts.onPrint) { opts.onPrint(template); }
+      });
+      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($printBtn));
+    }
+
+    // --- 保存 ---
+    if (opts.showSave) {
+      var $saveBtn = $('<button class="hiprint-toolbar-btn">' + (opts.saveButtonText || i18n.__('保存')) + '</button>');
+      $saveBtn.on('click', function (e) {
+        triggerSave(e);
+      });
+      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($saveBtn));
+    }
+
+    var addToolbarGroup = function ($group, position) {
+      if (!$group || !$group.length) return;
+      if (position === 'start') {
+        $toolbar.prepend($group);
+      } else {
+        $toolbar.append($group);
+      }
+    };
+
+    var createExtraButton = function (btnOpt, api) {
+      if (!btnOpt) return null;
+      var visible = typeof btnOpt.visible === 'function' ? !!btnOpt.visible(template, api) : btnOpt.visible !== false;
+      if (!visible) return null;
+
+      var cls = 'hiprint-toolbar-btn';
+      var btnType = btnOpt.type || '';
+      if (btnType === 'primary') cls += ' hiprint-toolbar-btn-primary';
+      if (btnType === 'danger') cls += ' hiprint-toolbar-btn-danger';
+      if (btnOpt.className) cls += ' ' + btnOpt.className;
+
+      var $btn = $('<button type="button" class="' + cls + '"></button>');
+      if (btnOpt.title) $btn.attr('title', btnOpt.title);
+      if (btnOpt.html != null) {
+        $btn.html(btnOpt.html);
+      } else {
+        var text = '';
+        if (btnOpt.icon) text += btnOpt.icon + ' ';
+        text += (btnOpt.label || btnOpt.text || '');
+        $btn.text(text);
+      }
+
+      var disabled = typeof btnOpt.disabled === 'function' ? !!btnOpt.disabled(template, api) : !!btnOpt.disabled;
+      if (disabled) $btn.prop('disabled', true);
+      $btn.on('click', function (e) {
+        if (disabled) return;
+        if (typeof btnOpt.onClick === 'function') {
+          btnOpt.onClick(template, e, api);
+        }
+      });
+      return $btn;
+    };
+
+    toolbarApi = {
+      toolbar: $toolbar,
+      container: $container,
+      template: template,
+      getToolbarCtrl: function () {
+        return toolbarCtrl;
+      },
+      addGroup: function (group, position) {
+        addToolbarGroup($(group), position || opts.extraPosition);
+      },
+      createButton: function (btnOpt) {
+        return createExtraButton(btnOpt, toolbarApi);
+      },
+      openTemplateDialog: function () {
+        openTemplateDialog();
+      },
+      closeTemplateDialog: function () {
+        closeTemplateDialog();
+      },
+      openSaveDialog: function (defaultName) {
+        openSaveDialog(defaultName);
+      },
+      closeSaveDialog: function () {
+        closeSaveDialog();
+      },
+      refreshTemplateList: function () {
+        return refreshTemplateList();
+      },
+      setTemplateItems: function (list) {
+        if (!Array.isArray(list)) list = [];
+        templateItems = list.map(function (item, index) {
+          return normalizeTemplateItem(item, index);
+        }).filter(function (item) {
+          return !!item;
+        });
+        templateLoading = false;
+        templateError = '';
+        renderTemplateDialog();
+      },
+      getTemplateItems: function () {
+        return (templateItems || []).slice();
+      },
+      setTemplateListProvider: function (provider) {
+        opts.templateListProvider = provider;
+      },
+      setTemplateLoader: function (loader) {
+        opts.templateLoader = loader;
+      }
+    };
+
+    // --- 扩展按钮（配置式） ---
+    if (Array.isArray(opts.extraButtons) && opts.extraButtons.length) {
+      var $extraGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-extra"></div>');
+      opts.extraButtons.forEach(function (btnOpt) {
+        var $btn = createExtraButton(btnOpt, toolbarApi);
+        $btn && $extraGroup.append($btn);
+      });
+      if ($extraGroup.children().length) {
+        addToolbarGroup($extraGroup, opts.extraPosition);
+      }
+    }
+
+    // --- 扩展渲染（自定义） ---
+    if (typeof opts.renderExtra === 'function') {
+      opts.renderExtra(toolbarApi);
+    }
+
+    $container.append($toolbar);
+
+    // 返回控制对象
+    toolbarCtrl = {
+      getScale: function () { return scaleValue; },
+      setScale: function (v) {
+        scaleValue = v;
+        template.zoom(scaleValue);
+        if (opts.showScale) {
+          $toolbar.find('.hiprint-toolbar-scale-label').text(Math.round(scaleValue * 100) + '%');
+        }
+      },
+      openTemplateDialog: function () {
+        openTemplateDialog();
+      },
+      closeTemplateDialog: function () {
+        closeTemplateDialog();
+      },
+      openSaveDialog: function (defaultName) {
+        openSaveDialog(defaultName);
+      },
+      closeSaveDialog: function () {
+        closeSaveDialog();
+      },
+      refreshTemplateList: function () {
+        return refreshTemplateList();
+      },
+      setTemplateItems: function (list) {
+        toolbarApi.setTemplateItems(list);
+      },
+      getTemplateItems: function () {
+        return toolbarApi.getTemplateItems();
+      },
+      setTemplateListProvider: function (provider) {
+        toolbarApi.setTemplateListProvider(provider);
+      },
+      setTemplateLoader: function (loader) {
+        toolbarApi.setTemplateLoader(loader);
+      },
+      triggerSave: function (payload) {
+        return triggerSave(payload);
+      },
+      getToolbarElement: function () { return $toolbar; },
+      destroy: function () {
+        closeTemplateDialog();
+        closeSaveDialog();
+        $container.empty();
+      }
+    };
+    return toolbarCtrl;
+  }
+
+  function buildDesigner(container, options) {
+    var opts = $.extend({
+      leftWidth: 200,
+      rightWidth: 280,
+      leftMinWidth: 140,
+      leftMaxWidth: 400,
+      rightMinWidth: 200,
+      rightMaxWidth: 500,
+      leftCollapsed: false,
+      rightCollapsed: false,
+      componentModule: 'defaultModule',
+      componentPanelSlot: null,
+      templateOptions: {},
+      toolbarOptions: {},
+      onReady: null
+    }, options || {});
+
+    var $container = $(container);
+    $container.empty();
+
+    var leftCollapsed = opts.leftCollapsed;
+    var rightCollapsed = opts.rightCollapsed;
+    var leftWidth = opts.leftWidth;
+    var rightWidth = opts.rightWidth;
+
+    // --- 构建 HTML 结构 ---
+    var $root = $('<div class="hiprint-designer"></div>');
+    var $toolbarContainer = $('<div class="hiprint-designer-toolbar"></div>');
+    var $layout = $('<div class="hiprint-designer-layout"></div>');
+
+    // 左侧面板
+    var $panelLeft = $('<div class="hiprint-designer-panel-left"></div>');
+    var $leftSidebar = $('<div class="hiprint-designer-sidebar">' +
+      '<div class="hiprint-designer-panel-header"><span>' + i18n.__('组件') + '</span></div>' +
+      '<div class="hiprint-designer-panel-body rect-printElement-types hiprintEpContainer" id="hiprintEpContainer"></div>' +
+      '</div>');
+    $panelLeft.append($leftSidebar);
+
+    // 左侧拖拽条 + 折叠箭头
+    var $leftResizeBar = $('<div class="hiprint-designer-resize-bar"></div>');
+    var $leftResizeHandle = $('<div class="hiprint-designer-resize-handle"></div>');
+    var $leftToggle = $('<div class="hiprint-designer-edge-toggle hiprint-designer-edge-toggle-left" title="' + i18n.__('折叠组件栏') + '">' +
+      '<span class="glyphicon glyphicon-chevron-left"></span></div>');
+    $leftResizeBar.append($leftResizeHandle, $leftToggle);
+
+    // 中间设计区域
+    var $panelCenter = $('<div class="hiprint-designer-panel-center"></div>');
+    var $cardDesign = $('<div class="hiprint-designer-card">' +
+      '<div id="hiprint-printTemplate" class="hiprint-printTemplate"></div>' +
+      '</div>');
+    $panelCenter.append($cardDesign);
+
+    // 右侧拖拽条 + 折叠箭头
+    var $rightResizeBar = $('<div class="hiprint-designer-resize-bar"></div>');
+    var $rightResizeHandle = $('<div class="hiprint-designer-resize-handle"></div>');
+    var $rightToggle = $('<div class="hiprint-designer-edge-toggle hiprint-designer-edge-toggle-right" title="' + i18n.__('折叠属性栏') + '">' +
+      '<span class="glyphicon glyphicon-chevron-right"></span></div>');
+    $rightResizeBar.append($rightResizeHandle, $rightToggle);
+
+    // 右侧属性面板
+    var $panelRight = $('<div class="hiprint-designer-panel-right params_setting_container"></div>');
+    var $rightSidebar = $('<div class="hiprint-designer-sidebar">' +
+      '<div class="hiprint-designer-panel-header"><span>' + i18n.__('属性') + '</span></div>' +
+      '<div class="hiprint-designer-panel-body">' +
+      '<div class="hinnn-layout-sider"><div id="PrintElementOptionSetting"></div></div>' +
+      '</div>' +
+      '</div>');
+    $panelRight.append($rightSidebar);
+
+    // 组装布局
+    $layout.append($panelLeft, $leftResizeBar, $panelCenter, $rightResizeBar, $panelRight);
+    $root.append($toolbarContainer, $layout);
+    $container.append($root);
+
+    // --- 应用初始状态 ---
+    function applyLeftState() {
+      $panelLeft.css('width', leftCollapsed ? '0px' : leftWidth + 'px');
+      if (leftCollapsed) {
+        $leftResizeHandle.hide();
+        $leftToggle.attr('title', i18n.__('展开组件栏'));
+        $leftToggle.find('.glyphicon').removeClass('glyphicon-chevron-left').addClass('glyphicon-chevron-right');
+      } else {
+        $leftResizeHandle.show();
+        $leftToggle.attr('title', i18n.__('折叠组件栏'));
+        $leftToggle.find('.glyphicon').removeClass('glyphicon-chevron-right').addClass('glyphicon-chevron-left');
+      }
+    }
+
+    function applyRightState() {
+      $panelRight.css('width', rightCollapsed ? '0px' : rightWidth + 'px');
+      if (rightCollapsed) {
+        $rightResizeHandle.hide();
+        $rightToggle.attr('title', i18n.__('展开属性栏'));
+        $rightToggle.find('.glyphicon').removeClass('glyphicon-chevron-right').addClass('glyphicon-chevron-left');
+      } else {
+        $rightResizeHandle.show();
+        $rightToggle.attr('title', i18n.__('折叠属性栏'));
+        $rightToggle.find('.glyphicon').removeClass('glyphicon-chevron-left').addClass('glyphicon-chevron-right');
+      }
+    }
+
+    applyLeftState();
+    applyRightState();
+
+    // --- 折叠/展开 ---
+    $leftToggle.on('click', function () {
+      leftCollapsed = !leftCollapsed;
+      applyLeftState();
+    });
+
+    $rightToggle.on('click', function () {
+      rightCollapsed = !rightCollapsed;
+      applyRightState();
+    });
+
+    // --- 拖拽调整宽度 ---
+    $leftResizeHandle.on('mousedown', function (e) {
+      e.preventDefault();
+      var startX = e.clientX;
+      var startWidth = leftWidth;
+      var onMouseMove = function (ev) {
+        leftWidth = Math.max(opts.leftMinWidth, Math.min(opts.leftMaxWidth, startWidth + ev.clientX - startX));
+        $panelLeft.css('width', leftWidth + 'px');
+      };
+      var onMouseUp = function () {
+        $(document).off('mousemove', onMouseMove);
+        $(document).off('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      $(document).on('mousemove', onMouseMove);
+      $(document).on('mouseup', onMouseUp);
+    });
+
+    $rightResizeHandle.on('mousedown', function (e) {
+      e.preventDefault();
+      var startX = e.clientX;
+      var startWidth = rightWidth;
+      var onMouseMove = function (ev) {
+        rightWidth = Math.max(opts.rightMinWidth, Math.min(opts.rightMaxWidth, startWidth - (ev.clientX - startX)));
+        $panelRight.css('width', rightWidth + 'px');
+      };
+      var onMouseUp = function () {
+        $(document).off('mousemove', onMouseMove);
+        $(document).off('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      $(document).on('mousemove', onMouseMove);
+      $(document).on('mouseup', onMouseUp);
+    });
+
+    // --- 构建组件面板 ---
+    if (opts.componentPanelSlot && opts.componentPanelSlot.enabled) {
+      it.setPanelSlot(opts.componentPanelSlot);
+    } else {
+      it.clearPanelSlot();
+    }
+    if (opts.componentModule) {
+      it.build('#hiprintEpContainer', opts.componentModule);
+    }
+
+    // --- 创建模板 ---
+    var templateOpts = $.extend({
+      settingContainer: '#PrintElementOptionSetting',
+      paginationContainer: '.hiprint-printPagination'
+    }, opts.templateOptions || {});
+
+    var hiprintTemplate = new ct(templateOpts);
+    hiprintTemplate.design('#hiprint-printTemplate', {});
+
+    // --- 左侧组件面板点击 → 选中画布元素 + 同步属性栏 ---
+    $panelLeft.on('click', '.ep-draggable-item', function (e) {
+      var tid = $(this).attr('tid');
+      if (!tid || !hiprintTemplate.editingPanel) return;
+      var matchEls = hiprintTemplate.editingPanel.printElements.filter(function (el) {
+        return el.printElementType && el.printElementType.tid === tid;
+      });
+      if (matchEls.length > 0) {
+        var el = matchEls[0];
+        if (el.designTarget) {
+          el.selectFromList(false);
+        }
+      }
+    });
+
+    // --- 构建工具栏 ---
+    var toolbarCtrl = buildToolbar($toolbarContainer[0], hiprintTemplate, opts.toolbarOptions || {});
+
+    // --- onReady 回调 ---
+    if (opts.onReady) {
+      opts.onReady(hiprintTemplate, toolbarCtrl);
+    }
+
+    // --- 返回控制对象 ---
+    return {
+      getTemplate: function () { return hiprintTemplate; },
+      getToolbarCtrl: function () { return toolbarCtrl; },
+      getLeftWidth: function () { return leftWidth; },
+      getRightWidth: function () { return rightWidth; },
+      setLeftCollapsed: function (v) { leftCollapsed = v; applyLeftState(); },
+      setRightCollapsed: function (v) { rightCollapsed = v; applyRightState(); },
+      isLeftCollapsed: function () { return leftCollapsed; },
+      isRightCollapsed: function () { return rightCollapsed; },
+      setComponentPanelSlot: function (slotOptions) {
+        opts.componentPanelSlot = $.extend({}, slotOptions || {});
+        opts.componentPanelSlot.enabled = opts.componentPanelSlot.enabled !== !1;
+        it.setPanelSlot(opts.componentPanelSlot);
+      },
+      clearComponentPanelSlot: function () {
+        opts.componentPanelSlot = null;
+        it.clearPanelSlot();
+      },
+      rebuildComponentPanel: function (moduleName, slotOptions) {
+        void 0 !== slotOptions && (opts.componentPanelSlot = slotOptions);
+        $('#hiprintEpContainer').empty();
+        if (opts.componentPanelSlot && opts.componentPanelSlot.enabled) {
+          it.setPanelSlot(opts.componentPanelSlot);
+        } else {
+          it.clearPanelSlot();
+        }
+        it.build('#hiprintEpContainer', moduleName || opts.componentModule);
+      },
+      destroy: function () {
+        toolbarCtrl.destroy();
+        $container.empty();
+      }
+    };
   }
 
   function mt(t) {
@@ -12026,6 +13762,20 @@ var hiprint = function (t) {
     return ippPrint;
   }), n.d(e, "ippRequest", function () {
     return ippRequest;
+  }), n.d(e, "setDynamicFields", function () {
+    return setDynamicFields;
+  }), n.d(e, "removeDynamicFields", function () {
+    return removeDynamicFields;
+  }), n.d(e, "setElementTypeGroups", function () {
+    return setElementTypeGroups;
+  }), n.d(e, "appendElementTypeGroups", function () {
+    return appendElementTypeGroups;
+  }), n.d(e, "renameElementType", function () {
+    return renameElementType;
+  }), n.d(e, "buildToolbar", function () {
+    return buildToolbar;
+  }), n.d(e, "buildDesigner", function () {
+    return buildDesigner;
   }), n.d(e, "PrintElementTypeManager", function () {
     return it;
   }), n.d(e, "PrintElementTypeGroup", function () {

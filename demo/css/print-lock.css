@@ -241,10 +241,16 @@ table.hiprint-printElement-tableTarget {
 
 .design .hiprint-printElement-table-handle {
   position: absolute;
-  height: 21pt;
-  width: 21pt;
-  background: red;
+  height: 16pt;
+  width: 16pt;
+  background: rgba(64, 158, 255, 0.9);
   z-index: 1;
+  border-radius: 0 0 4px 0;
+  cursor: move;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='3' cy='3' r='1' fill='white'/%3E%3Ccircle cx='7' cy='3' r='1' fill='white'/%3E%3Ccircle cx='3' cy='7' r='1' fill='white'/%3E%3Ccircle cx='7' cy='7' r='1' fill='white'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 
 .hiprint-printPaper .hiprint-paperNumber-disabled {

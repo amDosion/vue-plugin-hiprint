@@ -1,52 +1,5 @@
 <template>
   <div id="app">
-    <a-space class="logos" style="float: left">
-      <img src="./assets/logo.png" />
-      <img src="./assets/hi.png" />
-      <div>期待大家的参与😁</div>
-    </a-space>
-    <a-row type="flex" class="menus">
-      <a-button-group>
-        <template v-for="demo in demoList">
-          <a-button
-            :type="demo.name === curDemo ? 'primary' : 'info'"
-            @click="curDemo = demo.name"
-            :key="demo.name"
-          >
-            {{ demo.title }}
-          </a-button>
-        </template>
-      </a-button-group>
-      <div style="margin-left: 20px" />
-      <a-button
-        style="width: 200px; font-size: 16px"
-        :type="'templates' === curDemo ? 'primary' : 'info'"
-        icon="file-search"
-        @click="curDemo = 'templates'"
-      >
-        模 板 中 心
-      </a-button>
-      <div style="margin-left: 20px"></div>
-      <a-select
-        v-if="curDemo == 'printDesign'"
-        ref="verSelect"
-        v-model="version"
-        :options="versions"
-        @change="handleVerChange"
-        style="width: 160px"
-      >
-      </a-select>
-      <div style="margin-left: 20px"></div>
-      <a-select
-        v-if="i18nSupport"
-        ref="i18nSelect"
-        v-model="lang"
-        :options="languages"
-        @change="handleLangChange"
-        style="width: 160px"
-      >
-      </a-select>
-    </a-row>
     <!-- 动态渲染组件，懒得去弄路由了 -->
     <keep-alive>
       <component :is="curDemo" />
@@ -137,9 +90,74 @@ export default {
   created() {
     this.version = sessionStorage.getItem("version") || "development";
     this.lang = sessionStorage.getItem("lang") || "cn";
+    if (!sessionStorage.getItem("lang")) {
+      sessionStorage.setItem("lang", "cn");
+    }
     this.getVersion();
+    this.registerExternalControls();
+  },
+  beforeDestroy() {
+    if (window.__hiprintDemoControls && window.__hiprintDemoControls.__owner === this) {
+      delete window.__hiprintDemoControls;
+    }
   },
   methods: {
+    normalizeDemoName(name) {
+      return this.demoList.some((demo) => demo.name === name) ? name : null;
+    },
+    switchDemo(name) {
+      const demoName = this.normalizeDemoName(name);
+      if (!demoName) return false;
+      this.curDemo = demoName;
+      return true;
+    },
+    openTemplateCenter() {
+      this.curDemo = "templates";
+      return true;
+    },
+    getControlState() {
+      return {
+        curDemo: this.curDemo,
+        version: this.version,
+        lang: this.lang,
+        demos: this.demoList.map((demo) => demo.name),
+        startWithEmptyTemplate: sessionStorage.getItem("hiprintEmptyTemplateOnStart") !== "0",
+      };
+    },
+    registerExternalControls() {
+      const vm = this;
+      window.__hiprintDemoControls = {
+        __owner: vm,
+        switchDemo(name) {
+          return vm.switchDemo(name);
+        },
+        openTemplateCenter() {
+          return vm.openTemplateCenter();
+        },
+        setVersion(version) {
+          vm.handleVerChange(version);
+        },
+        setLang(lang) {
+          vm.handleLangChange(lang);
+        },
+        getState() {
+          return vm.getControlState();
+        },
+        listVersions() {
+          return vm.versions.slice();
+        },
+        listLanguages() {
+          return vm.languages.slice();
+        },
+        setStartWithEmptyTemplate(enabled = true) {
+          sessionStorage.setItem("hiprintEmptyTemplateOnStart", enabled ? "1" : "0");
+          location.reload();
+        },
+        getStartWithEmptyTemplate() {
+          return sessionStorage.getItem("hiprintEmptyTemplateOnStart") !== "0";
+        },
+      };
+    },
     /**
      * @description: 通过 jsdelivr 获取所有 npm 信息
      * @return {*}
@@ -194,20 +212,17 @@ export default {
 </script>
 
 <style lang="less">
-.logos {
-  padding: 6px 24px;
-  display: flex;
-  justify-content: center;
-  align-self: center;
 
-  img {
-    height: 40px;
-    width: 40px;
-  }
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
-.menus {
-  padding: 10px 24px;
+#app {
+  height: 100%;
+  overflow: hidden;
 }
 
 // hiprint 拖拽图片
