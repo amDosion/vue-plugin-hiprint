@@ -1829,6 +1829,50 @@ body.hiprint-el-list-dragging {
   font-size: 18px;
   margin-bottom: 3px;
 }
+
+/* Iconify icon node for ep:* icon syntax */
+.hiprint-iconify {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.hiprint-iconify svg {
+  width: 1em;
+  height: 1em;
+}
+
+.hiprint-iconify:not(:defined),
+.hiprint-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  font-family: Arial, Helvetica, sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.hiprint-ep-card .hiprint-iconify,
+.hiprint-ep-card .hiprint-icon-fallback,
+.hiprint-ep-card .hiprint-iconify:not(:defined) {
+  font-size: 18px;
+  margin-bottom: 3px;
+}
+
+.hiprint-designer-edge-toggle .hiprint-iconify,
+.hiprint-designer-edge-toggle .hiprint-icon-fallback,
+.hiprint-designer-edge-toggle .hiprint-iconify:not(:defined) {
+  font-size: 13px;
+}
+
 .hiprint-ep-card:hover {
   background: #ecf5ff;
   border-color: #409eff;
@@ -1959,7 +2003,8 @@ body.hiprint-el-list-dragging {
   position: relative;
   display: inline-block;
 }
-.hiprint-toolbar-template-dialog-wrap {
+.hiprint-toolbar-template-dialog-wrap,
+.hiprint-toolbar-business-dialog-wrap {
   position: fixed;
   left: 0;
   top: 0;
@@ -2281,14 +2326,22 @@ body.hiprint-el-list-dragging {
 .hiprint-designer-panel-center {
   flex: 1;
   min-width: 0;
-  overflow: auto;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 .hiprint-designer-card {
   overflow: hidden;
   overflow-x: auto;
   overflow-y: auto;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  height: auto;
   /* Reserve gutter for ruler wrapper (which is rendered with negative margin). */
   padding: 18px 12px 12px 18px;
   box-sizing: border-box;

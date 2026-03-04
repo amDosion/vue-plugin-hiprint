@@ -9,28 +9,28 @@ export default function (hiprint) {
             title: "文本",
             data: "",
             type: "text",
-            icon: "glyphicon-text-width"
+            icon: "ep:document"
           },
           {
             tid: "defaultModule.image",
             title: "图片",
             data: "",
             type: "image",
-            icon: "glyphicon-picture"
+            icon: "ep:picture"
           },
           {
             tid: "defaultModule.longText",
             title: "长文",
             data: "155123456789",
             type: "longText",
-            icon: "glyphicon-subscript"
+            icon: "ep:tickets"
           },
           {
             tid: "defaultModule.table",
             field: "table",
             title: "表格",
             type: "table",
-            icon: "glyphicon-th",
+            icon: "ep:grid",
             groupFields: ["name"],
             groupFooterFormatter: function (group, option) {
               return "这里自定义统计脚信息";
@@ -85,7 +85,7 @@ export default function (hiprint) {
             tid: "defaultModule.emptyTable",
             title: "空表格",
             type: "table",
-            icon: "glyphicon-th",
+            icon: "ep:grid",
             columns: [
               [
                 { title: "", field: "", width: 100 },
@@ -96,7 +96,7 @@ export default function (hiprint) {
           {
             tid: "defaultModule.html",
             title: "html",
-            icon: "glyphicon-header",
+            icon: "ep:postcard",
             formatter: function (data, options) {
               return '<div style="height:50pt;width:50pt;background:red;border-radius: 50%;"></div>';
             },
@@ -108,13 +108,13 @@ export default function (hiprint) {
             customText: "自定义文本",
             custom: true,
             type: "text",
-            icon: "glyphicon-text-width"
+            icon: "ep:edit-pen"
           },
           {
             tid: "defaultModule.titleRow",
             title: "标题行",
             type: "text",
-            icon: "glyphicon-minus",
+            icon: "ep:minus",
             options: {
               width: 550,
               height: 18,
@@ -132,7 +132,7 @@ export default function (hiprint) {
             tid: "defaultModule.url",
             title: "链接",
             type: "text",
-            icon: "glyphicon-link",
+            icon: "ep:link",
             options: {
               width: 180,
               height: 9.75,
@@ -144,7 +144,7 @@ export default function (hiprint) {
             tid: "defaultModule.price",
             title: "价格",
             type: "text",
-            icon: "glyphicon-yen",
+            icon: "ep:money",
             options: {
               width: 80,
               height: 12,
@@ -158,7 +158,7 @@ export default function (hiprint) {
             tid: "defaultModule.sku",
             title: "SKU",
             type: "text",
-            icon: "glyphicon-tag",
+            icon: "ep:price-tag",
             options: {
               width: 120,
               height: 9.75,
@@ -170,7 +170,7 @@ export default function (hiprint) {
             tid: "defaultModule.senderInfo",
             title: "寄件人信息",
             type: "longText",
-            icon: "glyphicon-send",
+            icon: "ep:promotion",
             options: {
               width: 240,
               height: 42,
@@ -182,7 +182,7 @@ export default function (hiprint) {
             tid: "defaultModule.receiverInfo",
             title: "收件人信息",
             type: "longText",
-            icon: "glyphicon-user",
+            icon: "ep:user",
             options: {
               width: 240,
               height: 42,
@@ -197,37 +197,37 @@ export default function (hiprint) {
             tid: "defaultModule.hline",
             title: "横线",
             type: "hline",
-            icon: "glyphicon-resize-horizontal"
+            icon: "ep:minus"
           },
           {
             tid: "defaultModule.vline",
             title: "竖线",
             type: "vline",
-            icon: "glyphicon-resize-vertical"
+            icon: "ep:more-filled"
           },
           {
             tid: "defaultModule.rect",
             title: "矩形",
             type: "rect",
-            icon: "glyphicon-unchecked"
+            icon: "ep:crop"
           },
           {
             tid: "defaultModule.oval",
             title: "椭圆",
             type: "oval",
-            icon: "glyphicon-record"
+            icon: "ep:aim"
           },
           {
             tid: 'defaultModule.barcode',
             title: '条形码',
             type: 'barcode',
-            icon: 'glyphicon-barcode'
+            icon: 'ep:list'
           },
           {
             tid: 'defaultModule.qrcode',
             title: '二维码',
             type: 'qrcode',
-            icon: 'glyphicon-qrcode'
+            icon: 'ep:grid'
           }
         ])
       ]);

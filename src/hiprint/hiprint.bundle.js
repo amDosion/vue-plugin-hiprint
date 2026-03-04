@@ -8828,12 +8828,98 @@ var hiprint = function (t) {
     }(),
     p = n(1),
     s = n(2),
+    isIconifyIcon = function (icon) {
+      return !!icon && /^[a-z0-9]+:[a-z0-9-]+$/i.test(icon);
+    },
+    escapeHtmlAttr = function (val) {
+      return String(null == val ? "" : val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    },
+    legacyGlyphiconToIconify = {
+      "glyphicon-text-width": "ep:document",
+      "glyphicon-picture": "ep:picture",
+      "glyphicon-subscript": "ep:tickets",
+      "glyphicon-th": "ep:grid",
+      "glyphicon-header": "ep:postcard",
+      "glyphicon-minus": "ep:minus",
+      "glyphicon-link": "ep:link",
+      "glyphicon-yen": "ep:money",
+      "glyphicon-tag": "ep:price-tag",
+      "glyphicon-send": "ep:promotion",
+      "glyphicon-user": "ep:user",
+      "glyphicon-resize-horizontal": "ep:minus",
+      "glyphicon-resize-vertical": "ep:more-filled",
+      "glyphicon-unchecked": "ep:crop",
+      "glyphicon-record": "ep:aim",
+      "glyphicon-barcode": "ep:list",
+      "glyphicon-qrcode": "ep:grid",
+      "glyphicon-chevron-left": "ep:arrow-left",
+      "glyphicon-chevron-right": "ep:arrow-right"
+    },
+    normalizeIconName = function (icon) {
+      if (!icon || "string" != typeof icon) return "";
+      var iconValue = $.trim(icon);
+      if (!iconValue) return "";
+      if (isIconifyIcon(iconValue)) return iconValue;
+      if (legacyGlyphiconToIconify[iconValue]) return legacyGlyphiconToIconify[iconValue];
+      var parts = iconValue.split(/\s+/);
+      for (var i = 0; i < parts.length; i++) {
+        if (legacyGlyphiconToIconify[parts[i]]) return legacyGlyphiconToIconify[parts[i]];
+      }
+      return "";
+    },
+    iconifyFallbackText = function (icon) {
+      var map = {
+        "ep:document": "T",
+        "ep:picture": "IMG",
+        "ep:tickets": "TXT",
+        "ep:grid": "TBL",
+        "ep:postcard": "H",
+        "ep:edit-pen": "T",
+        "ep:minus": "-",
+        "ep:link": "LNK",
+        "ep:money": "$",
+        "ep:price-tag": "SKU",
+        "ep:promotion": "S",
+        "ep:user": "U",
+        "ep:more-filled": "|",
+        "ep:crop": "[]",
+        "ep:aim": "O",
+        "ep:list": "|||",
+        "ep:arrow-left": "<",
+        "ep:arrow-right": ">"
+      };
+      return map[icon] || "?";
+    },
+    renderIconHtml = function (icon, fallbackText) {
+      if (!icon || "string" != typeof icon) return "";
+      var iconValue = $.trim(icon);
+      if (!iconValue) return "";
+      if ("<" === iconValue.charAt(0)) return iconValue;
+      var normalized = normalizeIconName(iconValue);
+      if (normalized) {
+        var fallback = null == fallbackText ? iconifyFallbackText(normalized) : fallbackText;
+        return '<iconify-icon class="hiprint-icon hiprint-iconify" icon="' + escapeHtmlAttr(normalized) + '">' + escapeHtmlAttr(fallback) + "</iconify-icon>";
+      }
+      return '<span class="hiprint-icon hiprint-icon-fallback">' + escapeHtmlAttr(iconValue) + '</span>';
+    },
+    setToggleIcon = function ($toggle, icon, fallbackText) {
+      var $icon = $toggle.find(".hiprint-icon").first();
+      if (!$icon.length) return;
+      if ($icon.is("iconify-icon") || $icon.hasClass("hiprint-iconify")) {
+        var normalized = normalizeIconName(icon);
+        $icon.attr("icon", normalized || "");
+        $icon.text(null == fallbackText ? iconifyFallbackText(normalized) : fallbackText);
+      } else {
+        $icon.text(null == fallbackText ? iconifyFallbackText(normalizeIconName(icon)) : fallbackText);
+      }
+    },
     l = function () {
       function t() {
       }
 
       return t.prototype.createPrintElementTypeHtml = function (t, e) {
-        var n = $('<div class="hiprint-ep-type-container"></div>');
+        var i = $(t),
+          n = $('<div class="hiprint-ep-type-container"></div>');
         return e.forEach(function (t) {
           var e = !!t.isDynamicSlot,
             group = $('<div class="hiprint-ep-group' + (e ? " hiprint-ep-group-slot" : "") + '"></div>'),
@@ -8842,11 +8928,11 @@ var hiprint = function (t) {
           var grid = $('<div class="hiprint-ep-grid"></div>');
           group.append(grid);
           t.printElementTypes && t.printElementTypes.length ? t.printElementTypes.forEach(function (t) {
-            var iconHtml = t.icon ? '<span class="glyphicon ' + t.icon + '"></span>' : '';
+            var iconHtml = renderIconHtml(t.icon);
             grid.append('<a class="ep-draggable-item hiprint-ep-card" tid="' + t.tid + '">' + iconHtml + '<span>' + t.getText() + '</span></a>');
           }) : e && grid.append('<div class="hiprint-ep-slot-empty">' + (t.emptyTip || "暂无动态字段") + "</div>");
           n.append(group);
-        }), $(t).append(n), n.find(".ep-draggable-item");
+        }), i.append(n), n.find(".ep-draggable-item");
       }, t;
     }(),
     u = n(5),
@@ -12695,9 +12781,35 @@ var hiprint = function (t) {
       onSave: null,
       onPaperChange: null,
       onScaleChange: null,
+      onRotate: null,
+      onAlign: null,
+      showBusinessSelect: true,
+      businessButtonText: i18n.__('业务选择'),
+      onBusinessClick: null,
+      onBusinessDialogOpen: null,
+      onBusinessDialogClose: null,
+      businessDialogTitle: i18n.__('选择业务'),
+      businessDialogEmptyText: i18n.__('暂无业务'),
+      businessDialogLoadingText: i18n.__('业务加载中...'),
+      businessDialogErrorText: i18n.__('业务加载失败'),
+      businessListProvider: null,
+      businessLoader: null,
+      onBusinessSelect: null,
+      closeBusinessDialogOnSelect: true,
+      onTemplateDialogOpen: null,
+      onTemplateDialogClose: null,
+      onTemplateDeleteConfirm: null,
       showTemplateSelect: true,
       showSave: true,
       templateButtonText: i18n.__('选择模版'),
+      onSaveDialogOpen: null,
+      onSaveDialogClose: null,
+      customPaperButtonText: i18n.__('自定义'),
+      customPaperConfirmText: i18n.__('确定'),
+      rotateButtonText: i18n.__('旋转'),
+      previewButtonText: i18n.__('预览'),
+      clearButtonText: i18n.__('清空'),
+      printButtonText: i18n.__('打印'),
       saveButtonText: i18n.__('保存'),
       saveDialogTitle: i18n.__('保存模版'),
       saveDialogNameLabel: i18n.__('模版名称'),
@@ -12727,12 +12839,39 @@ var hiprint = function (t) {
     var scaleValue = 1;
     var toolbarCtrl = null;
     var toolbarApi = null;
+    var toolbarButtonRegistry = {};
+    var toolbarGroupRegistry = {};
+    var businessItems = [];
+    var businessLoading = false;
+    var businessError = '';
+    var businessDialogRequestId = 0;
+    var $businessDialog = null;
     var templateItems = [];
     var templateLoading = false;
     var templateError = '';
     var templateDialogRequestId = 0;
     var $templateDialog = null;
     var $saveDialog = null;
+    var dialogHandlerKeyMap = {
+      businessOpen: 'onBusinessDialogOpen',
+      businessClose: 'onBusinessDialogClose',
+      templateOpen: 'onTemplateDialogOpen',
+      templateClose: 'onTemplateDialogClose',
+      saveOpen: 'onSaveDialogOpen',
+      saveClose: 'onSaveDialogClose',
+      templateDeleteConfirm: 'onTemplateDeleteConfirm'
+    };
+
+    function getDialogHandler(handlerKey) {
+      var optionKey = dialogHandlerKeyMap[handlerKey] || handlerKey;
+      return opts[optionKey];
+    }
+
+    function setDialogHandler(handlerKey, handler) {
+      var optionKey = dialogHandlerKeyMap[handlerKey] || handlerKey;
+      opts[optionKey] = handler;
+      return opts[optionKey];
+    }
 
     function normalizeTemplateItem(item, index) {
       if (!item) return null;
@@ -12755,6 +12894,125 @@ var hiprint = function (t) {
         }
       }
       return data;
+    }
+
+    function normalizeBusinessItem(item, index) {
+      if (!item) return null;
+      var name = item.name || item.title || item.businessName || item.label || (i18n.__('未命名业务') + ' ' + (index + 1));
+      var id = item.id || item.businessId || item.key || item.code || ('business_' + index);
+      return $.extend({}, item, {
+        _idx: index,
+        _bid: id,
+        _name: name
+      });
+    }
+
+    function parseBusinessData(data) {
+      if (!data) return null;
+      if (typeof data === 'string') {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          return data;
+        }
+      }
+      return data;
+    }
+
+    function registerToolbarGroup(key, $group) {
+      if (!key || !$group || !$group.length) return $group;
+      toolbarGroupRegistry[key] = $group;
+      return $group;
+    }
+
+    function registerToolbarButton(key, $button, meta) {
+      if (!key || !$button || !$button.length) return $button;
+      toolbarButtonRegistry[key] = $.extend({
+        $el: $button,
+        groupKey: null
+      }, meta || {});
+      return $button;
+    }
+
+    function getToolbarButtonRecord(key) {
+      return key && toolbarButtonRegistry[key] ? toolbarButtonRegistry[key] : null;
+    }
+
+    function getToolbarButton(key) {
+      var record = getToolbarButtonRecord(key);
+      return record ? record.$el : null;
+    }
+
+    function syncToolbarGroupVisibility(groupKey) {
+      if (!groupKey) return;
+      var $group = toolbarGroupRegistry[groupKey];
+      if (!$group || !$group.length) return;
+      var hasVisibleButton = false;
+      $.each(toolbarButtonRegistry, function (btnKey, record) {
+        if (record && record.groupKey === groupKey && record.$el && record.$el.length && record.$el.css('display') !== 'none') {
+          hasVisibleButton = true;
+          return false;
+        }
+      });
+      $group.toggle(hasVisibleButton);
+    }
+
+    function setToolbarButtonVisible(key, visible) {
+      var record = getToolbarButtonRecord(key);
+      if (!record || !record.$el || !record.$el.length) return false;
+      record.$el.toggle(visible !== false);
+      syncToolbarGroupVisibility(record.groupKey);
+      return true;
+    }
+
+    function setToolbarButtonDisabled(key, disabled) {
+      var record = getToolbarButtonRecord(key);
+      if (!record || !record.$el || !record.$el.length) return false;
+      record.$el.prop('disabled', !!disabled);
+      return true;
+    }
+
+    function setToolbarButtonText(key, text, useHtml) {
+      var record = getToolbarButtonRecord(key);
+      if (!record || !record.$el || !record.$el.length) return false;
+      if (useHtml) {
+        record.$el.html(text == null ? '' : text);
+      } else {
+        record.$el.text(text == null ? '' : text);
+      }
+      return true;
+    }
+
+    function triggerToolbarButton(key) {
+      var record = getToolbarButtonRecord(key);
+      if (!record || !record.$el || !record.$el.length) return false;
+      record.$el.trigger('click');
+      return true;
+    }
+
+    function setToolbarGroupVisible(groupKey, visible) {
+      var $group = toolbarGroupRegistry[groupKey];
+      if (!$group || !$group.length) return false;
+      $group.toggle(visible !== false);
+      return true;
+    }
+
+    function getToolbarButtons() {
+      var map = {};
+      $.each(toolbarButtonRegistry, function (key, record) {
+        if (!record || !record.$el) return;
+        map[key] = record.$el;
+      });
+      return map;
+    }
+
+    function getToolbarGroups() {
+      var map = {};
+      $.each(toolbarGroupRegistry, function (key, $group) {
+        if (!$group) return;
+        map[key] = $group;
+      });
+      return map;
     }
 
     function applyTemplateData(data) {
@@ -12784,6 +13042,179 @@ var hiprint = function (t) {
       } catch (e) {
         console.error(e);
       }
+    }
+
+    function renderBusinessDialog() {
+      if (!$businessDialog || !$businessDialog.length) return;
+      $businessDialog.find('.hiprint-toolbar-template-title').text(opts.businessDialogTitle || i18n.__('选择业务'));
+      var $body = $businessDialog.find('.hiprint-toolbar-template-body');
+      $body.empty();
+      if (businessLoading) {
+        $body.append('<div class="hiprint-toolbar-template-state loading">' + (opts.businessDialogLoadingText || i18n.__('业务加载中...')) + '</div>');
+        return;
+      }
+      if (businessError) {
+        $body.append('<div class="hiprint-toolbar-template-state error">' + businessError + '</div>');
+        return;
+      }
+      if (!businessItems.length) {
+        $body.append('<div class="hiprint-toolbar-template-state empty">' + (opts.businessDialogEmptyText || i18n.__('暂无业务')) + '</div>');
+        return;
+      }
+      var $grid = $('<div class="hiprint-toolbar-template-grid"></div>');
+      businessItems.forEach(function (item, idx) {
+        var desc = item.description || item.desc || item.remark || '';
+        var timeText = item.updatedAt || item.updateTime || item.modifiedAt || '';
+        var $card = $('<div class="hiprint-toolbar-template-card" data-business-index="' + idx + '"></div>');
+        $card.append('<div class="hiprint-toolbar-template-card-title" title="' + item._name + '">' + item._name + '</div>');
+        $card.append('<div class="hiprint-toolbar-template-card-desc" title="' + desc + '">' + (desc || i18n.__('暂无描述')) + '</div>');
+        if (timeText) {
+          $card.append('<div class="hiprint-toolbar-template-card-meta">' + i18n.__('更新时间') + ': ' + timeText + '</div>');
+        }
+        var $actions = $('<div class="hiprint-toolbar-template-card-actions"></div>');
+        $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary hiprint-toolbar-business-action" data-action="select" data-index="' + idx + '">' + i18n.__('选择') + '</button>');
+        $card.append($actions);
+        $grid.append($card);
+      });
+      $body.append($grid);
+    }
+
+    function refreshBusinessList() {
+      if (typeof opts.businessListProvider !== 'function') {
+        businessLoading = false;
+        businessError = '';
+        renderBusinessDialog();
+        return Promise.resolve((businessItems || []).slice());
+      }
+      var reqId = ++businessDialogRequestId;
+      businessLoading = true;
+      businessError = '';
+      renderBusinessDialog();
+      return Promise.resolve(opts.businessListProvider(template, toolbarApi)).then(function (list) {
+        if (reqId !== businessDialogRequestId) return businessItems;
+        if (!Array.isArray(list)) list = [];
+        businessItems = list.map(function (item, index) {
+          return normalizeBusinessItem(item, index);
+        }).filter(function (item) {
+          return !!item;
+        });
+        businessError = '';
+        return businessItems;
+      }).catch(function (err) {
+        if (reqId !== businessDialogRequestId) return businessItems;
+        businessError = (err && err.message) || opts.businessDialogErrorText || i18n.__('业务加载失败');
+        return businessItems;
+      }).finally(function () {
+        if (reqId !== businessDialogRequestId) return;
+        businessLoading = false;
+        renderBusinessDialog();
+      });
+    }
+
+    function closeBusinessDialogDefault() {
+      if ($businessDialog && $businessDialog.length) {
+        $businessDialog.hide();
+      }
+    }
+
+    function closeBusinessDialog(payload) {
+      var context = {
+        type: 'business',
+        payload: payload,
+        template: template,
+        api: toolbarApi,
+        closeDefault: closeBusinessDialogDefault
+      };
+      if (typeof opts.onBusinessDialogClose === 'function') {
+        var result = opts.onBusinessDialogClose(context);
+        if (result === false || result === true) return;
+      }
+      closeBusinessDialogDefault();
+    }
+
+    function resolveBusinessData(item) {
+      if (typeof opts.businessLoader === 'function') {
+        return Promise.resolve(opts.businessLoader(item, template, toolbarApi));
+      }
+      return Promise.resolve(item && (item.businessConfig || item.fieldsConfig || item.config || item.data || null));
+    }
+
+    function handleBusinessSelect(item) {
+      if (!item) return Promise.resolve();
+      return resolveBusinessData(item).then(function (rawData) {
+        var parsedData = parseBusinessData(rawData);
+        if (typeof opts.onBusinessSelect === 'function') {
+          opts.onBusinessSelect(item, parsedData == null ? rawData : parsedData, template, toolbarApi);
+        }
+        if (opts.closeBusinessDialogOnSelect !== false) {
+          closeBusinessDialog();
+        }
+      }).catch(function (err) {
+        console.error(err);
+      });
+    }
+
+    function ensureBusinessDialog() {
+      if ($businessDialog && $businessDialog.length) return $businessDialog;
+      $businessDialog = $(
+        '<div class="hiprint-toolbar-business-dialog-wrap" style="display:none;">' +
+          '<div class="hiprint-toolbar-template-mask"></div>' +
+          '<div class="hiprint-toolbar-template-dialog">' +
+            '<div class="hiprint-toolbar-template-header">' +
+              '<span class="hiprint-toolbar-template-title"></span>' +
+            '</div>' +
+            '<div class="hiprint-toolbar-template-body"></div>' +
+            '<div class="hiprint-toolbar-template-footer">' +
+              '<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-business-refresh">' + i18n.__('刷新') + '</button>' +
+              '<button type="button" class="hiprint-toolbar-btn js-business-close">' + i18n.__('关闭') + '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+      $container.append($businessDialog);
+      $businessDialog.on('click', '.hiprint-toolbar-template-mask, .js-business-close', function () {
+        closeBusinessDialog();
+      });
+      $businessDialog.on('click', '.hiprint-toolbar-template-dialog', function (e) {
+        e.stopPropagation();
+      });
+      $businessDialog.on('click', '.hiprint-toolbar-business-refresh', function () {
+        refreshBusinessList();
+      });
+      $businessDialog.on('click', '.hiprint-toolbar-business-action', function () {
+        var idx = parseInt($(this).attr('data-index'));
+        if (isNaN(idx) || !businessItems[idx]) return;
+        var action = $(this).attr('data-action');
+        var item = businessItems[idx];
+        if (action === 'select') {
+          handleBusinessSelect(item);
+        }
+      });
+      renderBusinessDialog();
+      return $businessDialog;
+    }
+
+    function openBusinessDialogDefault() {
+      ensureBusinessDialog();
+      $businessDialog.show();
+      renderBusinessDialog();
+      refreshBusinessList();
+    }
+
+    function openBusinessDialog(payload) {
+      var context = {
+        type: 'business',
+        payload: payload,
+        template: template,
+        api: toolbarApi,
+        openDefault: openBusinessDialogDefault,
+        closeDefault: closeBusinessDialogDefault
+      };
+      if (typeof opts.onBusinessDialogOpen === 'function') {
+        var result = opts.onBusinessDialogOpen(context);
+        if (result === false || result === true) return;
+      }
+      openBusinessDialogDefault();
     }
 
     function renderTemplateDialog() {
@@ -12858,10 +13289,25 @@ var hiprint = function (t) {
       });
     }
 
-    function closeTemplateDialog() {
+    function closeTemplateDialogDefault() {
       if ($templateDialog && $templateDialog.length) {
         $templateDialog.hide();
       }
+    }
+
+    function closeTemplateDialog(payload) {
+      var context = {
+        type: 'template',
+        payload: payload,
+        template: template,
+        api: toolbarApi,
+        closeDefault: closeTemplateDialogDefault
+      };
+      if (typeof opts.onTemplateDialogClose === 'function') {
+        var result = opts.onTemplateDialogClose(context);
+        if (result === false || result === true) return;
+      }
+      closeTemplateDialogDefault();
     }
 
     function resolveTemplateData(item) {
@@ -12889,6 +13335,31 @@ var hiprint = function (t) {
       });
     }
 
+    function confirmTemplateDeleteDefault(item) {
+      return confirm(i18n.__('是否确认删除') + '?');
+    }
+
+    function confirmTemplateDelete(item) {
+      if (typeof opts.onTemplateDeleteConfirm === 'function') {
+        var context = {
+          type: 'templateDelete',
+          item: item,
+          template: template,
+          api: toolbarApi,
+          confirmDefault: function () {
+            return confirmTemplateDeleteDefault(item);
+          }
+        };
+        return Promise.resolve(opts.onTemplateDeleteConfirm(context)).then(function (result) {
+          return result !== false;
+        }).catch(function (err) {
+          console.error(err);
+          return false;
+        });
+      }
+      return Promise.resolve(confirmTemplateDeleteDefault(item));
+    }
+
     function handleTemplateDelete(item) {
       if (!item) return;
       var executeDelete = function () {
@@ -12905,9 +13376,9 @@ var hiprint = function (t) {
         });
         renderTemplateDialog();
       };
-      if (confirm(i18n.__('是否确认删除') + '?')) {
-        executeDelete();
-      }
+      confirmTemplateDelete(item).then(function (allow) {
+        if (allow !== false) executeDelete();
+      });
     }
 
     function ensureTemplateDialog() {
@@ -12956,17 +13427,48 @@ var hiprint = function (t) {
       return $templateDialog;
     }
 
-    function openTemplateDialog() {
+    function openTemplateDialogDefault() {
       ensureTemplateDialog();
       $templateDialog.show();
       renderTemplateDialog();
       refreshTemplateList();
     }
 
-    function closeSaveDialog() {
+    function openTemplateDialog(payload) {
+      var context = {
+        type: 'template',
+        payload: payload,
+        template: template,
+        api: toolbarApi,
+        openDefault: openTemplateDialogDefault,
+        closeDefault: closeTemplateDialogDefault
+      };
+      if (typeof opts.onTemplateDialogOpen === 'function') {
+        var result = opts.onTemplateDialogOpen(context);
+        if (result === false || result === true) return;
+      }
+      openTemplateDialogDefault();
+    }
+
+    function closeSaveDialogDefault() {
       if ($saveDialog && $saveDialog.length) {
         $saveDialog.hide();
       }
+    }
+
+    function closeSaveDialog(payload) {
+      var context = {
+        type: 'save',
+        payload: payload,
+        template: template,
+        api: toolbarApi,
+        closeDefault: closeSaveDialogDefault
+      };
+      if (typeof opts.onSaveDialogClose === 'function') {
+        var result = opts.onSaveDialogClose(context);
+        if (result === false || result === true) return;
+      }
+      closeSaveDialogDefault();
     }
 
     function saveTemplateWithName(templateName, event) {
@@ -13034,7 +13536,7 @@ var hiprint = function (t) {
       return $saveDialog;
     }
 
-    function openSaveDialog(defaultName) {
+    function openSaveDialogDefault(defaultName) {
       ensureSaveDialog();
       var $input = $saveDialog.find('.hiprint-toolbar-save-input');
       var $error = $saveDialog.find('.hiprint-toolbar-save-error');
@@ -13052,6 +13554,25 @@ var hiprint = function (t) {
       }, 0);
     }
 
+    function openSaveDialog(defaultName, payload) {
+      var context = {
+        type: 'save',
+        payload: payload,
+        defaultName: defaultName,
+        template: template,
+        api: toolbarApi,
+        openDefault: function (name) {
+          openSaveDialogDefault(name == null ? defaultName : name);
+        },
+        closeDefault: closeSaveDialogDefault
+      };
+      if (typeof opts.onSaveDialogOpen === 'function') {
+        var result = opts.onSaveDialogOpen(context);
+        if (result === false || result === true) return;
+      }
+      openSaveDialogDefault(defaultName);
+    }
+
     function triggerSave(payload) {
       if (payload && typeof payload === 'object' && payload.skipPrompt) {
         return saveTemplateWithName(payload.name, payload.event);
@@ -13059,14 +13580,31 @@ var hiprint = function (t) {
       if (typeof payload === 'string') {
         return saveTemplateWithName(payload, null);
       }
-      openSaveDialog(payload && payload.name);
+      openSaveDialog(payload && payload.name, payload);
       return null;
+    }
+
+    // --- 业务选择 ---
+    if (opts.showBusinessSelect) {
+      var $businessSelectGroup = registerToolbarGroup('businessSelect', $('<div class="hiprint-toolbar-group hiprint-toolbar-business-select"></div>'));
+      var $businessSelectBtn = registerToolbarButton('businessSelect', $('<button class="hiprint-toolbar-btn">' + (opts.businessButtonText || i18n.__('业务选择')) + '</button>'), { groupKey: 'businessSelect' });
+      $businessSelectBtn.on('click', function () {
+        var result = true;
+        if (typeof opts.onBusinessClick === 'function') {
+          result = opts.onBusinessClick(template, toolbarApi);
+        }
+        if (result !== false) {
+          openBusinessDialog();
+        }
+      });
+      $businessSelectGroup.append($businessSelectBtn);
+      $toolbar.append($businessSelectGroup);
     }
 
     // --- 模版选择 ---
     if (opts.showTemplateSelect) {
-      var $templateSelectGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-template-select"></div>');
-      var $templateSelectBtn = $('<button class="hiprint-toolbar-btn">' + (opts.templateButtonText || i18n.__('选择模版')) + '</button>');
+      var $templateSelectGroup = registerToolbarGroup('templateSelect', $('<div class="hiprint-toolbar-group hiprint-toolbar-template-select"></div>'));
+      var $templateSelectBtn = registerToolbarButton('templateSelect', $('<button class="hiprint-toolbar-btn">' + (opts.templateButtonText || i18n.__('选择模版')) + '</button>'), { groupKey: 'templateSelect' });
       $templateSelectBtn.on('click', function () {
         openTemplateDialog();
       });
@@ -13076,10 +13614,12 @@ var hiprint = function (t) {
 
     // --- 纸张选择 ---
     if (opts.showPaperSelect) {
-      var $paperGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-paper"></div>');
+      var $paperGroup = registerToolbarGroup('paper', $('<div class="hiprint-toolbar-group hiprint-toolbar-paper"></div>'));
       var curPaper = opts.defaultPaper;
+      var $customBtn = null;
       $.each(opts.paperTypes, function (name, size) {
-        var $btn = $('<button class="hiprint-toolbar-btn' + (name === curPaper ? ' active' : '') + '" data-paper="' + name + '">' + name + '</button>');
+        var buttonKey = 'paper:' + name;
+        var $btn = registerToolbarButton(buttonKey, $('<button class="hiprint-toolbar-btn' + (name === curPaper ? ' active' : '') + '" data-paper="' + name + '">' + name + '</button>'), { groupKey: 'paper' });
         $btn.on('click', function () {
           curPaper = name;
           $paperGroup.find('.hiprint-toolbar-btn').removeClass('active');
@@ -13092,13 +13632,13 @@ var hiprint = function (t) {
       });
 
       if (opts.showCustomPaper) {
-        var $customBtn = $('<button class="hiprint-toolbar-btn" data-paper="custom">' + i18n.__('自定义') + '</button>');
+        $customBtn = registerToolbarButton('paper:custom', $('<button class="hiprint-toolbar-btn" data-paper="custom">' + (opts.customPaperButtonText || i18n.__('自定义')) + '</button>'), { groupKey: 'paper' });
         var $customPopover = $('<div class="hiprint-toolbar-popover" style="display:none;"></div>');
         var $customContent = $('<div class="hiprint-toolbar-popover-content"></div>');
         var $wInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('宽') + '(mm)" style="width:80px;" value="220"/>');
         var $sep = $('<span style="margin:0 4px;">×</span>');
         var $hInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('高') + '(mm)" style="width:80px;" value="80"/>');
-        var $okBtn = $('<button class="hiprint-toolbar-btn active" style="margin-left:6px;">' + i18n.__('确定') + '</button>');
+        var $okBtn = registerToolbarButton('paper:customConfirm', $('<button class="hiprint-toolbar-btn active" style="margin-left:6px;">' + (opts.customPaperConfirmText || i18n.__('确定')) + '</button>'), { groupKey: 'paper' });
         $okBtn.on('click', function () {
           var w = parseFloat($wInput.val()), h = parseFloat($hInput.val());
           if (w > 0 && h > 0) {
@@ -13130,13 +13670,13 @@ var hiprint = function (t) {
 
     // --- 缩放 ---
     if (opts.showScale) {
-      var $scaleGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-scale"></div>');
+      var $scaleGroup = registerToolbarGroup('scale', $('<div class="hiprint-toolbar-group hiprint-toolbar-scale"></div>'));
       var $scaleLabel = $('<span class="hiprint-toolbar-scale-label">100%</span>');
       var updateScaleLabel = function () {
         $scaleLabel.text(Math.round(scaleValue * 100) + '%');
       };
-      var $zoomOut = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('缩小') + '">−</button>');
-      var $zoomIn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('放大') + '">+</button>');
+      var $zoomOut = registerToolbarButton('scale:zoomOut', $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('缩小') + '">−</button>'), { groupKey: 'scale' });
+      var $zoomIn = registerToolbarButton('scale:zoomIn', $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('放大') + '">+</button>'), { groupKey: 'scale' });
       $zoomOut.on('click', function () {
         scaleValue = Math.max(opts.scaleMin, +(scaleValue - opts.scaleStep).toFixed(2));
         template.zoom(scaleValue);
@@ -13155,9 +13695,15 @@ var hiprint = function (t) {
 
     // --- 旋转 ---
     if (opts.showRotate) {
-      var $rotateBtn = $('<button class="hiprint-toolbar-btn" title="' + i18n.__('旋转') + '">↻ ' + i18n.__('旋转') + '</button>');
-      $rotateBtn.on('click', function () { template.rotatePaper(); });
-      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($rotateBtn));
+      var $rotateGroup = registerToolbarGroup('rotate', $('<div class="hiprint-toolbar-group"></div>'));
+      var rotateText = opts.rotateButtonText || i18n.__('旋转');
+      var $rotateBtn = registerToolbarButton('rotate', $('<button class="hiprint-toolbar-btn" title="' + rotateText + '">↻ ' + rotateText + '</button>'), { groupKey: 'rotate' });
+      $rotateBtn.on('click', function () {
+        template.rotatePaper();
+        opts.onRotate && opts.onRotate(template);
+      });
+      $rotateGroup.append($rotateBtn);
+      $toolbar.append($rotateGroup);
     }
 
     // --- 对齐 ---
@@ -13172,10 +13718,14 @@ var hiprint = function (t) {
         { type: 'distributeHorizontal', label: i18n.__('水平等距'), icon: '⇔' },
         { type: 'distributeVertical', label: i18n.__('垂直等距'), icon: '⇕' }
       ];
-      var $alignGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-align"></div>');
+      var $alignGroup = registerToolbarGroup('align', $('<div class="hiprint-toolbar-group hiprint-toolbar-align"></div>'));
       alignItems.forEach(function (item) {
-        var $btn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '">' + item.icon + '</button>');
-        $btn.on('click', function () { template.alignElements(item.type); });
+        var alignKey = 'align:' + item.type;
+        var $btn = registerToolbarButton(alignKey, $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '">' + item.icon + '</button>'), { groupKey: 'align' });
+        $btn.on('click', function () {
+          template.alignElements(item.type);
+          opts.onAlign && opts.onAlign(item.type, template);
+        });
         $alignGroup.append($btn);
       });
       $toolbar.append($alignGroup);
@@ -13183,39 +13733,47 @@ var hiprint = function (t) {
 
     // --- 预览 ---
     if (opts.showPreview) {
-      var $previewBtn = $('<button class="hiprint-toolbar-btn">' + i18n.__('预览') + '</button>');
+      var $previewGroup = registerToolbarGroup('preview', $('<div class="hiprint-toolbar-group"></div>'));
+      var $previewBtn = registerToolbarButton('preview', $('<button class="hiprint-toolbar-btn">' + (opts.previewButtonText || i18n.__('预览')) + '</button>'), { groupKey: 'preview' });
       $previewBtn.on('click', function () {
         if (opts.onPreview) { opts.onPreview(template); }
       });
-      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($previewBtn));
+      $previewGroup.append($previewBtn);
+      $toolbar.append($previewGroup);
     }
 
     // --- 清空 ---
     if (opts.showClear) {
-      var $clearBtn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + i18n.__('清空') + '</button>');
+      var $clearGroup = registerToolbarGroup('clear', $('<div class="hiprint-toolbar-group"></div>'));
+      var $clearBtn = registerToolbarButton('clear', $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + (opts.clearButtonText || i18n.__('清空')) + '</button>'), { groupKey: 'clear' });
       $clearBtn.on('click', function () {
         if (opts.onClear) { opts.onClear(template); return; }
         if (confirm(i18n.__('是否确认清空') + '?')) { template.clear(); }
       });
-      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($clearBtn));
+      $clearGroup.append($clearBtn);
+      $toolbar.append($clearGroup);
     }
 
     // --- 打印 ---
     if (opts.showPrint) {
-      var $printBtn = $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + i18n.__('打印') + '</button>');
+      var $printGroup = registerToolbarGroup('print', $('<div class="hiprint-toolbar-group"></div>'));
+      var $printBtn = registerToolbarButton('print', $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + (opts.printButtonText || i18n.__('打印')) + '</button>'), { groupKey: 'print' });
       $printBtn.on('click', function () {
         if (opts.onPrint) { opts.onPrint(template); }
       });
-      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($printBtn));
+      $printGroup.append($printBtn);
+      $toolbar.append($printGroup);
     }
 
     // --- 保存 ---
     if (opts.showSave) {
-      var $saveBtn = $('<button class="hiprint-toolbar-btn">' + (opts.saveButtonText || i18n.__('保存')) + '</button>');
+      var $saveGroup = registerToolbarGroup('save', $('<div class="hiprint-toolbar-group"></div>'));
+      var $saveBtn = registerToolbarButton('save', $('<button class="hiprint-toolbar-btn">' + (opts.saveButtonText || i18n.__('保存')) + '</button>'), { groupKey: 'save' });
       $saveBtn.on('click', function (e) {
         triggerSave(e);
       });
-      $toolbar.append($('<div class="hiprint-toolbar-group"></div>').append($saveBtn));
+      $saveGroup.append($saveBtn);
+      $toolbar.append($saveGroup);
     }
 
     var addToolbarGroup = function ($group, position) {
@@ -13251,6 +13809,9 @@ var hiprint = function (t) {
 
       var disabled = typeof btnOpt.disabled === 'function' ? !!btnOpt.disabled(template, api) : !!btnOpt.disabled;
       if (disabled) $btn.prop('disabled', true);
+      if (btnOpt.key) {
+        registerToolbarButton('extra:' + btnOpt.key, $btn, { groupKey: 'extra' });
+      }
       $btn.on('click', function (e) {
         if (disabled) return;
         if (typeof btnOpt.onClick === 'function') {
@@ -13273,11 +13834,49 @@ var hiprint = function (t) {
       createButton: function (btnOpt) {
         return createExtraButton(btnOpt, toolbarApi);
       },
+      getBusinessDialogElement: function () {
+        return ensureBusinessDialog();
+      },
+      openBusinessDialog: function () {
+        openBusinessDialog();
+      },
+      closeBusinessDialog: function () {
+        closeBusinessDialog();
+      },
+      refreshBusinessList: function () {
+        return refreshBusinessList();
+      },
+      setBusinessItems: function (list) {
+        if (!Array.isArray(list)) list = [];
+        businessItems = list.map(function (item, index) {
+          return normalizeBusinessItem(item, index);
+        }).filter(function (item) {
+          return !!item;
+        });
+        businessLoading = false;
+        businessError = '';
+        renderBusinessDialog();
+      },
+      getBusinessItems: function () {
+        return (businessItems || []).slice();
+      },
+      setBusinessListProvider: function (provider) {
+        opts.businessListProvider = provider;
+      },
+      setBusinessLoader: function (loader) {
+        opts.businessLoader = loader;
+      },
+      getTemplateDialogElement: function () {
+        return ensureTemplateDialog();
+      },
       openTemplateDialog: function () {
         openTemplateDialog();
       },
       closeTemplateDialog: function () {
         closeTemplateDialog();
+      },
+      getSaveDialogElement: function () {
+        return ensureSaveDialog();
       },
       openSaveDialog: function (defaultName) {
         openSaveDialog(defaultName);
@@ -13307,13 +13906,70 @@ var hiprint = function (t) {
       },
       setTemplateLoader: function (loader) {
         opts.templateLoader = loader;
+      },
+      setDialogHandler: function (handlerKey, handler) {
+        return setDialogHandler(handlerKey, handler);
+      },
+      getDialogHandler: function (handlerKey) {
+        return getDialogHandler(handlerKey);
+      },
+      setBusinessDialogOpenHandler: function (handler) {
+        return setDialogHandler('businessOpen', handler);
+      },
+      setBusinessDialogCloseHandler: function (handler) {
+        return setDialogHandler('businessClose', handler);
+      },
+      setTemplateDialogOpenHandler: function (handler) {
+        return setDialogHandler('templateOpen', handler);
+      },
+      setTemplateDialogCloseHandler: function (handler) {
+        return setDialogHandler('templateClose', handler);
+      },
+      setSaveDialogOpenHandler: function (handler) {
+        return setDialogHandler('saveOpen', handler);
+      },
+      setSaveDialogCloseHandler: function (handler) {
+        return setDialogHandler('saveClose', handler);
+      },
+      setTemplateDeleteConfirmHandler: function (handler) {
+        return setDialogHandler('templateDeleteConfirm', handler);
+      },
+      getButton: function (key) {
+        return getToolbarButton(key);
+      },
+      getButtons: function () {
+        return getToolbarButtons();
+      },
+      setButtonVisible: function (key, visible) {
+        return setToolbarButtonVisible(key, visible);
+      },
+      setButtonDisabled: function (key, disabled) {
+        return setToolbarButtonDisabled(key, disabled);
+      },
+      setButtonText: function (key, text, useHtml) {
+        return setToolbarButtonText(key, text, useHtml);
+      },
+      triggerButton: function (key) {
+        return triggerToolbarButton(key);
+      },
+      getGroup: function (groupKey) {
+        return toolbarGroupRegistry[groupKey] || null;
+      },
+      getGroups: function () {
+        return getToolbarGroups();
+      },
+      setGroupVisible: function (groupKey, visible) {
+        return setToolbarGroupVisible(groupKey, visible);
       }
     };
 
     // --- 扩展按钮（配置式） ---
     if (Array.isArray(opts.extraButtons) && opts.extraButtons.length) {
-      var $extraGroup = $('<div class="hiprint-toolbar-group hiprint-toolbar-extra"></div>');
-      opts.extraButtons.forEach(function (btnOpt) {
+      var $extraGroup = registerToolbarGroup('extra', $('<div class="hiprint-toolbar-group hiprint-toolbar-extra"></div>'));
+      opts.extraButtons.forEach(function (btnOpt, index) {
+        if (btnOpt && !btnOpt.key) {
+          btnOpt.key = '' + index;
+        }
         var $btn = createExtraButton(btnOpt, toolbarApi);
         $btn && $extraGroup.append($btn);
       });
@@ -13339,17 +13995,47 @@ var hiprint = function (t) {
           $toolbar.find('.hiprint-toolbar-scale-label').text(Math.round(scaleValue * 100) + '%');
         }
       },
+      openBusinessDialog: function () {
+        openBusinessDialog();
+      },
+      closeBusinessDialog: function () {
+        closeBusinessDialog();
+      },
+      refreshBusinessList: function () {
+        return refreshBusinessList();
+      },
+      setBusinessItems: function (list) {
+        toolbarApi.setBusinessItems(list);
+      },
+      getBusinessItems: function () {
+        return toolbarApi.getBusinessItems();
+      },
+      setBusinessListProvider: function (provider) {
+        toolbarApi.setBusinessListProvider(provider);
+      },
+      setBusinessLoader: function (loader) {
+        toolbarApi.setBusinessLoader(loader);
+      },
+      getBusinessDialogElement: function () {
+        return toolbarApi.getBusinessDialogElement();
+      },
       openTemplateDialog: function () {
         openTemplateDialog();
       },
       closeTemplateDialog: function () {
         closeTemplateDialog();
       },
+      getTemplateDialogElement: function () {
+        return toolbarApi.getTemplateDialogElement();
+      },
       openSaveDialog: function (defaultName) {
         openSaveDialog(defaultName);
       },
       closeSaveDialog: function () {
         closeSaveDialog();
+      },
+      getSaveDialogElement: function () {
+        return toolbarApi.getSaveDialogElement();
       },
       refreshTemplateList: function () {
         return refreshTemplateList();
@@ -13366,11 +14052,66 @@ var hiprint = function (t) {
       setTemplateLoader: function (loader) {
         toolbarApi.setTemplateLoader(loader);
       },
+      setDialogHandler: function (handlerKey, handler) {
+        return toolbarApi.setDialogHandler(handlerKey, handler);
+      },
+      getDialogHandler: function (handlerKey) {
+        return toolbarApi.getDialogHandler(handlerKey);
+      },
+      setBusinessDialogOpenHandler: function (handler) {
+        return toolbarApi.setBusinessDialogOpenHandler(handler);
+      },
+      setBusinessDialogCloseHandler: function (handler) {
+        return toolbarApi.setBusinessDialogCloseHandler(handler);
+      },
+      setTemplateDialogOpenHandler: function (handler) {
+        return toolbarApi.setTemplateDialogOpenHandler(handler);
+      },
+      setTemplateDialogCloseHandler: function (handler) {
+        return toolbarApi.setTemplateDialogCloseHandler(handler);
+      },
+      setSaveDialogOpenHandler: function (handler) {
+        return toolbarApi.setSaveDialogOpenHandler(handler);
+      },
+      setSaveDialogCloseHandler: function (handler) {
+        return toolbarApi.setSaveDialogCloseHandler(handler);
+      },
+      setTemplateDeleteConfirmHandler: function (handler) {
+        return toolbarApi.setTemplateDeleteConfirmHandler(handler);
+      },
       triggerSave: function (payload) {
         return triggerSave(payload);
       },
+      getButton: function (key) {
+        return toolbarApi.getButton(key);
+      },
+      getButtons: function () {
+        return toolbarApi.getButtons();
+      },
+      setButtonVisible: function (key, visible) {
+        return toolbarApi.setButtonVisible(key, visible);
+      },
+      setButtonDisabled: function (key, disabled) {
+        return toolbarApi.setButtonDisabled(key, disabled);
+      },
+      setButtonText: function (key, text, useHtml) {
+        return toolbarApi.setButtonText(key, text, useHtml);
+      },
+      triggerButton: function (key) {
+        return toolbarApi.triggerButton(key);
+      },
+      getGroup: function (groupKey) {
+        return toolbarApi.getGroup(groupKey);
+      },
+      getGroups: function () {
+        return toolbarApi.getGroups();
+      },
+      setGroupVisible: function (groupKey, visible) {
+        return toolbarApi.setGroupVisible(groupKey, visible);
+      },
       getToolbarElement: function () { return $toolbar; },
       destroy: function () {
+        closeBusinessDialog();
         closeTemplateDialog();
         closeSaveDialog();
         $container.empty();
@@ -13421,7 +14162,7 @@ var hiprint = function (t) {
     var $leftResizeBar = $('<div class="hiprint-designer-resize-bar"></div>');
     var $leftResizeHandle = $('<div class="hiprint-designer-resize-handle"></div>');
     var $leftToggle = $('<div class="hiprint-designer-edge-toggle hiprint-designer-edge-toggle-left" title="' + i18n.__('折叠组件栏') + '">' +
-      '<span class="glyphicon glyphicon-chevron-left"></span></div>');
+      renderIconHtml('ep:arrow-left', '<') + '</div>');
     $leftResizeBar.append($leftResizeHandle, $leftToggle);
 
     // 中间设计区域
@@ -13435,7 +14176,7 @@ var hiprint = function (t) {
     var $rightResizeBar = $('<div class="hiprint-designer-resize-bar"></div>');
     var $rightResizeHandle = $('<div class="hiprint-designer-resize-handle"></div>');
     var $rightToggle = $('<div class="hiprint-designer-edge-toggle hiprint-designer-edge-toggle-right" title="' + i18n.__('折叠属性栏') + '">' +
-      '<span class="glyphicon glyphicon-chevron-right"></span></div>');
+      renderIconHtml('ep:arrow-right', '>') + '</div>');
     $rightResizeBar.append($rightResizeHandle, $rightToggle);
 
     // 右侧属性面板
@@ -13459,11 +14200,11 @@ var hiprint = function (t) {
       if (leftCollapsed) {
         $leftResizeHandle.hide();
         $leftToggle.attr('title', i18n.__('展开组件栏'));
-        $leftToggle.find('.glyphicon').removeClass('glyphicon-chevron-left').addClass('glyphicon-chevron-right');
+        setToggleIcon($leftToggle, "ep:arrow-right", ">");
       } else {
         $leftResizeHandle.show();
         $leftToggle.attr('title', i18n.__('折叠组件栏'));
-        $leftToggle.find('.glyphicon').removeClass('glyphicon-chevron-right').addClass('glyphicon-chevron-left');
+        setToggleIcon($leftToggle, "ep:arrow-left", "<");
       }
     }
 
@@ -13472,11 +14213,11 @@ var hiprint = function (t) {
       if (rightCollapsed) {
         $rightResizeHandle.hide();
         $rightToggle.attr('title', i18n.__('展开属性栏'));
-        $rightToggle.find('.glyphicon').removeClass('glyphicon-chevron-right').addClass('glyphicon-chevron-left');
+        setToggleIcon($rightToggle, "ep:arrow-left", "<");
       } else {
         $rightResizeHandle.show();
         $rightToggle.attr('title', i18n.__('折叠属性栏'));
-        $rightToggle.find('.glyphicon').removeClass('glyphicon-chevron-left').addClass('glyphicon-chevron-right');
+        setToggleIcon($rightToggle, "ep:arrow-right", ">");
       }
     }
 
