@@ -62,9 +62,12 @@ window.autoConnect = false;
 window.io = io;
 
 var languages = {}
-const ctx = require.context("../i18n", true, /\.json$/);
-ctx.keys().forEach(key => {
-  languages[key.match(/\.\/([^.]+)/)[1]] = ctx(key)
+// 原 webpack `require.context("../i18n", true, /\.json$/)` 改用 Vite 的 import.meta.glob 等价实现。
+// eager: true 让 Rollup 在打包时静态展开为同步 import，运行时行为与原 require.context 一致。
+const ctx = import.meta.glob('../i18n/*.json', { eager: true })
+Object.keys(ctx).forEach(key => {
+  const m = key.match(/\/([^/.]+)\.json$/)
+  if (m) languages[m[1]] = ctx[key].default || ctx[key]
 })
 
 var i18n = {
@@ -3872,7 +3875,7 @@ var hiprint = function (t) {
       }
       return t.prototype.createTarget = function () {
         var self = this;
-        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('水印功能')}<input type="checkbox" class="watermark-toggle" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('水印功能')}<input type="checkbox" class="watermark-toggle auto-submit" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
         this.fieldsWrapper = $(`<div class="watermark-fields-wrapper" style="display:none;"></div>`);
         this.content = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: baseline;"><div style="width:25%">${i18n.__('水印内容')}:</div><input style="width:75%" type="text" placeholder="${i18n.__('水印内容')}" class="auto-submit"></div>`);
         this.fillStyle = $(`<div class="hiprint-option-item-field" style="display: flex;align-items: center;margin-top: 4px"><div style="width:25%">${i18n.__('字体颜色')}:</div><input style="width:100%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('字体颜色')}" class="auto-submit"></div>`);
@@ -3907,6 +3910,12 @@ var hiprint = function (t) {
         this.target.append(this.fieldsWrapper);
         this.target.find('.watermark-toggle').on('change', function () {
           if ($(this).is(':checked')) {
+            // 勾选时若 content 为空，填入默认占位，确保画布立即可见
+            // （水印 setValue 通过 content 是否非空判断启用状态，content 空则画布不渲染）
+            var $contentInput = self.content.find('input');
+            if (!$contentInput.val()) {
+              $contentInput.val(i18n.__('水印'));
+            }
             self.fieldsWrapper.slideDown(150);
           } else {
             self.fieldsWrapper.slideUp(150);
@@ -3958,7 +3967,7 @@ var hiprint = function (t) {
       }
       return t.prototype.createTarget = function () {
         var self = this;
-        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('网格设置')}<input type="checkbox" class="grid-toggle" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('网格设置')}<input type="checkbox" class="grid-toggle auto-submit" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
         this.fieldsWrapper = $(`<div class="grid-fields-wrapper" style="display:none;"></div>`);
         this.gridSize = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('网格大小')}:</div><input style="width:65%" type="number" min="1" max="20" step="0.5" value="5" placeholder="mm" class="auto-submit"></div>`);
         this.gridColor = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:center;margin-top:4px"><div style="width:35%">${i18n.__('网格颜色')}:</div><input style="width:100%" data-format="rgb" data-opacity="0.3" type="text" placeholder="${i18n.__('颜色')}" class="auto-submit"></div>`);
@@ -4003,7 +4012,7 @@ var hiprint = function (t) {
       }
       return t.prototype.createTarget = function () {
         var self = this;
-        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('打印边距')}<input type="checkbox" class="margin-toggle" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row"><div class="hiprint-option-item-label" style="display:flex;align-items:center;justify-content:space-between;">${i18n.__('打印边距')}<input type="checkbox" class="margin-toggle auto-submit" style="width:16px;height:16px;margin:0;cursor:pointer;"></div></div>`);
         this.fieldsWrapper = $(`<div class="margin-fields-wrapper" style="display:none;"></div>`);
         this.marginTop = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('上边距')}:</div><input style="width:65%" type="number" min="0" max="100" step="1" value="15" placeholder="pt" class="auto-submit"></div>`);
         this.marginBottom = $(`<div class="hiprint-option-item-field" style="display:flex;align-items:baseline;"><div style="width:35%">${i18n.__('下边距')}:</div><input style="width:65%" type="number" min="0" max="100" step="1" value="15" placeholder="pt" class="auto-submit"></div>`);
@@ -4811,7 +4820,16 @@ var hiprint = function (t) {
 
       return t.prototype.createTarget = function () {
         $('<div class="indicator"></div>').appendTo("body");
-        return " </ul>\n       </div>\n    </div>", this.target = $(' <div class="hiprint-option-item hiprint-option-item-row">\n       <div>\n            <ul class="hiprint-option-table-selected-columns"> </ul>\n       </div>\n    </div>'), this.target;
+        this.target = $(`<div class="hiprint-option-item hiprint-option-item-row hiprint-columns-group">
+       <div class="hiprint-option-item-label hiprint-columns-header">
+         <span>${i18n.__('列字段')}</span>
+         <span class="hiprint-columns-hint">${i18n.__('勾选显示，可拖拽排序')}</span>
+       </div>
+       <div>
+            <ul class="hiprint-option-table-selected-columns"></ul>
+       </div>
+    </div>`);
+        return this.target;
       }, t.prototype.getValue = function () {
         return this.buildData();
       }, t.prototype.setValue = function (t, e, n) {
@@ -4827,47 +4845,110 @@ var hiprint = function (t) {
           return e.checked = !1, e;
         });
         this.allColumns = t[0].columns.concat(r), t && 1 == t.length && (this.target.find("ul").html(this.allColumns.map(function (t, e) {
-          return '<li  class="hiprint-option-table-selected-item"> <div class="hi-pretty p-default">\n                ' + (t.checked ? '<input type="checkbox"   checked column-id="' + (t.id || t.columnId) + '" />' : '<input type="checkbox"  column-id="' + (t.id || t.columnId) + '" />') + '\n                <div class="state">\n                    <label></label>\n                </div>\n            </div><span class="column-title">' + (t.title || t.descTitle || "") + "</span></li>";
-        }).join("")), this.target.find("input").change(function (e) {
-          var checked = e.target.checked, id = e.target.attributes['column-id'].nodeValue || '';
-          var idx = i.allColumns.findIndex(function (e) {
-            return e.field == id || e.id == id;
-          });
-          if (idx >= 0) {
-            i.allColumns[idx]['checked'] = checked
-          }
-          i.submit();
-        }), this.printElementType.columnDisplayIndexEditable && this.target.find("li").hidraggable({
-          revert: !0,
-          handle: ".column-title",
-          moveUnit: "pt",
-          deltaX: 0,
-          deltaY: 0
-        }).hidroppable({
-          onDragOver: function onDragOver(t, e) {
-            $(this).css("border-top-color", "red");
-          },
-          onDragLeave: function onDragLeave(t, e) {
-            $(this).css("border-top-color", "");
-          },
-          onDrop: function onDrop(t, e) {
-            $(e).insertBefore(this), $(this).css("border-top-color", ""), o.submit();
-          }
-        }));
+          var cid = t.id || t.columnId;
+          var hasTitle = !!(t.title || t.descTitle);
+          var titleText = hasTitle ? (t.title || t.descTitle) : '';
+          var titleClass = hasTitle ? 'column-title' : 'column-title column-title-empty';
+          // 列名改为可编辑 input；左侧加独立拖拽柄 ⋮⋮ 避开与 input 编辑的 handle 冲突
+          var safeText = (titleText + '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return '<li class="hiprint-option-table-selected-item">'
+            + '<span class="column-drag-handle" title="' + i18n.__('拖拽排序') + '">⋮⋮</span>'
+            + '<div class="hi-pretty p-default">'
+            + (t.checked ? '<input type="checkbox" checked column-id="' + cid + '" />' : '<input type="checkbox" column-id="' + cid + '" />')
+            + '<div class="state"><label></label></div>'
+            + '</div>'
+            + '<input type="text" class="' + titleClass + '" column-id="' + cid + '" value="' + safeText + '" placeholder="' + i18n.__('未命名字段') + '" />'
+            + '</li>';
+        }).join("")),
+          this.target.find('input[type="checkbox"]').change(function (e) {
+            var checked = e.target.checked, id = e.target.getAttribute('column-id') || '';
+            var idx = i.allColumns.findIndex(function (e) {
+              return e.field == id || e.id == id;
+            });
+            if (idx >= 0) {
+              i.allColumns[idx]['checked'] = checked;
+            }
+            i.submit();
+          }),
+          // 列名 input 编辑 → 写回 column.title 并触发 submit 让表头同步刷新
+          this.target.find('input.column-title').on('change', function (e) {
+            var newTitle = e.target.value || '';
+            var id = e.target.getAttribute('column-id') || '';
+            var idx = i.allColumns.findIndex(function (e) {
+              return e.field == id || e.id == id;
+            });
+            if (idx >= 0) {
+              i.allColumns[idx].title = newTitle;
+              $(e.target).toggleClass('column-title-empty', !newTitle);
+            }
+            i.submit();
+          }),
+          // 列表重排：用 HTML5 native drag and drop。
+          // - 浏览器原生处理拖动 ghost，不触动原 DOM；
+          // - 单击不触发任何 drag 事件，零副作用；
+          // - 拖到目标 li 上松开 → drop → 交换位置；
+          // - input.column-title draggable=false，编辑列名时不会启动 drag。
+          this.printElementType.columnDisplayIndexEditable && (function () {
+            var $ul = i.target.find('ul.hiprint-option-table-selected-columns');
+            $ul.find('input.column-title, input[type="checkbox"]').attr('draggable', 'false');
+            $ul.find('li').each(function () {
+              var li = this;
+              var $li = $(li);
+              li.setAttribute('draggable', 'true');
+
+              li.ondragstart = function (e) {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', ''); } catch (err) { /* IE 兼容 */ }
+                $li.addClass('hiprint-column-dragging');
+              };
+
+              li.ondragover = function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                var $dragging = $ul.children('li.hiprint-column-dragging');
+                if (!$dragging.length || $dragging[0] === li) return;
+                // 鼠标在 li 上半 → 把 dragged 插到当前 li 之前；下半 → 插到之后
+                var rect = li.getBoundingClientRect();
+                var midY = rect.top + rect.height / 2;
+                if (e.clientY < midY) {
+                  if (li.previousSibling !== $dragging[0]) li.parentNode.insertBefore($dragging[0], li);
+                } else {
+                  if (li.nextSibling !== $dragging[0]) li.parentNode.insertBefore($dragging[0], li.nextSibling);
+                }
+              };
+
+              li.ondrop = function (e) {
+                e.preventDefault();
+              };
+
+              li.ondragend = function () {
+                $ul.find('.hiprint-column-dragging').removeClass('hiprint-column-dragging');
+                o.submit();
+              };
+            });
+          })());
       }, t.prototype.buildData = function () {
         var t = this, e = [];
         if (t.options.columns.length > 1) {
           return this.value;
         }
         t.printElementType.makeColumnObj(t.allColumns);
-        this.target.find("input").map(function (n, i) {
-          var o = $(i).attr("column-id");
+        // 以 <li> 为列的唯一单位（旧代码用 find("input") 会同时命中 checkbox 和 column-title input，
+        // 每列被 push 两次，导致 dragend 触发 submit 后 options.columns 翻倍、属性面板重渲染时出现"克隆"）。
+        this.target.find('li.hiprint-option-table-selected-item').each(function (n, li) {
+          var $li = $(li);
+          var $checkbox = $li.find('input[type="checkbox"]').first();
+          var $title = $li.find('input.column-title').first();
+          var o = $checkbox.attr('column-id') || $title.attr('column-id');
           var a = t.printElementType.getColumnByColumnId(o);
           if (a) {
             var p = new rt.a(a);
-            p.checked = a.checked, e.push(p);
+            p.checked = $checkbox.prop('checked');
+            // 列名编辑同步进序列化结果
+            if ($title.length) p.title = $title.val() || '';
+            e.push(p);
           }
-        })
+        });
         return this.value[0].columns = e, this.value;
       }, t.prototype.destroy = function () {
         this.target.remove();
@@ -6857,6 +6938,18 @@ var hiprint = function (t) {
           if (0 == p.rowLevel) {
             var l = a[e],
               u = a[e].createTableCell();
+            // 给表头第一行的新 cell 赋默认 title/field（避免插入列后表头空白、列字段列表里出现"未命名字段"）
+            if (0 === e) {
+              var maxIdxL = 0;
+              (l.columns || []).forEach(function (c) {
+                var m = (c.field || '').match(/^col(\d+)$/);
+                if (m) maxIdxL = Math.max(maxIdxL, parseInt(m[1]));
+              });
+              var nextIdxL = maxIdxL + 1;
+              u.title = i18n.__('列') + ' ' + nextIdxL;
+              u.field = u.columnId = 'col' + nextIdxL;
+              u.getTarget().html(u.title).attr('column-id', u.columnId);
+            }
             n && u.getTarget().addClass(n), null != i && (u.width = i), s.length ? l.insertToTargetCellLeft(s[0].cell, u) : l.insertCellToLast(u), r.a.event.trigger("newCell" + o.id, u);
           } else if ("row" == p.linkType) {
             var d = p.link.getTarget();
@@ -6874,6 +6967,18 @@ var hiprint = function (t) {
           if (p.rightMost) {
             var l = a[e],
               u = l.createTableCell();
+            // 给表头第一行的新 cell 赋默认 title/field（同向左插入分支）
+            if (0 === e) {
+              var maxIdxR = 0;
+              (l.columns || []).forEach(function (c) {
+                var m = (c.field || '').match(/^col(\d+)$/);
+                if (m) maxIdxR = Math.max(maxIdxR, parseInt(m[1]));
+              });
+              var nextIdxR = maxIdxR + 1;
+              u.title = i18n.__('列') + ' ' + nextIdxR;
+              u.field = u.columnId = 'col' + nextIdxR;
+              u.getTarget().html(u.title).attr('column-id', u.columnId);
+            }
             n && u.getTarget().addClass(n), null != i && (u.width = i), s.length ? l.insertToTargetCellRight(s[s.length - 1].cell, u) : l.insertCellToFirst(u), r.a.event.trigger("newCell" + o.id, u);
           } else {
             var d = p.link || p.cell;
@@ -14530,8 +14635,6 @@ var hiprint = function (t) {
   }), n.d(e, "getHtml", function () {
     return gt;
   }), $(document).ready(function () {
-    console.log('document ready');
-    console.log(window.autoConnect);
     if (hiwebSocket.hasIo() && window.autoConnect) {
       hiwebSocket.start();
     }

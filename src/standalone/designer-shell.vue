@@ -2,7 +2,7 @@
   <div class="hiprint-designer-shell">
     <div id="hiprintDesigner"></div>
     <a-modal
-      v-model="previewVisible"
+      v-model:open="previewVisible"
       title="打印预览"
       :width="1100"
       :footer="null"
@@ -43,7 +43,7 @@ export default {
   mounted() {
     this.initDesigner();
   },
-  beforeDestroy() {
+  beforeUnmount() {
     if (window.__hiprintDesignerControls && window.__hiprintDesignerControls.__owner === this) {
       delete window.__hiprintDesignerControls;
     }

@@ -881,7 +881,7 @@
       ],
       default: {
         height: 42,
-        width: 550
+        width: 540
       }
     },
     table: {

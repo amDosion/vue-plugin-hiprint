@@ -33,7 +33,9 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 
 > [✨ 立即体验(Github 访问慢)](https://ccsimple.github.io/vue-plugin-hiprint/) <br/><br/> [✨ 国内访问(www.ibujian.cn)](https://www.ibujian.cn/) <br/><br/> [🌈 更新日志 (页面支持 Ctrl + F 搜索)](CHANGELOG.md) <br/><br/> [🐛 常见问题(入门必看!)](#常见问题) ⚠️⚠️ [📕 系列教程文章(入门必看!)](#文章链接) <br/><br/> [🚀 项目生态(打印客户端、node 服务端、uniapp)](#插件生态)
 
-> hiprint for Vue2.x / Vue3.x (基于 jQuery, 理论上其他框架可用。[react demo 分支](https://github.com/CcSimple/vue-plugin-hiprint/tree/react_demo))
+> hiprint for **Vue 3.x + Vite**（基于 jQuery, 理论上其他框架可用。[react demo 分支](https://github.com/CcSimple/vue-plugin-hiprint/tree/react_demo)）
+>
+> 本 fork 自 1.0.0 起仅支持 Vue 3，构建工具迁移到 Vite。Vue 2 用户请使用 0.0.x 版本（npm: `vue-plugin-hiprint@0.0.61`）。
 
 > **jQuery/uniapp (html/h5)** 项目 见下方 [jQuery/uniapp 项目使用](#jqueryuniapp-项目使用)
 
@@ -41,7 +43,7 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 >
 > **注意事项**
 >
-> - NodeJs 需要 16.x 版本 (开发使用 16.18.1)
+> - Node.js >= 18（自 1.0.0 起，因为 Vite 5 要求）
 > - <div style="color: red">【vue-plugin-hiprint】与【hiprint.io官网】差异甚多,请忽混用!请忽混用!请忽混用!</div>
 > - <div style="color: orange">请使用项目关联的打印客户端,或者自行修改打印客户端的源码,以适配本项目的模板!</div>
 > - 主分支是融合版本的最新代码,如果你不需要修改 hiprint 相关代码. 请使用 npm 包的方式安装.
@@ -237,32 +239,48 @@ panel.addPrintLongText({
 hiprintTemplate.print({});
 ```
 
-## vue/vue3 全局引入
+## Vue 3 全局引入
 
 > 全局引入，方便在任何地方不引入直接调用打印
 
 ```javascript
-// main.js中 引入安装
-import { hiPrintPlugin } from "vue-plugin-hiprint";
-Vue.use(hiPrintPlugin, "$pluginName"); // $pluginName 为自定义名称
-hiPrintPlugin.disAutoConnect();
+// main.js 中引入并安装（Vue 3 写法）
+import { createApp } from 'vue'
+import App from './App.vue'
+import { hiPrintPlugin } from 'vue-plugin-hiprint'
 
-/// 提供的全局方法：
+const app = createApp(App)
+app.use(hiPrintPlugin, '$pluginName') // $pluginName 为自定义名称，默认 '$hiPrint'
+app.mount('#app')
+
+// hiPrintPlugin 同时提供了 disAutoConnect 方法用于关闭自动连接
+import { hiPrintPlugin } from 'vue-plugin-hiprint'
+hiPrintPlugin.disAutoConnect()
+
+/// 在 Options API 组件里通过 globalProperties 调用：
 
 // this.$pluginName == hiprint 全局对象
 let hiprintTemplate = this.$pluginName.PrintTemplate({
-  template: {}, // 模板json [对象]
+  template: {}, // 模板 json [对象]
 });
-hiprintTemplate.print({name:'i不简'});
+hiprintTemplate.print({ name: 'i不简' });
 
-/// provider 不能为null, 可以为 undefined  args: 同模板对应调用 print 方法
+/// provider 不能为 null, 可以为 undefined; args: 同模板对应调用 print 方法
 
 // 1. 打印
 this.$print(undefined, templateJson, ...args);
 this.$print(provider, templateJson, ...args);
-// 2. 直接打印
-this.print2(undefined, templateJson, ...args);
-this.print2(provider, templateJson, ...args);
+// 2. 客户端直接打印
+this.$print2(undefined, templateJson, ...args);
+this.$print2(provider, templateJson, ...args);
+
+/// 在 Composition API（<script setup>）里使用：
+import { getCurrentInstance } from 'vue'
+const { proxy } = getCurrentInstance()
+proxy.$pluginName.PrintTemplate({ template: {} })
+// 或直接 import 命名导出：
+import { hiprint } from 'vue-plugin-hiprint'
+const tpl = new hiprint.PrintTemplate({ template: {} })
 ```
 
 ## jQuery/uniapp 项目使用
@@ -295,7 +313,8 @@ this.print2(provider, templateJson, ...args);
   <!-- toPdf需要 -->
   <script src="https://unpkg.com/canvg@3.0.10/lib/umd.js"></script>
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.js"></script>
+  <!-- 自 1.0.0 起改用 dom-to-image-more 替代 html2canvas -->
+  <script src="https://unpkg.com/dom-to-image-more@3.7.2/dist/dom-to-image-more.min.js"></script>
   <!-- vue-plugin-hiprint 😃 -->
   <script src="https://unpkg.com/vue-plugin-hiprint@latest/dist/vue-plugin-hiprint.js"></script>
 </head>
@@ -366,11 +385,15 @@ hiprintTemplate.print2(this.printData, {
 /**
  * 取消自动连接
  */
-// 在main.js中设置
-import { hiPrintPlugin } from "vue-plugin-hiprint";
-Vue.use(hiPrintPlugin, "$hiprint", false);
+// 在 main.js 中设置（Vue 3）
+import { createApp } from 'vue'
+import App from './App.vue'
+import { hiPrintPlugin } from 'vue-plugin-hiprint'
+
+const app = createApp(App)
+app.use(hiPrintPlugin, '$hiprint', false)
 // hiPrintPlugin 同时提供了 disAutoConnect 方法
-hiPrintPlugin.disAutoConnect();
+hiPrintPlugin.disAutoConnect()
 // 在组件中使用 见： demo/design/index.vue
 import { disAutoConnect, autoConnect, hiprint } from "vue-plugin-hiprint";
 disAutoConnect();
@@ -447,13 +470,14 @@ git clone https://gitee.com/CcSimple/vue-plugin-hiprint.git
 // init
 cd vue-plugin-hiprint && npm i
 
-// 调试预览demo
-npm run serve
+// 调试预览 demo（Vite dev server，默认 http://localhost:8080）
+npm run dev      // 推荐
+npm run serve    // 等价别名（兼容旧脚本）
 
-// 打包demo (打包后生成在 demo 目录)
+// 打包 demo (打包后生成在 demo 目录)
 npm run build-demo
 
-// 打包插件(vue-plugin-hiprint 插件资源)
+// 打包插件(vue-plugin-hiprint 插件资源，输出到 dist/，含 UMD/CJS/ESM 与 CSS)
 npm run build
 ```
 
@@ -618,19 +642,19 @@ hiwebSocket.setHost("https://printjs.cn:17521", "vue-plugin-hiprint");
 
 ## 分支说明
 
-> main： vue2.x + ant1.7.x 融合版 及 npm 包源代码
+> main（>= 1.0.0）: **vue3.x + Vite + ant-design-vue 4.x** 融合版 及 npm 包源代码
 
-> npm_demo： vue2.x + ant1.7.x + npm 包使用 示例
-
-> npm_demo_ele： vue2.x + ElementUi 2.x + npm 包使用 示例
-
-> npm_demo_v3： vue3.x + vite + npm 包(0.0.18)使用 示例
+> 旧版本（0.0.x，已停止维护）：
+> - main 历史: vue2.x + ant1.7.x
+> - npm_demo: vue2.x + ant1.7.x + npm 包使用示例
+> - npm_demo_ele: vue2.x + ElementUi 2.x + npm 包使用示例
+> - npm_demo_v3: vue3.x + vite + npm 包(0.0.18) 使用示例
 
 ## 关于如何融合处理
 
-> 自己融合请查看 vue.config.js 对比 hiprint.bundle.js
-
-> webpack.config.js，是 npm 打包需要处理的
+> 自己融合请查看 `vite.config.js` 对比 `hiprint.bundle.js`
+>
+> `vite.config.js` 同时承载 demo 构建（默认）与 npm 包发布（`BUILD_TARGET=lib vite build`），通过 `lib` 配置 + `rollupOptions.external` 复用同一份配置出 UMD/CJS/ESM 三种格式。
 
 ## 开源使用说明
 

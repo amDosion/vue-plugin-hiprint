@@ -5,6 +5,56 @@
 ### 💐  感谢各位贡献者的支持。 🔥
 ### 💐  希望各位多看看文档、文章、更新日志;  📢 本页面支持 Ctrl/Command + F 搜索
 
+## 1.0.0 (2026-05-09)
+
+> ⚠️ **Breaking change**: 仅支持 Vue 3。Vue 2 用户请继续使用 0.0.61 及更早版本。
+
+<details>
+  <summary>01. 💥 BREAKING: 升级到 Vue 3 only，移除 Vue 2 兼容分支</summary>
+  <p>install 函数改为 Vue 3 风格：<code>install(app, name, autoConnect)</code>，通过 <code>app.config.globalProperties</code> 暴露 <code>$hiPrint</code> / <code>$print</code> / <code>$print2</code>。Vue 2 项目继续使用 0.0.61。</p>
+</details>
+<details>
+  <summary>02. 💥 BREAKING: 构建工具从 Vue CLI 4 + Webpack 4 迁移到 Vite 5</summary>
+  <p>移除 <code>vue.config.js</code> / <code>webpack.config.js</code> / <code>babel.config.js</code>，改用 <code>vite.config.js</code>。<code>BUILD_TARGET=lib vite build</code> 替代原 <code>webpack</code> 出库流程。</p>
+</details>
+<details>
+  <summary>03. 💥 BREAKING: 包结构调整为标准 ESM</summary>
+  <p>新增 <code>"type": "module"</code> 与 <code>exports</code> 字段；分别提供 <code>vue-plugin-hiprint.esm.js</code>（ESM）/ <code>vue-plugin-hiprint.cjs.js</code>（CJS）/ <code>vue-plugin-hiprint.js</code>（UMD）。</p>
+</details>
+<details>
+  <summary>04. 💥 BREAKING: peerDependency vue 升至 ^3.4；Node 最低 18</summary>
+</details>
+<details>
+  <summary>05. ✨ ant-design-vue 升级到 4.x（demo 用）</summary>
+  <p><code>a-modal</code> 的 <code>v-model</code> 改为 <code>v-model:open</code>；<code>this.$message</code> / <code>this.$confirm</code> 在 main.js 中通过 <code>app.config.globalProperties</code> 显式挂载兼容。</p>
+</details>
+<details>
+  <summary>06. ✨ 移除 vue-ls 依赖（demo 中实际未使用）</summary>
+</details>
+<details>
+  <summary>07. ✨ 适配 Vite：内部 i18n 加载从 <code>require.context</code> 改为 <code>import.meta.glob</code></summary>
+  <p><code>hiprint.bundle.js</code> 中加载 <code>src/i18n/*.json</code> 的方式调整，行为等价。</p>
+</details>
+<details>
+  <summary>08. ✨ 适配 Vite：jQuery 全局挂载抽取为独立副作用模块 <code>src/_setup-jquery.js</code></summary>
+  <p>保证库使用者（lib 产物）和 demo 都在 hiprint 的 jQuery 插件执行前自动挂载 <code>window.jQuery</code> / <code>window.$</code>。</p>
+</details>
+<details>
+  <summary>09. ✨ 生产构建剥离所有 console.* / debugger（与原 webpack <code>drop_console</code> 行为对齐）</summary>
+  <p>同时在 dev 模式下用自定义 esbuild 插件剥离，保持开发控制台干净。</p>
+</details>
+<details>
+  <summary>10. 🐛 fix nzh 包深路径 import 问题</summary>
+  <p><code>hiprint.bundle.js</code> 中写死的 <code>import Nzh from "nzh/dist/nzh.min.js"</code> 因新版 <code>nzh</code> 包 <code>exports</code> 字段不暴露该路径而失败，通过 <code>vite.config.js</code> 中 <code>resolve.alias</code> 重定向到包入口。</p>
+</details>
+<details>
+  <summary>11. ⚡ perf 修复左右面板宽度拖拽卡顿</summary>
+  <p><code>hiprint.css</code> 中 <code>.hiprint-designer-panel-left/right</code> 的 <code>transition: width 0.25s ease</code> 与 mousemove 持续写 width 冲突，已移除。折叠/展开按钮改为瞬时切换。</p>
+</details>
+<details>
+  <summary>12. 🔧 移除 html2canvas 依赖（已被 dom-to-image-more 替代）</summary>
+</details>
+
 ## 0.0.60 (2025-03-24)
 > 使用此版本 请更新最新的 print-lock.css
 

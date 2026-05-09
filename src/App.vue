@@ -28,7 +28,7 @@ body {
 
 .hiprint-printElement-image-content {
   img {
-    content: url("~@/assets/logo.png");
+    content: url("@/assets/logo.png");
   }
 }
 

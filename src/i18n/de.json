@@ -249,5 +249,21 @@
   "显示码值": "Anzeigecode",
   "当前需要高度": "Aktuelle benötigte Höhe",
   "鎖定位置": "Position sperren",
-  "解鎖位置": "Position entsperren"
+  "解鎖位置": "Position entsperren",
+  "列字段": "Spalten",
+  "勾选显示，可拖拽排序": "Anhaken zum Anzeigen, ziehen zum Sortieren",
+  "未命名字段": "Unbenanntes Feld",
+  "拖拽排序": "Ziehen zum Sortieren",
+  "实用": "Werkzeuge",
+  "当前日期": "Aktuelles Datum",
+  "签名区": "Unterschrift",
+  "签名：": "Unterschrift: ",
+  "印章占位": "Stempel",
+  "印章": "Stempel",
+  "签名图": "Signaturbild",
+  "点此上传签名": "Klicken zum Hochladen",
+  "订单号": "Bestellnummer",
+  "下单日期": "Bestelldatum",
+  "快递单号": "Sendungsnr.",
+  "金额合计": "Gesamtbetrag"
 }

@@ -1,10 +1,22 @@
 {
   "name": "vue-plugin-hiprint",
-  "description": "hiprint for Vue2.x / Vue3.x 支持拖拽(分页(不分页)、表头表脚、样式设置、复制粘贴、缩放、撤销重做)生成打印模板、导出json模板数据、静默打印/获取MAC地址(借助客户端)",
-  "version": "0.0.61",
+  "description": "hiprint for Vue3.x 支持拖拽(分页(不分页)、表头表脚、样式设置、复制粘贴、缩放、撤销重做)生成打印模板、导出json模板数据、静默打印/获取MAC地址(借助客户端)",
+  "version": "1.0.0",
   "author": "CcSimple",
   "license": "MIT",
-  "main": "dist/vue-plugin-hiprint.js",
+  "type": "module",
+  "main": "dist/vue-plugin-hiprint.cjs.js",
+  "module": "dist/vue-plugin-hiprint.esm.js",
+  "unpkg": "dist/vue-plugin-hiprint.umd.js",
+  "jsdelivr": "dist/vue-plugin-hiprint.umd.js",
+  "exports": {
+    ".": {
+      "import": "./dist/vue-plugin-hiprint.esm.js",
+      "require": "./dist/vue-plugin-hiprint.cjs.js"
+    },
+    "./dist/vue-plugin-hiprint.css": "./dist/vue-plugin-hiprint.css",
+    "./package.json": "./package.json"
+  },
   "private": false,
   "repository": {
     "type": "git",
@@ -15,6 +27,7 @@
   },
   "keywords": [
     "vue",
+    "vue3",
     "hiprint",
     "print"
   ],
@@ -22,48 +35,46 @@
     "dist"
   ],
   "scripts": {
-    "serve": "vue-cli-service serve",
-    "build-demo": "vue-cli-service build",
-    "build": "cross-env NODE_ENV=production webpack --progress",
+    "dev": "vite",
+    "serve": "vite",
+    "build-demo": "vite build",
+    "build": "cross-env BUILD_TARGET=lib vite build",
+    "preview": "vite preview",
+    "pack:fixed": "npm run build && npm pack && node ./scripts/rename-tgz.cjs",
     "pub": "npm run build && npm --registry https://registry.npmjs.org/ publish",
     "up-version": "node ./scripts/change-version.js",
     "pub-beta": "npm run build && npm --registry https://registry.npmjs.org/ publish --tag beta"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "browserslist": [
     "> 1%",
     "last 2 versions",
-    "not ie <= 8"
+    "not dead",
+    "not ie 11"
   ],
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  },
   "devDependencies": {
-    "@vue/cli-plugin-babel": "~5.0.0",
-    "@vue/cli-service": "^4.5.15",
-    "ant-design-vue": "^1.7.8",
-    "babel-loader": "^8.1.0",
-    "bootstrap": "^3.3.7",
-    "concurrent-tasks": "^1.0.7",
-    "copy-webpack-plugin": "^5.1.2",
-    "core-js": "^3.6.5",
-    "cross-env": "^5.0.5",
-    "less-loader": "^6.1.1",
-    "uglifyjs-webpack-plugin": "^2.2.0",
-    "vue": "^2.5.11",
-    "vue-ls": "^4.0.0",
-    "vue-template-compiler": "^2.6.11",
-    "webpack-cli": "^4.9.1"
+    "@vitejs/plugin-vue": "^5.0.0",
+    "ant-design-vue": "^4.2.0",
+    "cross-env": "^7.0.3",
+    "less": "^4.2.0",
+    "vite": "^5.4.0",
+    "vue": "^3.4.0"
   },
   "dependencies": {
     "@claviska/jquery-minicolors": "^2.3.6",
     "bwip-js": "^4.0.0",
     "canvg": "^3.0.10",
+    "dom-to-image-more": "3.7.2",
     "jquery": "^3.6.0",
     "jsbarcode": "^3.11.5",
     "jspdf": "^2.5.1",
     "lodash": "^4.17.21",
     "nzh": "^1.0.8",
-    "socket.io-client": "^4.5.1",
-    "dom-to-image-more": "3.7.2"
+    "socket.io-client": "^4.5.1"
   }
 }

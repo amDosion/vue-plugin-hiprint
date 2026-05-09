@@ -185,6 +185,7 @@
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  padding: 6px;
 }
 
 .hiprint-setting-panel > .hiprint-option-items {
@@ -410,7 +411,12 @@ font-weight: normal;*/
 .hiprint-option-items {
     display: flex;
     flex-wrap: wrap;
-    align-items: stretch;
+    /* align-items: flex-start 防止单 flex line 内的 items 被拉伸到 line 高度。
+       align-content: flex-start 才是关键 — 没有它时，flex-wrap 容器会把"多余空间"
+       均匀塞进各 flex line 的间距里，导致折叠时 rows 之间间距被人为撑大、
+       展开后内容超出容器又突然紧凑回去（用户感知为"展开后间距变小"）。 */
+    align-items: flex-start;
+    align-content: flex-start;
     box-sizing: border-box;
     width: 100%;
     gap: 6px 0;
@@ -621,20 +627,15 @@ font-weight: normal;*/
     cursor: not-allowed;
 }
 
-/* Right property panel: compact, consistent spacing */
+/* Right property panel: 让基础层 .hiprint-option-items（line 410）的 gap: 6px 0 自然生效，
+   不在 .params_setting_container 上下文重复 padding/gap。 */
 .params_setting_container .hiprint-designer-panel-body {
-    padding: 6px;
+    padding: 0;
 }
 
 .params_setting_container .prop-tabs .prop-tab-items {
     padding: 2px 6px 1px;
     margin-bottom: 4px;
-}
-
-.params_setting_container .prop-tabs .hiprint-option-items,
-.params_setting_container .hiprint-setting-panel > .hiprint-option-items {
-    padding: 10px;
-    gap: 6px;
 }
 
 .params_setting_container .hiprint-option-items .hiprint-option-item:not(.hiprint-option-item-row) {
@@ -645,7 +646,7 @@ font-weight: normal;*/
 
 .params_setting_container .hiprint-option-items .hiprint-option-item,
 .params_setting_container .hiprint-option-items .hiprint-option-item-row {
-    padding: 2px 4px;
+    padding: 0;
     border-radius: 4px;
 }
 
@@ -716,7 +717,9 @@ font-weight: normal;*/
 .params_setting_container .margin-fields-wrapper {
     width: 100%;
     box-sizing: border-box;
-    padding-top: 2px;
+    /* 仍用 block 布局（兼容 jQuery slideDown 强制改成 display:block），
+       子项间距通过下面的 adjacent sibling 规则模拟 gap。 */
+    padding-top: 6px;
 }
 
 .params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field,
@@ -728,6 +731,15 @@ font-weight: normal;*/
     align-items: center !important;
     gap: 6px;
     margin-top: 0 !important;
+}
+
+/* 相邻子项之间统一 6px 垂直间距（与外部 row gap 节奏一致）。
+   原来 hiprint.bundle.js 中 fillStyle/gridColor/marginColor 的内联 margin-top:4px 已被
+   上面 margin-top:0 !important 覆盖；这里用 adjacent sibling 重新均匀注入间距。 */
+.params_setting_container .watermark-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field,
+.params_setting_container .grid-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field,
+.params_setting_container .margin-fields-wrapper > .hiprint-option-item-field + .hiprint-option-item-field {
+    margin-top: 6px !important;
 }
 
 .params_setting_container .hiprint-panel-layout-group > .hiprint-panel-layout-main {
@@ -817,6 +829,83 @@ font-weight: normal;*/
     padding: 2px 6px;
     margin: 4px 0;
     background: #fff;
+}
+
+/* columns option 顶部标题 + 副标题（"列字段 | 勾选显示，可拖拽排序"） */
+.hiprint-columns-group .hiprint-columns-header {
+    display: flex !important;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-bottom: 4px;
+}
+
+.hiprint-columns-group .hiprint-columns-hint {
+    font-size: 12px;
+    color: #909399;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+/* 列名为空时的占位文字（"未命名字段"） */
+.hiprint-option-table-selected-columns .column-title-empty::placeholder {
+    color: #c0c4cc;
+    font-style: italic;
+}
+
+/* 列管理器 li 内部布局：拖拽柄 | 复选框 | 列名输入 */
+.hiprint-option-table-selected-columns .hiprint-option-table-selected-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 拖拽柄（视觉提示，HTML5 drag 由整个 li 启动）*/
+.hiprint-option-table-selected-columns .column-drag-handle {
+    cursor: move;
+    color: #909399;
+    user-select: none;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+}
+
+.hiprint-option-table-selected-columns .column-drag-handle:hover {
+    color: #409eff;
+}
+
+/* 拖拽中的 li 视觉反馈（半透明，让用户看清自己在拖谁）*/
+.hiprint-option-table-selected-columns .hiprint-option-table-selected-item.hiprint-column-dragging {
+    opacity: 0.4;
+}
+
+/* 列名输入框（替代原只读 span） */
+.hiprint-option-table-selected-columns input.column-title {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: #303133;
+    font-size: 12px;
+    line-height: 22px;
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.hiprint-option-table-selected-columns input.column-title:hover {
+    border-color: #dcdfe6;
+    background: #fff;
+}
+
+.hiprint-option-table-selected-columns input.column-title:focus {
+    border-color: #409eff;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
 }
 
 .params_setting_container .hiprint-option-actions {
@@ -1444,10 +1533,10 @@ body.hiprint-guide-dragging {
         line-height: 19pt;
         margin: 3px 0;
     }
-    .hiprint-option-table-selected-columns .hiprint-option-table-selected-item .column-title {
-      display: inline-block;
-      min-width: calc(100% - 3rem);
-    }
+    /* 原上游规则 `.hiprint-option-table-selected-columns .hiprint-option-table-selected-item .column-title
+       { display: inline-block; min-width: calc(100% - 3rem); }` 是为只读 span 设计的，
+       现在 .column-title 是可编辑 input + flex 子项，那条 min-width 会让 input 比 li 宽 ~14px 溢出。
+       保留 li 自身样式即可，input 的尺寸由 §"列名输入框"那段 (flex:1; min-width:0) 控制。 */
 /*hi-pretty */
 .hi-pretty * {
     box-sizing: border-box;
@@ -2227,7 +2316,9 @@ body.hiprint-el-list-dragging {
   flex-shrink: 0;
   height: 100%;
   overflow: hidden;
-  transition: width 0.25s ease;
+  /* 原 `transition: width 0.25s ease` 在拖拽时与 mousemove 写 width 冲突，
+     浏览器每次 mousemove 都重启一次 0.25s 过渡，造成视觉卡顿。
+     折叠/展开按钮改用瞬时切换。 */
 }
 .hiprint-designer-sidebar {
   display: flex;
