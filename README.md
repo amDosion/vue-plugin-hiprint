@@ -658,10 +658,35 @@ hiwebSocket.setHost("https://printjs.cn:17521", "vue-plugin-hiprint");
 
 ## 开源使用说明
 
-> npm 包是基于 hiprint 官网 2.5.4 版本基础做的调整及优化;<br/>
-> 本人对开源协议理解有限,如有侵权不合理的地方,请联系告知我;<br/>
+### Fork 与维护者声明
 
-hiprint 开源协议如下:
+本仓库是 [CcSimple/vue-plugin-hiprint](https://github.com/CcSimple/vue-plugin-hiprint) 的 fork，自 **1.0.0** 起由 [@amDosion](https://github.com/amDosion) 维护，主要修改内容：
+
+- 完整迁移到 **Vue 3 + Vite 5**（移除 Vue CLI / Webpack 4 / Vue 2 兼容分支）
+- 升级 ant-design-vue 到 4.x、Node 最低要求 18
+- 列管理器重构（HTML5 native drag、列名可编辑、修复 buildData 双写 bug）
+- 属性面板 UX 优化（间距、auto-submit、滚动稳定）
+- 新增 8 个常用组件（实用分组：当前日期/签名/印章；电商分组：订单号/下单日期/快递单号/金额合计 等）
+
+详见 [CHANGELOG.md](CHANGELOG.md) 中 1.0.0 条目。
+
+### 三层版权与许可（必读）
+
+本项目代码由三个层次的版权与许可叠加，**任何分发或再修改都需同时遵守三层规则**：
+
+| 层 | 来源 | 许可 |
+|---|---|---|
+| 包结构、构建配置、Vue 3 适配代码、新增组件、文档 | © 2021 CcSimple；© 2026 amDosion 及贡献者 | **MIT**（见 [LICENSE](LICENSE)） |
+| `src/hiprint/hiprint.bundle.js`（jQuery hiprint 2.5.4 内核） | © 2016-2021 [www.hinnn.com](https://hinnn.com) | **LGPL** 或商业授权 |
+| 第三方依赖（jQuery、ant-design-vue、jspdf、jsbarcode 等） | 各自作者 | 各自的开源许可 |
+
+#### 你需要遵守的两条核心规则
+
+1. **保留所有版权声明**：MIT 协议明确要求 *"The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software"*。无论你是直接使用、再分发、还是基于本项目继续 fork，都必须保留 [LICENSE](LICENSE) 文件以及 `hiprint.bundle.js` 文件头的 hinnn.com 版权声明。**删除署名属于违反开源协议**。
+
+2. **修改 LGPL 内核需以 LGPL 开源**：如果你修改了 `src/hiprint/hiprint.bundle.js` 的内核代码，根据 LGPL，修改部分必须保持 LGPL 开源；但只是 *引用* 该文件（不修改）的项目可以保留闭源/商业。
+
+### hiprint 内核协议原文
 
 ```
 /**
