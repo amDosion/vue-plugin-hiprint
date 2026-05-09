@@ -31,7 +31,7 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 
 ## vue-plugin-hiprint
 
-> [✨ 立即体验(Github 访问慢)](https://ccsimple.github.io/vue-plugin-hiprint/) <br/><br/> [✨ 国内访问(www.ibujian.cn)](https://www.ibujian.cn/) <br/><br/> [🌈 更新日志 (页面支持 Ctrl + F 搜索)](CHANGELOG.md) <br/><br/> [🐛 常见问题(入门必看!)](#常见问题) ⚠️⚠️ [📕 系列教程文章(入门必看!)](#文章链接) <br/><br/> [🚀 项目生态(打印客户端、node 服务端、uniapp)](#插件生态)
+> [✨ 立即体验(Github 访问慢)](https://ccsimple.github.io/vue-plugin-hiprint/) <br/><br/> [✨ 国内访问(www.ibujian.cn)](https://www.ibujian.cn/) <br/><br/> [🌈 更新日志 (页面支持 Ctrl + F 搜索)](CHANGELOG.md) <br/><br/> [🐛 常见问题(入门必看!)](#常见问题) <br/><br/> [🚀 项目生态(打印客户端、node 服务端、uniapp)](#插件生态)
 
 > hiprint for **Vue 3.x + Vite**（基于 jQuery, 理论上其他框架可用。[react demo 分支](https://github.com/CcSimple/vue-plugin-hiprint/tree/react_demo)）
 >
@@ -51,21 +51,6 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 > - [线上跨域问题,请升级 https! 说明:https://www.cnblogs.com/daysme/p/15493523.html](https://www.cnblogs.com/daysme/p/15493523.html)
 > - 如需提交 PR 请前往 github 合并后可自动发布 npm 包并同步代码到 gitee
 > - vue-plugin-hiprint 包不包含 UI 界面,需要自行处理。如果想更快速引入请查看 [sv-print 组件库](https://www.ibujian.cn/svp/)
-
-## 文章链接
-
-2元快速入门: [一文彻底入门可视化打印 vue-plugin-hiprint](https://mp.weixin.qq.com/s/R8juiaQsLhMmyZebv55tUA)
-
-6元解锁云打印: [三端通用的云打印方案: uniapp + nodejs中转服务！(附源码)](https://mp.weixin.qq.com/s/3_zEsr6nIYAqKdDsKqhg7A)
-
-> 更多文章见公众号、小程序(文章,服务端预览,云打印)
-
-<table>
-    <tr>
-        <td><img height="160" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/ww.png"/></td>
-        <td><img height="160" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/wmp.jpg"/></td>
-    </tr>
-</table>
 
 ## 安装使用
 
@@ -611,34 +596,6 @@ hiwebSocket.setHost("https://printjs.cn:17521", "vue-plugin-hiprint");
 
 
 > 带 * 项目为周边社区维护项目，更新迭代、兼容性、稳定性无法得到保证。
-
-## 交流群
-
-<table>
-    <tr>
-        <td><img height="180" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/group.png"/></td>
-        <td><img height="180" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/wechat.png"/></td>
-    </tr>
-</table>
-
-> 群人数已超过 200 请 '加我好友' 备注加群, 邀你进群
-
-## 捐赠支持, 或者请我喝杯咖啡 ☕️
-
-> 如果对您有帮助，请点击右上角 ⭐Star 关注或扫码捐赠，感谢支持开源！
-
-<table>
-    <tr>
-        <td><img height="180" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/zWechat.png"/></td>
-        <td><img height="180" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/zAlipay.png"/></td>
-    </tr>
-</table>
-
-本项目使用 <a href="https://jb.gg/OpenSourceSupport"><img height="40" width="100" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/WebStorm.svg"/></a><a href="https://jb.gg/OpenSourceSupport"><img width="50" height="50" src="https://gitee.com/CcSimple/vue-plugin-hiprint/raw/main/res/WebStorm_icon.svg"/></a> 开发
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=CcSimple/vue-plugin-hiprint&type=Date)](https://star-history.com/#CcSimple/vue-plugin-hiprint&Date)
 
 ## 分支说明
 
