@@ -76,25 +76,62 @@ let hiPrintPlugin = {
 hiprint.version = version
 
 window.hiprint = hiprint;
+
+// === 元素类型 / 模板配置 ===
 let setDynamicFields = hiprint.setDynamicFields;
 let removeDynamicFields = hiprint.removeDynamicFields;
 let setElementTypeGroups = hiprint.setElementTypeGroups;
 let appendElementTypeGroups = hiprint.appendElementTypeGroups;
 let renameElementType = hiprint.renameElementType;
+
+// === 设计器 / 工具栏 ===
 let buildToolbar = hiprint.buildToolbar;
 let buildDesigner = hiprint.buildDesigner;
 
+// === 核心类（外部项目集成时常用）===
+let PrintTemplate = hiprint.PrintTemplate;
+let PrintElementTypeManager = hiprint.PrintElementTypeManager;
+let PrintElementTypeGroup = hiprint.PrintElementTypeGroup;
+
+// === 直接打印 / HTML 输出 ===
+let print = hiprint.print;
+let print2 = hiprint.print2;
+let getHtml = hiprint.getHtml;
+
+// === 客户端 / 静默打印（hiwebSocket 场景）===
+let getClients = hiprint.getClients;
+let getClientInfo = hiprint.getClientInfo;
+let getAddress = hiprint.getAddress;
+let ippPrint = hiprint.ippPrint;
+let ippRequest = hiprint.ippRequest;
+
 export {
-  autoConnect,
-  disAutoConnect,
+  // 核心
   hiprint,
   hiPrintPlugin,
   defaultElementTypeProvider,
+  PrintTemplate,
+  PrintElementTypeManager,
+  PrintElementTypeGroup,
+  // 元素类型 / 模板配置
   setDynamicFields,
   removeDynamicFields,
   setElementTypeGroups,
   appendElementTypeGroups,
   renameElementType,
+  // 设计器 / 工具栏
   buildToolbar,
   buildDesigner,
+  // 直接打印 / HTML
+  print,
+  print2,
+  getHtml,
+  // 客户端 / 静默打印
+  autoConnect,
+  disAutoConnect,
+  getClients,
+  getClientInfo,
+  getAddress,
+  ippPrint,
+  ippRequest,
 }
