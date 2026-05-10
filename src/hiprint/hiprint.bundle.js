@@ -8908,8 +8908,19 @@ var hiprint = function (t) {
         configurable: !0
       }), t.prototype.addPrintElementTypes = function (t, e) {
         var n = this;
-        this[t] ? this[t] = this[t].concat(e) : this[t] = e, e.forEach(function (t) {
-          n.allElementTypes = n.allElementTypes.concat(t.printElementTypes);
+        this[t] ? this[t] = this[t].concat(e) : this[t] = e;
+        // 去重:多次 appendElementTypeGroups 同 tid 时,allElementTypes 之前会累积重复,
+        // 内存膨胀且面板渲染重复。用 Map by tid 保证唯一。
+        e.forEach(function (g) {
+          (g.printElementTypes || []).forEach(function (pt) {
+            var tid = pt && pt.tid;
+            if (tid) {
+              n.allElementTypes = n.allElementTypes.filter(function (existing) {
+                return !existing || existing.tid !== tid;
+              });
+            }
+            n.allElementTypes.push(pt);
+          });
         });
       }, t.prototype.removePrintElementTypes = function (t) {
         var n = this;
@@ -12975,6 +12986,9 @@ var hiprint = function (t) {
   }
 
   function setDynamicFields(moduleName, fieldGroups) {
+    // 必须校验 moduleName,否则 removePrintElementTypes(undefined) +
+    // String.startsWith(undefined) 会把所有 tid 以 'undefined' 开头的元素静默删除。
+    if (!moduleName) throw new Error("setDynamicFields: moduleName is required");
     validateFieldGroups(fieldGroups);
     a.instance.removePrintElementTypes(moduleName);
     var groups = mapFieldGroupsToElementTypeGroups(moduleName, fieldGroups);
@@ -13336,11 +13350,13 @@ var hiprint = function (t) {
       businessItems.forEach(function (item, idx) {
         var desc = item.description || item.desc || item.remark || '';
         var timeText = item.updatedAt || item.updateTime || item.modifiedAt || '';
-        var $card = $('<div class="hiprint-toolbar-template-card" data-business-index="' + idx + '"></div>');
-        $card.append('<div class="hiprint-toolbar-template-card-title" title="' + item._name + '">' + item._name + '</div>');
-        $card.append('<div class="hiprint-toolbar-template-card-desc" title="' + desc + '">' + (desc || i18n.__('暂无描述')) + '</div>');
+        // 安全:用 jQuery .text()/.attr() 而非 HTML 字符串拼接 - item._name/desc/timeText
+        // 来自业务 API 响应,可能含用户输入(订单备注/客户名等),含 < > 或 ' onerror=' 会注入。
+        var $card = $('<div class="hiprint-toolbar-template-card"></div>').attr('data-business-index', idx);
+        $card.append($('<div class="hiprint-toolbar-template-card-title"></div>').attr('title', item._name).text(item._name));
+        $card.append($('<div class="hiprint-toolbar-template-card-desc"></div>').attr('title', desc).text(desc || i18n.__('暂无描述')));
         if (timeText) {
-          $card.append('<div class="hiprint-toolbar-template-card-meta">' + i18n.__('更新时间') + ': ' + timeText + '</div>');
+          $card.append($('<div class="hiprint-toolbar-template-card-meta"></div>').text(i18n.__('更新时间') + ': ' + timeText));
         }
         var $actions = $('<div class="hiprint-toolbar-template-card-actions"></div>');
         $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary hiprint-toolbar-business-action" data-action="select" data-index="' + idx + '">' + i18n.__('选择') + '</button>');
@@ -13509,11 +13525,12 @@ var hiprint = function (t) {
       templateItems.forEach(function (item, idx) {
         var desc = item.description || item.desc || item.remark || '';
         var timeText = item.updatedAt || item.updateTime || item.modifiedAt || '';
-        var $card = $('<div class="hiprint-toolbar-template-card" data-template-index="' + idx + '"></div>');
-        $card.append('<div class="hiprint-toolbar-template-card-title" title="' + item._name + '">' + item._name + '</div>');
-        $card.append('<div class="hiprint-toolbar-template-card-desc" title="' + desc + '">' + (desc || i18n.__('暂无描述')) + '</div>');
+        // 安全:同 business card 改用 jQuery DOM API 防 XSS。
+        var $card = $('<div class="hiprint-toolbar-template-card"></div>').attr('data-template-index', idx);
+        $card.append($('<div class="hiprint-toolbar-template-card-title"></div>').attr('title', item._name).text(item._name));
+        $card.append($('<div class="hiprint-toolbar-template-card-desc"></div>').attr('title', desc).text(desc || i18n.__('暂无描述')));
         if (timeText) {
-          $card.append('<div class="hiprint-toolbar-template-card-meta">' + i18n.__('更新时间') + ': ' + timeText + '</div>');
+          $card.append($('<div class="hiprint-toolbar-template-card-meta"></div>').text(i18n.__('更新时间') + ': ' + timeText));
         }
         var $actions = $('<div class="hiprint-toolbar-template-card-actions"></div>');
         $actions.append('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary hiprint-toolbar-template-action" data-action="select" data-index="' + idx + '">' + i18n.__('选择') + '</button>');
@@ -13602,7 +13619,12 @@ var hiprint = function (t) {
           closeTemplateDialog();
         }
       }).catch(function (err) {
-        console.error(err);
+        // 失败时关闭 dialog 避免卡死;业务方可监听 onTemplateSelectError 自定义反馈。
+        console.error('[hiprint] template select failed:', err);
+        if (typeof opts.onTemplateSelectError === 'function') {
+          try { opts.onTemplateSelectError(err, item, template, toolbarApi); } catch (e) { /* swallow */ }
+        }
+        closeTemplateDialog();
       });
     }
 
@@ -13794,9 +13816,14 @@ var hiprint = function (t) {
           return;
         }
         $error.hide();
-        Promise.resolve(saveTemplateWithName(name, e)).finally(function () {
-          closeSaveDialog();
-        });
+        // .catch 保护业务方 onSave 抛错 - 之前 .finally 会无视 reject 直接关闭 dialog,
+        // 用户感知不到失败。现在 catch 内显示 error,不关 dialog,让用户能重试或取消。
+        Promise.resolve(saveTemplateWithName(name, e))
+          .then(function () { closeSaveDialog(); })
+          .catch(function (err) {
+            console.error('[hiprint] onSave failed:', err);
+            $error.text((err && err.message) || i18n.__('保存失败') || '保存失败').show();
+          });
       });
       $saveDialog.on('keydown', '.hiprint-toolbar-save-input', function (e) {
         if (e.keyCode === 13) {
@@ -13858,7 +13885,7 @@ var hiprint = function (t) {
     // --- 业务选择 ---
     if (opts.showBusinessSelect) {
       var $businessSelectGroup = registerToolbarGroup('businessSelect', $('<div class="hiprint-toolbar-group hiprint-toolbar-business-select"></div>'));
-      var $businessSelectBtn = registerToolbarButton('businessSelect', $('<button class="hiprint-toolbar-btn">' + (opts.businessButtonText || i18n.__('业务选择')) + '</button>'), { groupKey: 'businessSelect' });
+      var $businessSelectBtn = registerToolbarButton('businessSelect', $('<button type="button" class="hiprint-toolbar-btn">' + (opts.businessButtonText || i18n.__('业务选择')) + '</button>'), { groupKey: 'businessSelect' });
       $businessSelectBtn.on('click', function () {
         var result = true;
         if (typeof opts.onBusinessClick === 'function') {
@@ -13875,7 +13902,7 @@ var hiprint = function (t) {
     // --- 模版选择 ---
     if (opts.showTemplateSelect) {
       var $templateSelectGroup = registerToolbarGroup('templateSelect', $('<div class="hiprint-toolbar-group hiprint-toolbar-template-select"></div>'));
-      var $templateSelectBtn = registerToolbarButton('templateSelect', $('<button class="hiprint-toolbar-btn">' + (opts.templateButtonText || i18n.__('选择模版')) + '</button>'), { groupKey: 'templateSelect' });
+      var $templateSelectBtn = registerToolbarButton('templateSelect', $('<button type="button" class="hiprint-toolbar-btn">' + (opts.templateButtonText || i18n.__('选择模版')) + '</button>'), { groupKey: 'templateSelect' });
       $templateSelectBtn.on('click', function () {
         openTemplateDialog();
       });
@@ -13890,11 +13917,11 @@ var hiprint = function (t) {
       var $customBtn = null;
       $.each(opts.paperTypes, function (name, size) {
         var buttonKey = 'paper:' + name;
-        var $btn = registerToolbarButton(buttonKey, $('<button class="hiprint-toolbar-btn' + (name === curPaper ? ' active' : '') + '" data-paper="' + name + '">' + name + '</button>'), { groupKey: 'paper' });
+        var $btn = registerToolbarButton(buttonKey, $('<button type="button" class="hiprint-toolbar-btn' + (name === curPaper ? ' active' : '') + '" data-paper="' + name + '" aria-pressed="' + (name === curPaper ? 'true' : 'false') + '">' + name + '</button>'), { groupKey: 'paper' });
         $btn.on('click', function () {
           curPaper = name;
-          $paperGroup.find('.hiprint-toolbar-btn').removeClass('active');
-          $(this).addClass('active');
+          $paperGroup.find('.hiprint-toolbar-btn').removeClass('active').attr('aria-pressed', 'false');
+          $(this).addClass('active').attr('aria-pressed', 'true');
           $customBtn && $customBtn.removeClass('active');
           template.setPaper(size.width, size.height);
           opts.onPaperChange && opts.onPaperChange(name, size);
@@ -13903,13 +13930,13 @@ var hiprint = function (t) {
       });
 
       if (opts.showCustomPaper) {
-        $customBtn = registerToolbarButton('paper:custom', $('<button class="hiprint-toolbar-btn" data-paper="custom">' + (opts.customPaperButtonText || i18n.__('自定义')) + '</button>'), { groupKey: 'paper' });
+        $customBtn = registerToolbarButton('paper:custom', $('<button type="button" class="hiprint-toolbar-btn" data-paper="custom">' + (opts.customPaperButtonText || i18n.__('自定义')) + '</button>'), { groupKey: 'paper' });
         var $customPopover = $('<div class="hiprint-toolbar-popover" style="display:none;"></div>');
         var $customContent = $('<div class="hiprint-toolbar-popover-content"></div>');
         var $wInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('宽') + '(mm)" style="width:80px;" value="220"/>');
         var $sep = $('<span style="margin:0 4px;">×</span>');
         var $hInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('高') + '(mm)" style="width:80px;" value="80"/>');
-        var $okBtn = registerToolbarButton('paper:customConfirm', $('<button class="hiprint-toolbar-btn active" style="margin-left:6px;">' + (opts.customPaperConfirmText || i18n.__('确定')) + '</button>'), { groupKey: 'paper' });
+        var $okBtn = registerToolbarButton('paper:customConfirm', $('<button type="button" class="hiprint-toolbar-btn active" style="margin-left:6px;">' + (opts.customPaperConfirmText || i18n.__('确定')) + '</button>'), { groupKey: 'paper' });
         $okBtn.on('click', function () {
           var w = parseFloat($wInput.val()), h = parseFloat($hInput.val());
           if (w > 0 && h > 0) {
@@ -13948,8 +13975,9 @@ var hiprint = function (t) {
       var updateScaleLabel = function () {
         $scaleLabel.text(Math.round(scaleValue * 100) + '%');
       };
-      var $zoomOut = registerToolbarButton('scale:zoomOut', $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('缩小') + '">−</button>'), { groupKey: 'scale' });
-      var $zoomIn = registerToolbarButton('scale:zoomIn', $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('放大') + '">+</button>'), { groupKey: 'scale' });
+      // a11y: icon-only 按钮加 aria-label,屏幕阅读器只能可靠读 aria-label,title 在多 SR 下不读
+      var $zoomOut = registerToolbarButton('scale:zoomOut', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('缩小') + '" aria-label="' + i18n.__('缩小') + '">−</button>'), { groupKey: 'scale' });
+      var $zoomIn = registerToolbarButton('scale:zoomIn', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + i18n.__('放大') + '" aria-label="' + i18n.__('放大') + '">+</button>'), { groupKey: 'scale' });
       $zoomOut.on('click', function () {
         scaleValue = Math.max(opts.scaleMin, +(scaleValue - opts.scaleStep).toFixed(2));
         template.zoom(scaleValue);
@@ -13970,7 +13998,7 @@ var hiprint = function (t) {
     if (opts.showRotate) {
       var $rotateGroup = registerToolbarGroup('rotate', $('<div class="hiprint-toolbar-group"></div>'));
       var rotateText = opts.rotateButtonText || i18n.__('旋转');
-      var $rotateBtn = registerToolbarButton('rotate', $('<button class="hiprint-toolbar-btn" title="' + rotateText + '">↻ ' + rotateText + '</button>'), { groupKey: 'rotate' });
+      var $rotateBtn = registerToolbarButton('rotate', $('<button type="button" class="hiprint-toolbar-btn" title="' + rotateText + '">↻ ' + rotateText + '</button>'), { groupKey: 'rotate' });
       $rotateBtn.on('click', function () {
         template.rotatePaper();
         opts.onRotate && opts.onRotate(template);
@@ -13994,7 +14022,7 @@ var hiprint = function (t) {
       var $alignGroup = registerToolbarGroup('align', $('<div class="hiprint-toolbar-group hiprint-toolbar-align"></div>'));
       alignItems.forEach(function (item) {
         var alignKey = 'align:' + item.type;
-        var $btn = registerToolbarButton(alignKey, $('<button class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '">' + item.icon + '</button>'), { groupKey: 'align' });
+        var $btn = registerToolbarButton(alignKey, $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '" aria-label="' + item.label + '">' + item.icon + '</button>'), { groupKey: 'align' });
         $btn.on('click', function () {
           template.alignElements(item.type);
           opts.onAlign && opts.onAlign(item.type, template);
@@ -14007,9 +14035,15 @@ var hiprint = function (t) {
     // --- 预览 ---
     if (opts.showPreview) {
       var $previewGroup = registerToolbarGroup('preview', $('<div class="hiprint-toolbar-group"></div>'));
-      var $previewBtn = registerToolbarButton('preview', $('<button class="hiprint-toolbar-btn">' + (opts.previewButtonText || i18n.__('预览')) + '</button>'), { groupKey: 'preview' });
+      var $previewBtn = registerToolbarButton('preview', $('<button type="button" class="hiprint-toolbar-btn">' + (opts.previewButtonText || i18n.__('预览')) + '</button>'), { groupKey: 'preview' });
       $previewBtn.on('click', function () {
-        if (opts.onPreview) { opts.onPreview(template); }
+        if (opts.onPreview) {
+          // try-catch 防止业务回调抛错冒泡冻结 UI; warn 让业务方看到错误。
+          try { opts.onPreview(template); }
+          catch (err) { console.error('[hiprint] onPreview threw:', err); }
+        } else {
+          console.warn('[hiprint] preview button clicked but opts.onPreview not provided');
+        }
       });
       $previewGroup.append($previewBtn);
       $toolbar.append($previewGroup);
@@ -14018,9 +14052,14 @@ var hiprint = function (t) {
     // --- 清空 ---
     if (opts.showClear) {
       var $clearGroup = registerToolbarGroup('clear', $('<div class="hiprint-toolbar-group"></div>'));
-      var $clearBtn = registerToolbarButton('clear', $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + (opts.clearButtonText || i18n.__('清空')) + '</button>'), { groupKey: 'clear' });
+      var $clearBtn = registerToolbarButton('clear', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + (opts.clearButtonText || i18n.__('清空')) + '</button>'), { groupKey: 'clear' });
       $clearBtn.on('click', function () {
-        if (opts.onClear) { opts.onClear(template); return; }
+        if (opts.onClear) {
+          // 业务接管 onClear 时:try-catch 隔离回调错误,catch 后仍 return(不再走默认 confirm)
+          try { opts.onClear(template); }
+          catch (err) { console.error('[hiprint] onClear threw:', err); }
+          return;
+        }
         if (confirm(i18n.__('是否确认清空') + '?')) { template.clear(); }
       });
       $clearGroup.append($clearBtn);
@@ -14030,9 +14069,14 @@ var hiprint = function (t) {
     // --- 打印 ---
     if (opts.showPrint) {
       var $printGroup = registerToolbarGroup('print', $('<div class="hiprint-toolbar-group"></div>'));
-      var $printBtn = registerToolbarButton('print', $('<button class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + (opts.printButtonText || i18n.__('打印')) + '</button>'), { groupKey: 'print' });
+      var $printBtn = registerToolbarButton('print', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + (opts.printButtonText || i18n.__('打印')) + '</button>'), { groupKey: 'print' });
       $printBtn.on('click', function () {
-        if (opts.onPrint) { opts.onPrint(template); }
+        if (opts.onPrint) {
+          try { opts.onPrint(template); }
+          catch (err) { console.error('[hiprint] onPrint threw:', err); }
+        } else {
+          console.warn('[hiprint] print button clicked but opts.onPrint not provided');
+        }
       });
       $printGroup.append($printBtn);
       $toolbar.append($printGroup);
@@ -14041,7 +14085,7 @@ var hiprint = function (t) {
     // --- 保存 ---
     if (opts.showSave) {
       var $saveGroup = registerToolbarGroup('save', $('<div class="hiprint-toolbar-group"></div>'));
-      var $saveBtn = registerToolbarButton('save', $('<button class="hiprint-toolbar-btn">' + (opts.saveButtonText || i18n.__('保存')) + '</button>'), { groupKey: 'save' });
+      var $saveBtn = registerToolbarButton('save', $('<button type="button" class="hiprint-toolbar-btn">' + (opts.saveButtonText || i18n.__('保存')) + '</button>'), { groupKey: 'save' });
       $saveBtn.on('click', function (e) {
         triggerSave(e);
       });

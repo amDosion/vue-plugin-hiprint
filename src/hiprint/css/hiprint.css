@@ -2483,3 +2483,66 @@ body.hiprint-el-list-dragging {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ==================== A11y: focus-visible + 对比度 + 减少动效 ====================
+ * WCAG 2.1/2.2 合规改进:
+ * - 2.4.7 Focus Visible (AA): 键盘 focus 必须可见
+ * - 1.4.3 Contrast (Minimum) (AA): 文字 >= 4.5:1
+ * - 1.4.11 Non-text Contrast (AA): UI 组件 / 图标 >= 3:1
+ * - 2.3.3 Animation from Interactions: prefers-reduced-motion
+ * - 2.5.8 Target Size (AA, 2.2): 24x24 + spacing
+ */
+.hiprint-toolbar-btn:focus-visible,
+.hiprint-toolbar-icon-btn:focus-visible,
+.hiprint-el-list-toggle:focus-visible,
+.hiprint-toolbar-input:focus-visible,
+.hiprint-toolbar-save-input:focus-visible,
+.hiprint-toolbar-template-action:focus-visible,
+.hiprint-toolbar-business-action:focus-visible,
+.hiprint-designer-toggle:focus-visible {
+  outline: 2px solid #1665d8;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.25);
+}
+.hiprint-toolbar-btn-primary:focus-visible {
+  outline-color: #fff;
+  outline-offset: -3px;
+}
+.hiprint-toolbar-btn-danger {
+  color: #d93025 !important;
+  border-color: #d93025 !important;
+}
+.hiprint-toolbar-btn-danger:hover {
+  background: #fee !important;
+}
+.hiprint-toolbar-template-card-meta {
+  color: #606266 !important;
+}
+.hiprint-el-list-empty {
+  color: #6c7480 !important;
+}
+.hiprint-el-list-row .el-lock-icon {
+  opacity: 1 !important;
+  color: #606266 !important;
+}
+.hiprint-toolbar-btn.active {
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 #1665d8;
+}
+.hiprint-toolbar-group {
+  gap: 6px !important;
+}
+.hiprint-toolbar-icon-btn {
+  min-width: 32px;
+  min-height: 32px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hiprint-toolbar-btn,
+  .hiprint-el-list-toggle,
+  .hiprint-el-list-row,
+  .hiprint-toolbar-template-card,
+  .hiprint-designer-toggle {
+    transition: none !important;
+    animation: none !important;
+  }
+}
