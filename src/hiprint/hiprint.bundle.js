@@ -11672,6 +11672,36 @@ var hiprint = function (t) {
         listPanel.on("click mousedown", function (e) {
           e.stopPropagation();
         });
+        // a11y: WCAG 2.5.7 单点拖拽必须有键盘等价。给 header 加 tabindex+role+aria-label,
+        // 监听方向键移动 panel(Shift+arrow 大步,Enter 重置回默认右上角)。
+        header.attr('tabindex', '0').attr('role', 'button')
+              .attr('aria-label', i18n.__('元素列表标题，可拖动；按方向键移动，按 Enter 重置位置'));
+        header.on('keydown', function (e) {
+          if (!listPanel.hasClass('visible')) return;
+          var step = e.shiftKey ? 30 : 10;
+          var pos = listPanel.position();
+          var handled = true;
+          if (e.key === 'ArrowLeft' || e.keyCode === 37) {
+            applyPanelPosition(pos.left - step, pos.top);
+          } else if (e.key === 'ArrowRight' || e.keyCode === 39) {
+            applyPanelPosition(pos.left + step, pos.top);
+          } else if (e.key === 'ArrowUp' || e.keyCode === 38) {
+            applyPanelPosition(pos.left, pos.top - step);
+          } else if (e.key === 'ArrowDown' || e.keyCode === 40) {
+            applyPanelPosition(pos.left, pos.top + step);
+          } else if (e.key === 'Enter' || e.keyCode === 13) {
+            // Enter 重置位置 - 清除 positioned 标志,重新走 ensurePanelPosition 默认布局
+            listPanel.data('positioned', false);
+            listPanel.css({ left: 'auto', right: '6px', top: '40px' });
+            ensurePanelPosition();
+          } else {
+            handled = false;
+          }
+          if (handled) {
+            e.preventDefault();
+            listPanel.data('positioned', true);
+          }
+        });
         header.on("mousedown", function (e) {
           if (e.which !== 1) return;
           if (!listPanel.hasClass("visible")) return;
@@ -13443,17 +13473,19 @@ var hiprint = function (t) {
 
     function ensureBusinessDialog() {
       if ($businessDialog && $businessDialog.length) return $businessDialog;
+      // a11y: dialog 加 role/aria-modal/aria-labelledby + 标题用 h2
+      var bizTitleId = 'hp-business-title-' + _toolbarUid;
       $businessDialog = $(
-        '<div class="hiprint-toolbar-business-dialog-wrap" style="display:none;">' +
+        '<div class="hiprint-toolbar-business-dialog-wrap" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="' + bizTitleId + '" tabindex="-1">' +
           '<div class="hiprint-toolbar-template-mask"></div>' +
           '<div class="hiprint-toolbar-template-dialog">' +
             '<div class="hiprint-toolbar-template-header">' +
-              '<span class="hiprint-toolbar-template-title"></span>' +
+              '<h2 id="' + bizTitleId + '" class="hiprint-toolbar-template-title"></h2>' +
             '</div>' +
-            '<div class="hiprint-toolbar-template-body"></div>' +
+            '<div class="hiprint-toolbar-template-body" aria-live="polite" aria-busy="false"></div>' +
             '<div class="hiprint-toolbar-template-footer">' +
               '<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-business-refresh">' + i18n.__('刷新') + '</button>' +
-              '<button type="button" class="hiprint-toolbar-btn js-business-close">' + i18n.__('关闭') + '</button>' +
+              '<button type="button" class="hiprint-toolbar-btn js-business-close" aria-label="' + i18n.__('关闭') + '">' + i18n.__('关闭') + '</button>' +
             '</div>' +
           '</div>' +
         '</div>'
@@ -13461,6 +13493,13 @@ var hiprint = function (t) {
       $container.append($businessDialog);
       $businessDialog.on('click', '.hiprint-toolbar-template-mask, .js-business-close', function () {
         closeBusinessDialog();
+      });
+      // a11y: ESC 关闭 dialog
+      $businessDialog.on('keydown', function (e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+          e.preventDefault();
+          closeBusinessDialog();
+        }
       });
       $businessDialog.on('click', '.hiprint-toolbar-template-dialog', function (e) {
         e.stopPropagation();
@@ -13676,17 +13715,19 @@ var hiprint = function (t) {
 
     function ensureTemplateDialog() {
       if ($templateDialog && $templateDialog.length) return $templateDialog;
+      // a11y: 同 business dialog 加 ARIA + h2 + ESC
+      var tplTitleId = 'hp-template-title-' + _toolbarUid;
       $templateDialog = $(
-        '<div class="hiprint-toolbar-template-dialog-wrap" style="display:none;">' +
+        '<div class="hiprint-toolbar-template-dialog-wrap" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="' + tplTitleId + '" tabindex="-1">' +
           '<div class="hiprint-toolbar-template-mask"></div>' +
           '<div class="hiprint-toolbar-template-dialog">' +
             '<div class="hiprint-toolbar-template-header">' +
-              '<span class="hiprint-toolbar-template-title"></span>' +
+              '<h2 id="' + tplTitleId + '" class="hiprint-toolbar-template-title"></h2>' +
             '</div>' +
-            '<div class="hiprint-toolbar-template-body"></div>' +
+            '<div class="hiprint-toolbar-template-body" aria-live="polite" aria-busy="false"></div>' +
             '<div class="hiprint-toolbar-template-footer">' +
               '<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-template-refresh">' + i18n.__('刷新') + '</button>' +
-              '<button type="button" class="hiprint-toolbar-btn js-template-close">' + i18n.__('关闭') + '</button>' +
+              '<button type="button" class="hiprint-toolbar-btn js-template-close" aria-label="' + i18n.__('关闭') + '">' + i18n.__('关闭') + '</button>' +
             '</div>' +
           '</div>' +
         '</div>'
@@ -13694,6 +13735,12 @@ var hiprint = function (t) {
       $container.append($templateDialog);
       $templateDialog.on('click', '.hiprint-toolbar-template-mask, .js-template-close', function () {
         closeTemplateDialog();
+      });
+      $templateDialog.on('keydown', function (e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+          e.preventDefault();
+          closeTemplateDialog();
+        }
       });
       $templateDialog.on('click', '.hiprint-toolbar-template-dialog', function (e) {
         e.stopPropagation();
@@ -13782,15 +13829,19 @@ var hiprint = function (t) {
 
     function ensureSaveDialog() {
       if ($saveDialog && $saveDialog.length) return $saveDialog;
+      // a11y: dialog 加 role/aria-modal/aria-labelledby + 标题 h2 + label-for 关联 input + role=alert 错误
+      var saveTitleId = 'hp-save-title-' + _toolbarUid;
+      var saveInputId = 'hp-save-name-' + _toolbarUid;
+      var saveErrorId = 'hp-save-err-' + _toolbarUid;
       $saveDialog = $(
-        '<div class="hiprint-toolbar-save-dialog-wrap" style="display:none;">' +
+        '<div class="hiprint-toolbar-save-dialog-wrap" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="' + saveTitleId + '" tabindex="-1">' +
           '<div class="hiprint-toolbar-save-mask"></div>' +
           '<div class="hiprint-toolbar-save-dialog">' +
-            '<div class="hiprint-toolbar-save-header">' + (opts.saveDialogTitle || i18n.__('保存模版')) + '</div>' +
+            '<h2 id="' + saveTitleId + '" class="hiprint-toolbar-save-header">' + (opts.saveDialogTitle || i18n.__('保存模版')) + '</h2>' +
             '<div class="hiprint-toolbar-save-body">' +
-              '<label class="hiprint-toolbar-save-label">' + (opts.saveDialogNameLabel || i18n.__('模版名称')) + '</label>' +
-              '<input type="text" class="hiprint-toolbar-save-input" placeholder="' + (opts.saveDialogNamePlaceholder || i18n.__('请输入模版名称')) + '" />' +
-              '<div class="hiprint-toolbar-save-error" style="display:none;"></div>' +
+              '<label for="' + saveInputId + '" class="hiprint-toolbar-save-label">' + (opts.saveDialogNameLabel || i18n.__('模版名称')) + '</label>' +
+              '<input id="' + saveInputId + '" type="text" class="hiprint-toolbar-save-input" placeholder="' + (opts.saveDialogNamePlaceholder || i18n.__('请输入模版名称')) + '" aria-describedby="' + saveErrorId + '" />' +
+              '<div id="' + saveErrorId + '" class="hiprint-toolbar-save-error" role="alert" style="display:none;"></div>' +
             '</div>' +
             '<div class="hiprint-toolbar-save-footer">' +
               '<button type="button" class="hiprint-toolbar-btn js-save-cancel">' + (opts.saveDialogCancelText || i18n.__('取消')) + '</button>' +
@@ -13802,6 +13853,13 @@ var hiprint = function (t) {
       $container.append($saveDialog);
       $saveDialog.on('click', '.hiprint-toolbar-save-mask, .js-save-cancel', function () {
         closeSaveDialog();
+      });
+      // a11y: ESC 关闭 save dialog
+      $saveDialog.on('keydown', function (e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+          e.preventDefault();
+          closeSaveDialog();
+        }
       });
       $saveDialog.on('click', '.hiprint-toolbar-save-dialog', function (e) {
         e.stopPropagation();
@@ -13930,8 +13988,9 @@ var hiprint = function (t) {
       });
 
       if (opts.showCustomPaper) {
-        $customBtn = registerToolbarButton('paper:custom', $('<button type="button" class="hiprint-toolbar-btn" data-paper="custom">' + (opts.customPaperButtonText || i18n.__('自定义')) + '</button>'), { groupKey: 'paper' });
-        var $customPopover = $('<div class="hiprint-toolbar-popover" style="display:none;"></div>');
+        // a11y: aria-haspopup="dialog" + aria-expanded 状态同步,屏幕阅读器能识别为 popover trigger
+        $customBtn = registerToolbarButton('paper:custom', $('<button type="button" class="hiprint-toolbar-btn" data-paper="custom" aria-haspopup="dialog" aria-expanded="false">' + (opts.customPaperButtonText || i18n.__('自定义')) + '</button>'), { groupKey: 'paper' });
+        var $customPopover = $('<div class="hiprint-toolbar-popover" role="dialog" aria-label="' + i18n.__('自定义纸张大小') + '" style="display:none;"></div>');
         var $customContent = $('<div class="hiprint-toolbar-popover-content"></div>');
         var $wInput = $('<input type="number" class="hiprint-toolbar-input" placeholder="' + i18n.__('宽') + '(mm)" style="width:80px;" value="220"/>');
         var $sep = $('<span style="margin:0 4px;">×</span>');
@@ -13952,7 +14011,30 @@ var hiprint = function (t) {
         $customPopover.append($customContent);
         $customBtn.on('click', function (e) {
           e.stopPropagation();
+          // 业务方自定义 popover UI 钩子:返回 false 阻止默认 popover 打开,业务方用自己的弹窗组件替代
+          if (typeof opts.onCustomPaperOpen === 'function') {
+            try {
+              var ret = opts.onCustomPaperOpen(template, toolbarApi);
+              if (ret === false) return;
+            } catch (err) {
+              console.error('[hiprint] onCustomPaperOpen threw:', err);
+            }
+          }
           $customPopover.toggle();
+          // a11y: 同步 aria-expanded 让屏幕阅读器知道 popover 当前状态
+          $customBtn.attr('aria-expanded', $customPopover.is(':visible') ? 'true' : 'false');
+          if ($customPopover.is(':visible')) {
+            // 自动 focus 到第一个 input,提升键盘可达性
+            setTimeout(function () { $wInput.focus(); }, 0);
+          }
+        });
+        // a11y: ESC 关闭 popover + 焦点归还 trigger button
+        $customPopover.on('keydown', function (e) {
+          if (e.key === 'Escape' || e.keyCode === 27) {
+            e.preventDefault();
+            $customPopover.hide();
+            $customBtn.attr('aria-expanded', 'false').focus();
+          }
         });
         // 全局 click 关闭自定义纸张 popover —— 必须用 toolbar 实例 namespace 绑定，
         // 否则多次 buildToolbar / 多实例并存时 handler 永远残留 + 重复触发。
@@ -14009,7 +14091,9 @@ var hiprint = function (t) {
 
     // --- 对齐 ---
     if (opts.showAlign) {
-      var alignItems = [
+      // 默认 8 个对齐项;业务方可通过 opts.alignItems 完全替换/裁剪/重排序。
+      // 每项需含 type(对应 template.alignElements 入参) + label + icon。
+      var defaultAlignItems = [
         { type: 'left', label: i18n.__('左对齐'), icon: '⫷' },
         { type: 'horizontalCenter', label: i18n.__('水平居中'), icon: '⫿' },
         { type: 'right', label: i18n.__('右对齐'), icon: '⫸' },
@@ -14019,6 +14103,9 @@ var hiprint = function (t) {
         { type: 'distributeHorizontal', label: i18n.__('水平等距'), icon: '⇔' },
         { type: 'distributeVertical', label: i18n.__('垂直等距'), icon: '⇕' }
       ];
+      var alignItems = (Array.isArray(opts.alignItems) && opts.alignItems.length > 0)
+        ? opts.alignItems.filter(function (it) { return it && it.type && it.label && it.icon; })
+        : defaultAlignItems;
       var $alignGroup = registerToolbarGroup('align', $('<div class="hiprint-toolbar-group hiprint-toolbar-align"></div>'));
       alignItems.forEach(function (item) {
         var alignKey = 'align:' + item.type;
@@ -14054,10 +14141,25 @@ var hiprint = function (t) {
       var $clearGroup = registerToolbarGroup('clear', $('<div class="hiprint-toolbar-group"></div>'));
       var $clearBtn = registerToolbarButton('clear', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-danger">' + (opts.clearButtonText || i18n.__('清空')) + '</button>'), { groupKey: 'clear' });
       $clearBtn.on('click', function () {
+        // 优先级: onClear (完全接管) > onClearConfirm (异步确认 + 默认 clear) > 原生 confirm
         if (opts.onClear) {
-          // 业务接管 onClear 时:try-catch 隔离回调错误,catch 后仍 return(不再走默认 confirm)
           try { opts.onClear(template); }
           catch (err) { console.error('[hiprint] onClear threw:', err); }
+          return;
+        }
+        if (typeof opts.onClearConfirm === 'function') {
+          // 业务方提供异步确认 UI(替代原生 confirm);
+          // 返回 truthy/Promise.resolve(true) → 走默认 template.clear(),
+          // 返回 false/Promise.resolve(false)/reject → 取消。
+          try {
+            Promise.resolve(opts.onClearConfirm(template)).then(function (ok) {
+              if (ok) template.clear();
+            }).catch(function (err) {
+              if (err) console.warn('[hiprint] onClearConfirm rejected:', err);
+            });
+          } catch (err) {
+            console.error('[hiprint] onClearConfirm threw:', err);
+          }
           return;
         }
         if (confirm(i18n.__('是否确认清空') + '?')) { template.clear(); }
