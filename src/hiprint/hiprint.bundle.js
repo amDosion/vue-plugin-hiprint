@@ -1078,7 +1078,7 @@ var hiprint = function (t) {
             })
           });
         } catch (e) {
-          console.log('updateOption error', e)
+          console.warn('[hiprint] updateOption error:', e);
         }
       }, BasePrintElement.prototype.getReizeableShowPoints = function () {
         return ['barcode', 'qrcode'].includes(this.options.textType) ? ["s", "w", "e", "se", "r"] : ["s", "w", "e", "r"];
@@ -2144,7 +2144,6 @@ var hiprint = function (t) {
                 var imagebox = $('<div><img style = "max-width:100%;max-height:100%"/></div>')
                 imagebox.find('img').attr('src', p)
                 imagebox.find('img').attr("height", t.tableColumnHeight || 50 + 'pt')
-                console.log(imagebox.find('img').css('width'))
                 r.html(imagebox)
               }
 
@@ -10816,8 +10815,6 @@ var hiprint = function (t) {
         this.createElementListPanel();
       }, t.prototype.update = function (t) {
         try {
-          var start = Date.now();
-          console.log('start', start)
           var e = this;
           this.index = t.index, this.name = t.name, this.width = t.width, this.height = t.height, this.paperType = t.paperType, this.paperHeader = t.paperHeader, this.paperFooter = t.paperFooter;
           this.designPaper.width = o.a.mm.toPt(t.width), this.designPaper.height = o.a.mm.toPt(this.height), this.designPaper.paperType = this.paperType, this.designPaper.paperHeader = this.paperHeader, this.designPaper.paperFooter = this.paperFooter;
@@ -10861,30 +10858,17 @@ var hiprint = function (t) {
           this.designPaper.createRuler();
           this.guideLines = t.guideLines || [];
           this.designPaper.setGuideLines(this.guideLines, !0);
-          var end = Date.now();
-          console.log('更新参数 end', end)
-          console.log('更新参数 time:', end - start)
           // 清空面板
           this.printElements.forEach(function (t) {
             t.designTarget && t.designTarget.length && t.designTarget.remove();
           }), this.printElements = [];
-          var end = Date.now();
-          console.log('清空面板 end', end)
-          console.log('清空面板 time:', end - start)
           // 更新面板
           this.initPrintElements(t.printElements);
-          var end = Date.now();
-          console.log('初始化元素 end', end)
-          console.log('初始化元素 time:', end - start)
           this.printElements.forEach(function (n) {
             e.appendDesignPrintElement(e.designPaper, n), n.design(t, e.designPaper);
           })
-          var end = Date.now();
-          console.log('插入面板 end', end)
-          console.log('插入面板 time:', end - start)
         } catch (e) {
-          console.log('???????')
-          console.log(e)
+          console.warn('[hiprint] PrintPanel.update failed:', e);
         }
       }, t.prototype.bindShortcutKeyEvent = function () {
         if (this._shortcutKeyBound) return;
@@ -11216,7 +11200,7 @@ var hiprint = function (t) {
           if (i = n.printElementType ? nt.createPrintElementType(n.printElementType) : a.instance.getElementType(n.tid)) {
             var o = i.createPrintElement(n.options);
             o.setTemplateId(e.templateId), o.setPanel(e), e.printElements.push(o);
-          } else console.log("miss " + JSON.stringify(t));
+          } else console.warn("[hiprint] missing element type for: " + JSON.stringify(t));
         });
       }, t.prototype.mathroundToporleft = function (t) {
         var e = p.a.instance.movingDistance;
@@ -11287,7 +11271,7 @@ var hiprint = function (t) {
         t.printElementType = t.printElementType || {}, t.printElementType.type = "oval", this.insertPrintElementToPanel(t);
       }, t.prototype.getPrintElementTypeByEntity = function (t) {
         var e;
-        return (e = t.tid ? a.instance.getElementType(t.tid) : nt.createPrintElementType(t.printElementType)) || console.log("miss " + JSON.stringify(t)), e;
+        return (e = t.tid ? a.instance.getElementType(t.tid) : nt.createPrintElementType(t.printElementType)) || console.warn("[hiprint] missing element type for: " + JSON.stringify(t)), e;
       }, t.prototype.getPrintStyle = function () {
         let layoutStyle = ''
         if(this.panelLayoutOptions && this.panelLayoutOptions['layoutType'] === 'row'){
