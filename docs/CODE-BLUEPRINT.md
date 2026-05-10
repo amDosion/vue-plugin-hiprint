@@ -1,6 +1,6 @@
 # hiprint.bundle.js 代码导航 + 实现 Blueprint
 
-> 给"接管者"用：从零理解 14905 行单文件 bundle.js 的代码地图。
+> 给"接管者"用：从零理解 15147 行单文件 bundle.js 的代码地图。
 > 假设读者：懂 Vue 3 + jQuery，但不熟 hiprint。
 >
 > 配套：[`CODEMAPS/`](./CODEMAPS/) 各模块详细 codemap、[`TOOLBAR-ARCHITECTURE.md`](./TOOLBAR-ARCHITECTURE.md) 工具栏专用、[`API-REFERENCE.md`](./API-REFERENCE.md) 公开 API 速查。
@@ -31,10 +31,10 @@
 | 10712-11100 | `PrintPanel` 上半 | 构造/`design`/`droppablePaper`(drop)/`initPrintElements`/键盘快捷键/多选框选 |
 | 11100-12103 | `PrintPanel` 下半 | `getPanelEntity`(序列化)/`getHtml`(打印)/`alignElements`/`update`(undo-redo)/`deletePrintElement` |
 | 12103-12243 | `PrintPaginationCreator` + `OptionSettingPanel` | 底部分页栏 + 右侧属性面板 |
-| 12244-13102 | **`PrintTemplate` (`ct`) 主类** | 多 `PrintPanel` 管理 + `design/print/getJson/update/undo/redo/destroy` + 历史栈 + 自动保存 |
-| 13103-14650 | **`buildToolbar` 函数** | 工具栏构造：纸张/缩放/旋转/对齐/预览/打印/保存/分页管理；返回 `toolbarCtrl` |
-| 14651-14952 | **`buildDesigner` 函数** | 设计器工厂：三栏布局 + 初始化 `PrintTemplate` + 调 `buildToolbar`；返回 `designerCtrl` |
-| 14953-15141 | 入口 `mt` (hiprint.init) + 公开导出 | `hiprint.init`、`PrintTemplate`、`buildToolbar`、`buildDesigner`、`print`、`getHtml` 等对外挂载 |
+| 12244-13107 | **`PrintTemplate` (`ct`) 主类** | 多 `PrintPanel` 管理 + `design/print/getJson/update/undo/redo/destroy` + `_assertNotDestroyed` 守卫 helper + 历史栈 + 自动保存 |
+| 13108-14657 | **`buildToolbar` 函数** | 工具栏构造：`_toolbarUid` + `_safeCall` helper + 纸张/缩放/旋转/对齐/预览/打印/保存/分页管理；返回 `toolbarCtrl` |
+| 14658-14952 | **`buildDesigner` 函数** | 设计器工厂：`_designerUid` + 三栏布局 + 初始化 `PrintTemplate` + 调 `buildToolbar`；返回 `designerCtrl` |
+| 14953-15147 | 入口 `mt` (hiprint.init) + 公开导出 | `hiprint.init`、`PrintTemplate`、`buildToolbar`、`buildDesigner`、`print`、`getHtml` 等对外挂载 |
 
 ---
 
@@ -108,19 +108,23 @@ Ctrl+Z → $(document).keydown
 ### 4. destroy
 
 ```
-ct.destroy() (12453)
+ct.destroy() (12458)
   1. _destroyed = true
   2. hinnn.event.off("hiprintTemplateDataChanged_"+id) 等 4 个事件
   3. printPanels.forEach → panel.clear() → el.designTarget.remove()
   4. HiPrintlib.removePrintTemplateById(id)
   5. container.empty()
   6. 解引用 printPanels/historyList
+
+注：destroy 后,所有公开方法通过 `_assertNotDestroyed(name)` (12439)
+统一返回安全 fallback (undefined / 空 PrintTemplateEntity / 空 jQuery),
+不再各处重复 `if (this._destroyed) return ...`。
 ```
 
 ### 5. 模板序列化 getJson
 
 ```
-ct.getJson() (12425)
+ct.getJson() (12423)
   → printPanels.forEach → panel.getPanelEntity(withType=true) (11125)
       → printElements.forEach → el.getPrintElementEntity(true)
           → { tid?: string, options: PrintElementOptionEntity, printElementType: {type, title} }
@@ -136,20 +140,29 @@ ct.getJson() (12425)
 
 读完这 5 个函数，整个 hiprint 设计原理基本理清：
 
-### 1. `BasePrintElement.prototype.getDesignTarget` (~735)
+### 1. `BasePrintElement.prototype.getDesignTarget` (735)
 绑定 click 选中、dblclick 行内编辑 — 元素进入设计画布的唯一入口。读懂它才能理解"选中"和"属性面板联动"的事件链。
 
-### 2. `BasePrintElement.prototype.getData` (~1263)
+### 2. `BasePrintElement.prototype.getData` (1263)
 `field.split('.').reduce(...)` 一行决定字段取值规则（支持嵌套路径）。是"数据绑定"的最小核心。
 
-### 3. `PrintPanel.prototype.droppablePaper` (~11164)
+### 3. `PrintPanel.prototype.droppablePaper` (11164)
 drop 事件完整处理：坐标换算（px→pt→缩放补偿）、元素挂载、触发历史记录。理解它 = 理解拖放全流程。
 
-### 4. `PrintPanel.prototype.getHtml` (~11300)
+### 4. `PrintPanel.prototype.getHtml` (11004)
 打印渲染主流程：按 top 排序 → 计算翻页 → 调每个元素的 `getHtml`。是"设计 → 打印"转化枢纽。
 
-### 5. `PrintTemplate.prototype.destroy` (~12453)
+### 5. `PrintTemplate.prototype.destroy` (12458)
 4 步 teardown 顺序（事件→DOM→注册表→引用）展示整个对象图的生命周期。读懂它能快速定位所有资源持有点，对 Vue 路由复用场景尤为关键。
+
+### Bonus: 两个新加的 helper
+
+- **`PrintTemplate.prototype._assertNotDestroyed(name)` (12439)** —
+  统一 destroy 守卫：`if (this._assertNotDestroyed('getJson')) return new st({panels:[]})`。
+  替代分散在每个公开方法的 `if (this._destroyed) return ...` 逻辑，所有方法行为一致。
+- **`_safeCall(fn, args, name)` (13118, buildToolbar 内部)** —
+  统一业务回调隔离：`_safeCall(opts.onPreview, [template], 'onPreview')`。
+  catch 业务方异常 + console.error 带 `[hiprint]` 前缀，避免单个回调抛错炸掉整个工具栏点击链。
 
 ---
 

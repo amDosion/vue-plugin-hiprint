@@ -18,3 +18,9 @@ yarn-error.log
 .editorconfig
 package-lock.json
 yarn.lock
+
+# Playwright artifacts
+test-results/
+playwright-report/
+undefined/
+e2e/.cache/

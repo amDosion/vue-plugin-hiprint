@@ -8,7 +8,7 @@ vue-plugin-hiprint 是 Vue 3 + Vite 的打印设计/预览库，基于 hiprint 2
 
 | Area | Entry | Status | Lines |
 |------|-------|--------|-------|
-| [Bundle / Core](./core-bundle.md) | `src/hiprint/hiprint.bundle.js` | v1.0.0 | ~15000 |
+| [Bundle / Core](./core-bundle.md) | `src/hiprint/hiprint.bundle.js` | v1.0.0 | 15147 |
 | [Public API](./api-exports.md) | `src/index.js` | v1.0.0 (23 exports) | ~142 |
 | [Toolbar](./toolbar-architecture.md) | `buildToolbar` in bundle | v1.0.0+ segmented panel manager | ~1200 |
 | [Designer Shell](./designer-shell.md) | `src/standalone/designer-shell.vue` | v1.0.0 (dev entry) | ~350 |

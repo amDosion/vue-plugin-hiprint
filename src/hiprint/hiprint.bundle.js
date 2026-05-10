@@ -2111,9 +2111,10 @@ var hiprint = function (t) {
             p = a ? a(e[t.field], e, i, n) : e[t.field];
           var rf = TableExcelHelper.getColumnRenderFormatter(t);
           if (rf) {
+            // renderFormatter 是业务方主动提供的 HTML 渲染回调; 业务方负责其输出的 XSS 安全 (类似 useHtml 约定)
             r.html(rf(e[t.field], e, i, n, rowIndex))
           //表格内容插入二维码等
-          } else if ("text" == t.tableTextType || t.tableTextType == void 0) r.html(p);
+          } else if ("text" == t.tableTextType || t.tableTextType == void 0) r.text(p == null ? "" : p);
           else {
             if ("barcode" == t.tableTextType) {
               r.html(
@@ -9223,7 +9224,9 @@ var hiprint = function (t) {
         this.designTarget && (this.css(this.designTarget, this.getData()), this.updateTargetImage(this.designTarget, this.getTitle(), this.getData()));
       }, e.prototype.updateTargetImage = function (t, e, n) {
         var i = t.find(".hiprint-printElement-image-content");
-        i.find("img").length ? i.find("img").attr("src", n) : i.html('<img style="width:100%;height:100%;" src="' + n + '">');
+        // [XSS] n (image src/dataURL) 来自 getData() = user-controlled. 字符串拼接进 .html() 会被
+        // 单引号/标签注入。改用 jQuery 链 + .attr() 强制把 n 当 attribute value (浏览器 DOM 转义)。
+        i.find("img").length ? i.find("img").attr("src", n) : i.empty().append($("<img>").attr({ src: n, style: "width:100%;height:100%;" }));
         if (n.length) i.find("img").css('cssText', `width:100%;height:100%;content:url("${n}")!important`)
         else i.find("img").css('cssText', 'width:100%;height:100%;')
         if (this.options.fit) i.find("img").css("object-fit", this.options.fit);
@@ -9323,8 +9326,9 @@ var hiprint = function (t) {
       }, t.prototype.createPaperNumber = function (t, d) {
         var e = this,
           n = this.target.find(".hiprint-paperNumber");
-        if (n.length) return n.html(t), n;
-        var i = $('<span class="hiprint-paperNumber"  style="position: absolute">' + t + "</span>");
+        // [XSS] t 是 paperNumber 模板字符串 (来自 panel.options 用户输入); 强制 .text() 避免 <script> 注入
+        if (n.length) return n.text(t == null ? "" : t), n;
+        var i = $('<span class="hiprint-paperNumber" style="position: absolute"></span>').text(t == null ? "" : t);
         return i.css("top", this.paperNumberTop + "pt"), i.css("left", this.paperNumberLeft + "pt"), this.paperContentTarget.append(i), d && this.dragHeadLineOrFootLine(i, function (t, n) {
           e.paperNumberTop = n, e.paperNumberLeft = t, e.triggerOnPaperBaseInfoChanged();
         }, !0), i;
@@ -9711,7 +9715,11 @@ var hiprint = function (t) {
         if (this.designTarget) {
           var t = this.getData(),
             e = this.getHtml(this.designPaper)[0].target;
-          this.designTarget.find(".hiprint-printElement-longText-content").html(e.find(".hiprint-printElement-longText-content").html()), this.css(this.designTarget, t);
+          // [XSS] 用 contents().clone() 转移 DOM 节点而非 .html() 字符串 round-trip,
+          // 避免源 e 内含的 user data 被二次解析为 HTML。
+          var $src = e.find(".hiprint-printElement-longText-content");
+          this.designTarget.find(".hiprint-printElement-longText-content").empty().append($src.contents().clone());
+          this.css(this.designTarget, t);
         }
       }, e.prototype.getConfigOptions = function () {
         return p.a.instance.longText;
@@ -9724,7 +9732,9 @@ var hiprint = function (t) {
       }, e.prototype.updateTargetText = function (t, e, n) {
         var i = t.find(".hiprint-printElement-longText-content"),
           o = this.getText(e, n);
-        i.html(o);
+        // [XSS] 默认 text-safe; formatter 是业务方明确签约的 HTML 渲染路径 (与 longText 类型语义一致)
+        if (this.getFormatter()) { i.html(o == null ? "" : o); }
+        else { i.text(o == null ? "" : o); }
       }, e.prototype.createTarget = function (t, e) {
         var n = $('<div  class="hiprint-printElement hiprint-printElement-longText" style="position: absolute;"><div class="hiprint-printElement-longText-content hiprint-printElement-content" style="height:100%;width:100%"></div></div>');
         return this.updateTargetText(n, t, e), n;
@@ -10116,7 +10126,9 @@ var hiprint = function (t) {
 
         if (t) {
           var e = t(this.getData(), this.options, this._currenttemplateData);
-          this.designTarget.find(".hiprint-printElement-html-content").html(e);
+          // html-element 类型的语义就是渲染业务方提供的 HTML; 业务方需在 formatter 内自行转义 user data。
+          // 这是 by-design 的安全权衡 (类似 React dangerouslySetInnerHTML),不是 XSS bug。
+          this.designTarget.find(".hiprint-printElement-html-content").html(e == null ? "" : e);
         }
       }, e.prototype.getConfigOptions = function () {
         return p.a.instance.html;
@@ -14332,6 +14344,8 @@ var hiprint = function (t) {
       var $btn = $('<button type="button" class="' + cls + '"></button>');
       if (btnOpt.title) $btn.attr('title', btnOpt.title);
       if (btnOpt.html != null) {
+        // 业务方主动用 html 字段 = 明确接受 HTML 渲染 (label 字段是默认 text-safe path);
+        // 业务方需对其传入的 html 自行做 XSS 转义。see docs/integration-guide.md.
         $btn.html(btnOpt.html);
       } else {
         var text = '';
