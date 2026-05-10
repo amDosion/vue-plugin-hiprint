@@ -1262,7 +1262,7 @@ var hiprint = function (t) {
         }
       }, BasePrintElement.prototype.getData = function (t) {
         var f = this.getField();
-        return t ? f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "" : this.printElementType.getData();
+        return t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.printElementType.getData();
       }, BasePrintElement.prototype.copyFromType = function () {
         var options = this.options, type = this.printElementType;
         var o = this.getConfigOptions();
@@ -1526,7 +1526,9 @@ var hiprint = function (t) {
         if (this.printElementType.formatter && (formatter = this.printElementType.formatter), this.options.formatter) try {
           formatter = new Function('return ' + this.options.formatter)();
         } catch (t) {
-          console.log(t);
+          // 元素级 formatter eval 失败时,会静默回退到 printElementType.formatter,
+          // 业务方需要看到诊断信号才能知道自己的 formatter 字符串语法错。
+          console.warn('[hiprint] element formatter eval failed, fallback to printElementType.formatter:', t);
         }
         return formatter;
       }, BasePrintElement.prototype.getStyler = function () {
@@ -1534,7 +1536,7 @@ var hiprint = function (t) {
         if (this.printElementType.styler && (fnstyler = this.printElementType.styler), this.options.styler) try {
           fnstyler = new Function('return ' + this.options.styler)();
         } catch (t) {
-          console.log(t);
+          console.warn('[hiprint] element styler eval failed, fallback to printElementType.styler:', t);
         }
         return fnstyler;
       }, BasePrintElement.prototype.bingKeyboardMoveEvent = function (t, e) {
@@ -2129,7 +2131,7 @@ var hiprint = function (t) {
                 }), r.find(".hibarcode_imgcode").attr("height", t.tableColumnHeight || 30 + 'pt'), r.find(".hibarcode_imgcode").css("margin", '5pt 10pt'), r.find(".hibarcode_imgcode").attr("width", "calc(100% - 20pt)")) : r.html("");
                 // this.options.hideTitle || r.find(".hibarcode_displayValue").html(n)
                 if (t.showCodeTitle) {
-                    r.find('.hibarcode_displayValue').html(p)
+                    r.find('.hibarcode_displayValue').text(p)
                 }
               } catch (t) {
                 console.warn('[hiprint] barcode render failed (table cell):', t); r.html(`${i18n.__('此格式不支持该文本')}`);
@@ -6514,7 +6516,7 @@ var hiprint = function (t) {
           }
         };
         var f = this.getField();
-        var e = f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "";
+        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "";
         return e ? JSON.parse(JSON.stringify(e)) : [];
       }, TablePrintElement.prototype.onResize = function (t, e, n, i, o) {
         _super.prototype.updateSizeAndPositionOptions.call(this, o, i, n, e), _table_TableExcelHelper__WEBPACK_IMPORTED_MODULE_6__.a.resizeTableCellWidth(this.designTarget, this.getColumns(), this.options.getWidth());
@@ -8908,24 +8910,59 @@ var hiprint = function (t) {
         configurable: !0
       }), t.prototype.addPrintElementTypes = function (t, e) {
         var n = this;
-        this[t] ? this[t] = this[t].concat(e) : this[t] = e;
-        // 去重:多次 appendElementTypeGroups 同 tid 时,allElementTypes 之前会累积重复,
-        // 内存膨胀且面板渲染重复。用 Map by tid 保证唯一。
+        // 去重:同时清理 this[t] (group 桶) 和 allElementTypes (平铺缓存),
+        // 防止重复调用 appendElementTypeGroups 同 module + 同 tid 时面板渲染重复 group。
+        // 收集本次 incoming tids 用于桶级 dedupe。
+        var incomingTids = {};
+        e.forEach(function (g) {
+          (g.printElementTypes || []).forEach(function (pt) {
+            if (pt && pt.tid) incomingTids[pt.tid] = true;
+          });
+        });
+        if (this[t]) {
+          // 旧 group 中含 incoming tid 的项过滤掉(替换语义)
+          var dedupedOld = this[t].filter(function (oldGroup) {
+            var hasOverlap = (oldGroup.printElementTypes || []).some(function (pt) {
+              return pt && incomingTids[pt.tid];
+            });
+            if (hasOverlap && oldGroup.printElementTypes.length === 1) {
+              // 整组只有 1 个被替换的 tid -> 整组移除
+              return false;
+            }
+            return true;
+          });
+          this[t] = dedupedOld.concat(e);
+        } else {
+          this[t] = e;
+        }
         e.forEach(function (g) {
           (g.printElementTypes || []).forEach(function (pt) {
             var tid = pt && pt.tid;
             if (tid) {
+              var existed = false;
               n.allElementTypes = n.allElementTypes.filter(function (existing) {
-                return !existing || existing.tid !== tid;
+                if (existing && existing.tid === tid) { existed = true; return false; }
+                return !!existing;
               });
+              if (existed) {
+                console.warn('[hiprint] addPrintElementTypes: tid already registered, replacing:', tid);
+              }
             }
             n.allElementTypes.push(pt);
           });
         });
       }, t.prototype.removePrintElementTypes = function (t) {
+        // 安全:空 t 会让 startsWith('') 命中所有 tid,误删整库。明确拒绝。
+        if (!t) {
+          console.warn('[hiprint] removePrintElementTypes called without moduleName');
+          return;
+        }
         var n = this;
-        delete n[t], n.allElementTypes = n.allElementTypes.filter(function (e) {
-          return !e.tid.startsWith(t)
+        // 用 prefix + '.' 精确匹配,防 'order' 误删 'order_v2.*'。
+        var prefix = t + '.';
+        delete n[t];
+        n.allElementTypes = n.allElementTypes.filter(function (e) {
+          return e && e.tid && !(e.tid === t || e.tid.indexOf(prefix) === 0);
         });
       }, t.prototype.getElementTypeGroups = function (t) {
         return this[this.formatterModule(t)] || [];
@@ -9676,7 +9713,7 @@ var hiprint = function (t) {
         return this.options.title || this.printElementType.title;
       }, e.prototype.getData = function (t) {
         var f = this.getField();
-        var e = f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "";
+        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "";
         return t ? e || "" : this.options.testData || this.printElementType.getData() || "";
       }, e.prototype.updateTargetText = function (t, e, n) {
         var i = t.find(".hiprint-printElement-longText-content"),
@@ -9926,7 +9963,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        if (e = t ? f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "" : this.options.testData || this.printElementType.getData() || "", this.options.format) {
+        if (e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || "", this.options.format) {
           if ("datetime" == this.options.dataType) return o.a.dateFormat(e, this.options.format);
 
           if ("boolean" == this.options.dataType) {
@@ -10285,7 +10322,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        e = t ? f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "" : this.options.testData || this.printElementType.getData() || ""
+        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || ""
         return e;
       }, e.prototype.initBarcode = function (designTarget, title, text) {
         designTarget = designTarget || this.designTarget
@@ -10358,7 +10395,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        e = t ? f ? f.split('.').reduce((a, c) => a ? a[c] : t ? t[c] : "", !1) || "" : "" : this.options.testData || this.printElementType.getData() || ""
+        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || ""
         return e;
       }, e.prototype.initQrcode = function (designTarget, title, text) {
         designTarget = designTarget || this.designTarget
@@ -12362,9 +12399,11 @@ var hiprint = function (t) {
       }, t.prototype.rotatePaper = function () {
         this.editingPanel.rotatePaper();
       }, t.prototype.alignElements = function (type) {
+        if (this._destroyed) { console.warn('[hiprint] alignElements called on destroyed template'); return; }
         this.editingPanel && this.editingPanel.alignElements(type);
       }, t.prototype.zoom = function (s, p) {
-        this.editingPanel.zoom(s, p);
+        if (this._destroyed) { console.warn('[hiprint] zoom called on destroyed template'); return; }
+        this.editingPanel && this.editingPanel.zoom(s, p);
       }, t.prototype.addPrintPanel = function (t, e) {
         var n = t ? new pt(new rt(t), this.id) : this.createDefaultPanel();
         return t && (t.index = this.printPanels.length), e && (this.container.append(n.getTarget()), n.design(this.designOptions)), this.printPanels.push(n), e && this.selectPanel(n.index), n;
@@ -12375,6 +12414,12 @@ var hiprint = function (t) {
           t == i ? (n.enable(), e.editingPanel = n, e.printPaginationCreator && e.printPaginationCreator.selectPanel(t)) : n.disable();
         });
       }, t.prototype.deletePanel = function (t) {
+        // 不变式: printPanels 必须 >= 1, 否则 getPaperType / getOrient / print
+        // 等方法访问 printPanels[0] 抛 TypeError。
+        if (!this.printPanels || this.printPanels.length <= 1) {
+          console.warn('[hiprint] deletePanel ignored: must keep at least 1 panel');
+          return;
+        }
         this.printPanels[t].clear(), this.printPanels[t].getTarget().remove(), this.printPanels.splice(t, 1);
       }, t.prototype.getPaneltotal = function () {
         return this.printPanels.length;
@@ -12387,6 +12432,7 @@ var hiprint = function (t) {
       }, t.prototype.createContainer = function (t) {
         t ? (this.container = $(t), this.container.addClass("hiprint-printTemplate")) : this.container = $('<div class="hiprint-printTemplate"></div>');
       }, t.prototype.getJsonTid = function () {
+        if (this._destroyed) { console.warn('[hiprint] getJsonTid called on destroyed template'); return new st({ panels: [] }); }
         var t = [];
         return this.printPanels.forEach(function (e) {
           e.getPanelEntity().printElements.length && t.push(e.getPanelEntity());
@@ -12394,6 +12440,7 @@ var hiprint = function (t) {
           panels: t
         });
       }, t.prototype.getJson = function () {
+        if (this._destroyed) { console.warn('[hiprint] getJson called on destroyed template'); return new st({ panels: [] }); }
         var t = [];
         return this.printPanels.forEach(function (e) {
           t.push(e.getPanelEntity(!0));
@@ -12401,9 +12448,14 @@ var hiprint = function (t) {
           panels: t
         });
       }, t.prototype.undo = function (t) {
+        if (this._destroyed) { console.warn('[hiprint] undo called on destroyed template'); return; }
         o.a.event.trigger("hiprintTemplateDataShortcutKey_" + this.id, "undo");
       }, t.prototype.redo = function (t) {
+        if (this._destroyed) { console.warn('[hiprint] redo called on destroyed template'); return; }
         o.a.event.trigger("hiprintTemplateDataShortcutKey_" + this.id, "redo");
+      }, t.prototype.isDestroyed = function () {
+        // 公开 getter — 业务方代码替代直接读 _destroyed (后者是私有约定)
+        return !!this._destroyed;
       }, t.prototype.getPrintElementSelectEventKey = function () {
         return "PrintElementSelectEventKey_" + this.id;
       }, t.prototype.getBuildCustomOptionSettingEventKey = function () {
@@ -13805,7 +13857,9 @@ var hiprint = function (t) {
         closeDefault: closeSaveDialogDefault
       };
       if (typeof opts.onSaveDialogClose === 'function') {
-        var result = opts.onSaveDialogClose(context);
+        var result;
+        try { result = opts.onSaveDialogClose(context); }
+        catch (err) { console.error('[hiprint] onSaveDialogClose threw:', err); }
         if (result === false || result === true) return;
       }
       closeSaveDialogDefault();
@@ -13923,7 +13977,9 @@ var hiprint = function (t) {
         closeDefault: closeSaveDialogDefault
       };
       if (typeof opts.onSaveDialogOpen === 'function') {
-        var result = opts.onSaveDialogOpen(context);
+        var result;
+        try { result = opts.onSaveDialogOpen(context); }
+        catch (err) { console.error('[hiprint] onSaveDialogOpen threw:', err); }
         if (result === false || result === true) return;
       }
       openSaveDialogDefault(defaultName);
@@ -14112,7 +14168,10 @@ var hiprint = function (t) {
         var $btn = registerToolbarButton(alignKey, $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '" aria-label="' + item.label + '">' + item.icon + '</button>'), { groupKey: 'align' });
         $btn.on('click', function () {
           template.alignElements(item.type);
-          opts.onAlign && opts.onAlign(item.type, template);
+          if (opts.onAlign) {
+            try { opts.onAlign(item.type, template); }
+            catch (err) { console.error('[hiprint] onAlign threw:', err); }
+          }
         });
         $alignGroup.append($btn);
       });
@@ -14808,10 +14867,21 @@ var hiprint = function (t) {
         } else {
           it.clearPanelSlot();
         }
-        it.build($componentContainer[0], moduleName || opts.componentModule);
+        var resolvedModule = moduleName || opts.componentModule;
+        it.build($componentContainer[0], resolvedModule);
+        // 业务方传入的 module 不存在时面板会渲染空,加 warn 帮助调试
+        if (resolvedModule && (!it[resolvedModule] || it[resolvedModule].length === 0)) {
+          console.warn('[hiprint] rebuildComponentPanel: no element type groups for module:', resolvedModule);
+        }
       },
       destroy: function () {
         toolbarCtrl.destroy();
+        // 关键: buildDesigner 内部 new 出来的 hiprintTemplate 必须连带销毁,
+        // 否则它持有的事件总线订阅 + 单例 map 条目永远不释放(内存泄漏)。
+        if (hiprintTemplate && typeof hiprintTemplate.destroy === 'function') {
+          try { hiprintTemplate.destroy(); }
+          catch (err) { console.warn('[hiprint] designer.destroy: template destroy failed', err); }
+        }
         $container.empty();
       }
     };
