@@ -14603,7 +14603,10 @@ var hiprint = function (t) {
       componentPanelSlot: null,
       templateOptions: {},
       toolbarOptions: {},
-      onReady: null
+      onReady: null,
+      // 分页栏默认关闭 — 单页打印模板(常见场景)不需要画布底部的"+"添加分页按钮。
+      // 多页模板场景显式 showPagination:true 启用。
+      showPagination: false
     }, options || {});
 
     var $container = $(container);
@@ -14648,6 +14651,12 @@ var hiprint = function (t) {
     var $printTemplateContainer = $('<div class="hiprint-printTemplate"></div>')
       .attr('id', designerId + '-print-template');
     var $paginationContainer = $('<div class="hiprint-printPagination hiprint-designer-pagination"></div>');
+    // showPagination=false(默认) -> 隐藏分页栏(画布底部的 "+" 添加新页按钮)。
+    // 业务方需要多页打印时设 showPagination:true 显式启用,或自己在工具栏暴露
+    // designerCtrl.getTemplate().addPrintPanel(...) 触发添加。
+    if (!opts.showPagination) {
+      $paginationContainer.css('display', 'none');
+    }
     var $cardDesign = $('<div class="hiprint-designer-card"></div>');
     $cardDesign.append($printTemplateContainer, $paginationContainer);
     $panelCenter.append($cardDesign);
@@ -14872,6 +14881,12 @@ var hiprint = function (t) {
           catch (err) { console.warn('[hiprint] designer.destroy: template destroy failed', err); }
         }
         $container.empty();
+      },
+      // 运行时切换分页栏显隐(画布底部的 "+" 添加新页按钮)。
+      // 默认 opts.showPagination=false 时分页栏隐藏;业务方需要多页时调用此方法显示,
+      // 或者用 hiprintTemplate.addPrintPanel() 程序化添加(无需分页栏)。
+      setPaginationVisible: function (visible) {
+        $paginationContainer.toggle(!!visible);
       }
     };
   }

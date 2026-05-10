@@ -147,6 +147,41 @@ a.instance (PrintElementTypeManager 单例)
       → it.enableDrag(...)                     [绑定拖拽事件]
 ```
 
+### 分页栏（多页打印模板）
+
+`buildDesigner` 默认**隐藏**画布底部的分页栏（`.hiprint-printPagination`，含 `+` 添加新页按钮）。单页模板（绝大多数）用不到。
+
+启用方式：
+
+```js
+buildDesigner('#hiprintDesigner', {
+  showPagination: true,    // 启用画布底部分页栏 + 添加按钮
+  // ...
+});
+
+// 或运行时切换
+designerCtrl.setPaginationVisible(true);
+```
+
+**业务方推荐做法**：不启用分页栏，自己在工具栏放"添加分页"按钮（更清晰的 UX）：
+
+```js
+buildToolbar('#toolbar', tpl, {
+  extraButtons: [{
+    key: 'addPanel',
+    label: '+ 添加分页',
+    type: 'default',
+    onClick: function (template) {
+      template.addPrintPanel(undefined, true);   // 添加 + 立即切换到新页
+    }
+  }],
+  extraPosition: 'end'
+});
+
+// 或程序化添加(完全不要 UI)
+designerCtrl.getTemplate().addPrintPanel({ paperType: 'A4' }, true);
+```
+
 ### componentPanelSlot 插槽机制
 
 `buildDesigner` 的 `opts.componentPanelSlot` 字段或 `designerCtrl.setComponentPanelSlot(slotOptions)` 可在面板中插入动态字段虚拟分组：
