@@ -1,6 +1,7 @@
 import { defineConfig, transformWithEsbuild } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import fs from 'fs'
 
 const isLib = process.env.BUILD_TARGET === 'lib'
 
@@ -22,9 +23,22 @@ const stripConsoleInDev = () => ({
   },
 })
 
+const copyPrintLockCss = () => ({
+  name: 'copy-print-lock-css',
+  apply: 'build',
+  closeBundle() {
+    if (!isLib) return
+
+    fs.copyFileSync(
+      path.resolve(__dirname, 'src/hiprint/css/print-lock.css'),
+      path.resolve(__dirname, 'dist/print-lock.css')
+    )
+  },
+})
+
 export default defineConfig(({ mode }) => {
   const common = {
-    plugins: [vue(), stripConsoleInDev()],
+    plugins: [vue(), stripConsoleInDev(), copyPrintLockCss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
@@ -76,7 +90,6 @@ export default defineConfig(({ mode }) => {
             'jspdf',
             'bwip-js',
             'nzh',
-            'lodash',
             'dom-to-image-more',
           ],
           output: {
@@ -90,7 +103,6 @@ export default defineConfig(({ mode }) => {
               jspdf: 'jspdf',
               'bwip-js': 'bwipjs',
               nzh: 'Nzh',
-              lodash: '_',
               'dom-to-image-more': 'domtoimage',
             },
             assetFileNames: (assetInfo) => {

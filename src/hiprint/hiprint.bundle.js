@@ -1510,8 +1510,7 @@ var hiprint = function (t) {
       }, BasePrintElement.prototype.getFormatter = function () {
         var formatter = void 0;
         if (this.printElementType.formatter && (formatter = this.printElementType.formatter), this.options.formatter) try {
-          var s = "formatter=" + this.options.formatter;
-          eval(s);
+          formatter = new Function('return ' + this.options.formatter)();
         } catch (t) {
           console.log(t);
         }
@@ -1519,8 +1518,7 @@ var hiprint = function (t) {
       }, BasePrintElement.prototype.getStyler = function () {
         var fnstyler = void 0;
         if (this.printElementType.styler && (fnstyler = this.printElementType.styler), this.options.styler) try {
-          var s = "fnstyler=" + this.options.styler;
-          eval(s);
+          fnstyler = new Function('return ' + this.options.styler)();
         } catch (t) {
           console.log(t);
         }
@@ -2069,7 +2067,7 @@ var hiprint = function (t) {
           if (!t.checked) return;
           var rowsColumnsMerge = ''
           if (n.rowsColumnsMerge) {
-            eval('rowsColumnsMerge=' + n.rowsColumnsMerge)
+            try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.log(e); }
             var rowsColumnsArr = rowsColumnsMerge(e, t, i, rowIndex, tableData, printData) || [1, 1]
             var r = $(`<td style = 'display:${!(rowsColumnsArr[0] && rowsColumnsArr[1]) ? "none" : ""}' rowspan = '${rowsColumnsArr[0]}' colspan = '${rowsColumnsArr[1]}'></td>`);
           } else {
@@ -2265,8 +2263,7 @@ var hiprint = function (t) {
           options.groupFieldsFormatter = "function(type,options,data){ return " + arr + " }";
         }
         if (tablePrintElementType.groupFieldsFormatter && (groupFieldsFormatter = tablePrintElementType.groupFieldsFormatter), options.groupFieldsFormatter) try {
-          var s = "groupFieldsFormatter=" + options.groupFieldsFormatter;
-          eval(s);
+          groupFieldsFormatter = new Function('return ' + options.groupFieldsFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2274,8 +2271,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getGroupFormatter = function (options, tablePrintElementType) {
         var groupFormatter = void 0;
         if (tablePrintElementType.groupFormatter && (groupFormatter = tablePrintElementType.groupFormatter), options.groupFormatter) try {
-          var s = "groupFormatter=" + options.groupFormatter;
-          eval(s);
+          groupFormatter = new Function('return ' + options.groupFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2283,8 +2279,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getGroupFooterFormatter = function (options, tablePrintElementType) {
         var groupFooterFormatter = void 0;
         if (tablePrintElementType.groupFooterFormatter && (groupFooterFormatter = tablePrintElementType.groupFooterFormatter), options.groupFooterFormatter) try {
-          var s = "groupFooterFormatter=" + options.groupFooterFormatter;
-          eval(s);
+          groupFooterFormatter = new Function('return ' + options.groupFooterFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2292,8 +2287,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getFooterFormatter = function (options, tablePrintElementType) {
         var footerFormatter = void 0;
         if (tablePrintElementType.footerFormatter && (footerFormatter = tablePrintElementType.footerFormatter), options.footerFormatter) try {
-          var s = "footerFormatter=" + options.footerFormatter;
-          eval(s);
+          footerFormatter = new Function('return ' + options.footerFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2301,8 +2295,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getRowStyler = function (options, tablePrintElementType) {
         var rowStyler = void 0;
         if (tablePrintElementType.rowStyler && (rowStyler = tablePrintElementType.rowStyler), options.rowStyler) try {
-          var s = "rowStyler=" + options.rowStyler;
-          eval(s);
+          rowStyler = new Function('return ' + options.rowStyler)();
         } catch (t) {
           console.log(t);
         }
@@ -2310,8 +2303,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getColumnTableSummaryFormatter = function (column) {
         var tableSummaryFormatter = void 0;
         if (column.tableSummaryFormatter && (tableSummaryFormatter = column.tableSummaryFormatter), column.tableSummaryFormatter) try {
-          var s = "tableSummaryFormatter=" + column.tableSummaryFormatter;
-          eval(s);
+          tableSummaryFormatter = new Function('return ' + column.tableSummaryFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2319,8 +2311,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getColumnStyler = function (column) {
         var styler = void 0;
         if (column.styler && (styler = column.styler), column.styler2) try {
-          var s = "styler=" + column.styler2;
-          eval(s);
+          styler = new Function('return ' + column.styler2)();
         } catch (t) {
           console.log(t);
         }
@@ -2328,8 +2319,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getHeaderStyler = function (column) {
         var stylerHeader = void 0;
         if (column.stylerHeader && (stylerHeader = column.stylerHeader), column.stylerHeader) try {
-          var s = "stylerHeader=" + column.stylerHeader;
-          eval(s);
+          stylerHeader = new Function('return ' + column.stylerHeader)();
         } catch (t) {
           console.log(t);
         }
@@ -2337,8 +2327,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getColumnRenderFormatter = function (column) {
         var renderFormatter = void 0;
         if (column.renderFormatter && (renderFormatter = column.renderFormatter), column.renderFormatter) try {
-          var s = "renderFormatter=" + column.renderFormatter;
-          eval(s);
+          renderFormatter = new Function('return ' + column.renderFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -2346,8 +2335,7 @@ var hiprint = function (t) {
       }, TableExcelHelper.getColumnFormatter = function (column) {
         var formatter = void 0;
         if (column.formatter && (formatter = column.formatter), column.formatter2) try {
-          var s = "formatter=" + column.formatter2;
-          eval(s);
+          formatter = new Function('return ' + column.formatter2)();
         } catch (t) {
           console.log(t);
         }
@@ -5313,7 +5301,8 @@ var hiprint = function (t) {
         this.target.find('.paper-header-toggle').prop('checked', !!enabled);
         this.syncInputConstraint();
         this.headerInput.prop('disabled', !enabled);
-        this.headerInput.val(enabled ? this.normalizeHeader(val) : this.normalizeHeader(10));
+        // 未勾选时清空 input —— 避免"未勾选但显示数字"的歧义 UI；勾选时再 fallback 到 10
+        this.headerInput.val(enabled ? this.normalizeHeader(val) : '');
       }, t.prototype.destroy = function () {
         this.target.remove();
       }, t;
@@ -5400,7 +5389,8 @@ var hiprint = function (t) {
         if (enabled) {
           this.footerInput.val(this.normalizeFooter(val));
         } else {
-          this.footerInput.val(panelInfo.height ? Math.max(panelInfo.height - 10, 1) : 10);
+          // 未勾选时清空 input —— 避免"未勾选但显示数字"的歧义 UI
+          this.footerInput.val('');
         }
       }, t.prototype.destroy = function () {
         this.target.remove();
@@ -6640,8 +6630,7 @@ var hiprint = function (t) {
       }, TablePrintElement.prototype.getFooterFormatter = function () {
         var footerFormatter = void 0;
         if (this.printElementType.footerFormatter && (footerFormatter = this.printElementType.footerFormatter), this.options.footerFormatter) try {
-          var s = "footerFormatter=" + this.options.footerFormatter;
-          eval(s);
+          footerFormatter = new Function('return ' + this.options.footerFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -6649,8 +6638,7 @@ var hiprint = function (t) {
       }, TablePrintElement.prototype.getGridColumnsFooterFormatter = function () {
         var gridColumnsFooterFormatter = void 0;
         if (this.printElementType.gridColumnsFooterFormatter && (gridColumnsFooterFormatter = this.printElementType.gridColumnsFooterFormatter), this.options.gridColumnsFooterFormatter) try {
-          var s = "gridColumnsFooterFormatter=" + this.options.gridColumnsFooterFormatter;
-          eval(s);
+          gridColumnsFooterFormatter = new Function('return ' + this.options.gridColumnsFooterFormatter)();
         } catch (t) {
           console.log(t);
         }
@@ -9296,7 +9284,14 @@ var hiprint = function (t) {
         this.paperNumberDisabled ? i.hide() : n && this.index % 2 == 1 && (i[0].style.left = "", i.css("right", this.paperNumberLeft + "pt"));
       }, t.prototype.formatPaperNumber = function (t, e) {
         this.createWaterMark(false, t, this.watermarkOptions);
-        return eval("`" + (this.paperNumberFormat ? this.paperNumberFormat : this.defaultPaperNumberFormat).replace("paperNo",t).replace("paperCount",e) + "`");
+        // 用 .replace 链替代原 `eval("`...`")` 模板求值。defaultPaperNumberFormat 是 "${paperNo}-${paperCount}"
+        // （字符串字面量带 ${...}），用户也可能写 "第 paperNo 页 / 共 paperCount 页"（无 ${...}），两种都兼容。
+        var fmt = this.paperNumberFormat ? this.paperNumberFormat : this.defaultPaperNumberFormat;
+        return fmt
+          .replace(/\$\{paperNo\}/g, t)
+          .replace(/\$\{paperCount\}/g, e)
+          .replace(/\bpaperNo\b/g, t)
+          .replace(/\bpaperCount\b/g, e);
       }, t.prototype.dragHeadLineOrFootLine = function (t, e, n) {
         var i = this;
         t.hidraggable({
@@ -11541,9 +11536,16 @@ var hiprint = function (t) {
           return Math.min(Math.max(num, min), max);
         }
 
+        // 弹窗挂载容器：设计器中央卡片（高度稳定，不随纸张切换/缩放变化）。
+        // panel.target 是 .hiprint-printPanel（与 paper 左缘对齐），按钮挂这里；
+        // listPanel 弹窗挂到 .hiprint-designer-card，clamp 边界用稳定容器尺寸。
+        var mountTarget = panel.target.closest(".hiprint-designer-card");
+        if (!mountTarget.length) mountTarget = panel.target.parent();
+        if (!mountTarget.length) mountTarget = panel.target;
+
         function applyPanelPosition(left, top) {
-          var parentWidth = panel.target.innerWidth() || panel.target.width() || 0;
-          var parentHeight = panel.target.innerHeight() || panel.target.height() || 0;
+          var parentWidth = mountTarget.innerWidth() || mountTarget.width() || 0;
+          var parentHeight = mountTarget.innerHeight() || mountTarget.height() || 0;
           var panelWidth = listPanel.outerWidth() || 0;
           var panelHeight = listPanel.outerHeight() || 0;
           var maxLeft = Math.max(0, parentWidth - panelWidth);
@@ -11559,7 +11561,7 @@ var hiprint = function (t) {
           if (listPanel.data("positioned")) return;
           var panelWidth = listPanel.outerWidth();
           if (!panelWidth) return;
-          var parentWidth = panel.target.innerWidth() || panel.target.width() || 0;
+          var parentWidth = mountTarget.innerWidth() || mountTarget.width() || 0;
           var right = parseFloat(listPanel.css("right"));
           var top = parseFloat(listPanel.css("top"));
           if (!isFinite(right)) right = 6;
@@ -11570,7 +11572,15 @@ var hiprint = function (t) {
 
         listPanel.append(header).append(body);
         this.target.css("position", "relative");
-        this.target.append(toggleBtn).append(listPanel);
+        if (mountTarget.css("position") === "static") mountTarget.css("position", "relative");
+        // 按钮挂 .hiprint-printPaper（paper 自身，position:relative）。
+        // 不挂 guide-layer：renderGuideLines 会调 .empty() 清掉 guide-layer 所有子元素，按钮会被清掉。
+        // CSS left:100%; margin-left:6px 让按钮显示在 paper 右外 6px。
+        var paperTarget = (panel.designPaper && panel.designPaper.target)
+          ? panel.designPaper.target : panel.target.find('.hiprint-printPaper').first();
+        var toggleMount = (paperTarget && paperTarget.length) ? paperTarget : panel.target;
+        toggleMount.append(toggleBtn);
+        mountTarget.append(listPanel);    // 弹窗挂 designer-card（高度/位置稳定）
         this._elListPanel = listPanel;
         this._elListBody = body;
         this._elListHeader = header;
@@ -11596,7 +11606,7 @@ var hiprint = function (t) {
           if (e.which !== 1) return;
           if (!listPanel.hasClass("visible")) return;
           ensurePanelPosition();
-          var parentOffset = panel.target.offset() || { left: 0, top: 0 };
+          var parentOffset = mountTarget.offset() || { left: 0, top: 0 };
           var pos = listPanel.position();
           dragOffsetX = e.pageX - parentOffset.left - pos.left;
           dragOffsetY = e.pageY - parentOffset.top - pos.top;
@@ -11608,7 +11618,7 @@ var hiprint = function (t) {
           $(window).off(".hiprintElListDrag");
           $(document).on("mousemove.hiprintElListDrag", function (evt) {
             if (!isDragging) return;
-            var moveParentOffset = panel.target.offset() || { left: 0, top: 0 };
+            var moveParentOffset = mountTarget.offset() || { left: 0, top: 0 };
             applyPanelPosition(evt.pageX - moveParentOffset.left - dragOffsetX, evt.pageY - moveParentOffset.top - dragOffsetY);
           });
           $(document).on("mouseup.hiprintElListDrag", stopDragging);

@@ -65,12 +65,11 @@
   page-break-after: avoid;
 }
 
-.hiprint-printPaper .hideheaderLinetarget {
-  border-top: 0px dashed rgb(201, 190, 190) !important;
-}
-
+/* 复选框未勾选 → 完全隐藏页眉/页脚线（不占空间，不触发 hover 提示）。
+   原方案只把 border-top 设 0px，但 inline style 的 border 仍可见，div height 也占空间。 */
+.hiprint-printPaper .hideheaderLinetarget,
 .hiprint-printPaper .hidefooterLinetarget {
-  border-top: 0px dashed rgb(201, 190, 190) !important;
+  display: none !important;
 }
 
 .hiprint-printPaper.design {
@@ -257,6 +256,9 @@ table.hiprint-printElement-tableTarget {
   float: right !important;
   right: 0 !important;
   color: gainsboro !important;
+  text-decoration: line-through !important;
+  opacity: 0.35 !important;
+  pointer-events: auto;
 }
 
 .hiprint-printElement-vline, .hiprint-printElement-hline {

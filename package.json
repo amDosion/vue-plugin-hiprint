@@ -15,8 +15,13 @@
       "require": "./dist/vue-plugin-hiprint.cjs.js"
     },
     "./dist/vue-plugin-hiprint.css": "./dist/vue-plugin-hiprint.css",
+    "./dist/print-lock.css": "./dist/print-lock.css",
     "./package.json": "./package.json"
   },
+  "sideEffects": [
+    "*.css",
+    "dist/*.css"
+  ],
   "private": false,
   "repository": {
     "type": "git",
@@ -73,7 +78,6 @@
     "jquery": "^3.6.0",
     "jsbarcode": "^3.11.5",
     "jspdf": "^2.5.1",
-    "lodash": "^4.17.21",
     "nzh": "^1.0.8",
     "socket.io-client": "^4.5.1"
   }

@@ -1693,7 +1693,10 @@ body.hiprint-guide-dragging {
 .hiprint-el-list-toggle {
   position: absolute;
   top: 6px;
-  right: 6px;
+  left: 100%;            /* 挂在 .hiprint-guide-layer 上：按钮左缘 = paper 右缘 */
+  margin-left: 6px;      /* 离 paper 右缘 6px 视觉间距 */
+  right: auto;
+  pointer-events: auto;  /* guide-layer 是 pointer-events:none，按钮需 reset */
   z-index: 100;
   width: 28px;
   height: 28px;
@@ -1729,7 +1732,7 @@ body.hiprint-guide-dragging {
   right: 6px;
   z-index: 99;
   width: 220px;
-  max-height: 50%;
+  max-height: min(50vh, 480px);
   background: rgba(255,255,255,0.96);
   border: 1px solid #dcdfe6;
   border-radius: 8px;
