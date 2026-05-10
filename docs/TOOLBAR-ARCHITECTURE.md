@@ -53,6 +53,66 @@
 | `toolbarApi` | object | 传给所有回调的上下文 |
 | `toolbarCtrl` | object | 对外返回值（toolbarApi 的公开代理）|
 
+### 工具栏插槽机制（业务方扩展）
+
+工具栏完全支持自定义扩展，**3 种插槽**任选：
+
+#### ① `extraButtons[]` — 声明式按钮数组（最常用）
+
+```js
+buildToolbar('#toolbar', tpl, {
+  extraButtons: [
+    {
+      key: 'export-pdf',                       // 唯一 key
+      label: '导出 PDF',                        // 文本（XSS 安全 .text 渲染）
+      icon: 'ep:download',                     // 可选 iconify 名
+      type: 'primary',                         // 可选：default/primary/danger
+      className: 'my-custom-cls',              // 可选额外 class
+      visible: true,                           // 可为函数 (template, api) => bool
+      disabled: false,                         // 同上可为函数
+      onClick: (template, event, api) => {
+        template.toPdf({}, '订单.pdf');
+      }
+    },
+    { key: 'sep-1', html: '<span style="border-left:1px solid #ddd;height:20px;"></span>' },  // 自定义 HTML（业务方负责安全）
+  ],
+  extraPosition: 'end',  // 'start' | 'end'，控制 extra 组在 toolbar 整体的位置
+});
+```
+
+#### ② `renderExtra(api)` — 命令式渲染（最灵活）
+
+```js
+buildToolbar('#toolbar', tpl, {
+  renderExtra: function (api) {
+    // api 即 toolbarApi（含所有 setButtonText / triggerSave / addGroup 等方法）
+    var $myGroup = $('<div class="hiprint-toolbar-group"></div>');
+    $myGroup.append('<button type="button" class="hiprint-toolbar-btn">我的按钮</button>');
+    api.addGroup($myGroup, 'end');
+  }
+});
+```
+
+#### ③ `toolbarCtrl.addGroup($el, position)` — 运行时动态添加
+
+```js
+const ctrl = buildToolbar('#toolbar', tpl, { ... });
+
+// 之后任何时候都能加：
+ctrl.addGroup(
+  $('<div class="hiprint-toolbar-group"><button>动态按钮</button></div>'),
+  'end'
+);
+```
+
+#### 哪种选哪个
+
+| 场景 | 推荐 |
+|---|---|
+| 静态按钮列表（编译时已知）| ① `extraButtons` |
+| 复杂 DOM（自定义模板/Vue 子组件挂载）| ② `renderExtra` |
+| 运行时按需追加（业务事件触发）| ③ `addGroup` |
+
 ### toolbarCtrl API（构建后仍可调用）
 
 | API | 用途 |

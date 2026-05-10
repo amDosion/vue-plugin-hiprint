@@ -320,6 +320,9 @@ export default {
           },
         },
         toolbarOptions: {
+          // 启用工具栏分页管理(下拉切换 + '+' 添加新分页) - 替代画布底部 .hiprint-printPagination。
+          // 业务方按需关闭(showPanelManager: false)。
+          showPanelManager: true,
           onPreview: function (tpl) {
             that.handlePreview(tpl);
           },
