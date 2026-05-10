@@ -137,7 +137,8 @@ const tpl = new PrintTemplate({
 | `tpl.toPdf(args, name)` | 导出 PDF | `tpl.toPdf({}, '订单A001.pdf')` |
 | `tpl.clear()` | 清空画布元素 + 参考线 | `tpl.clear()` |
 | **`tpl.destroy()`** | **完全销毁实例**（幂等；清事件订阅 + 画布 + 元素列表面板 + 移出单例 map + 解引用），Vue/SPA 必备 | `onBeforeUnmount(() => tpl.destroy())` |
-| `tpl._destroyed` | 销毁后变 `true`，destroy 后调 `print/print2/getHtml/getPaperType/getOrient/getPrintStyle` 会 `console.warn` 并返回 undefined（不抛错也不静默工作）| `if (!tpl._destroyed) tpl.print(...)` |
+| **`tpl.isDestroyed`** | **属性，销毁后为 `true`**。destroy 后调 `print/print2/getHtml/getPaperType/getOrient/getPrintStyle` 会 `console.warn` 并返回 undefined（不抛错也不静默工作）| `if (!tpl.isDestroyed) tpl.print(...)` |
+| **`tpl.setPaginationVisible(show: boolean)`** | **显示/隐藏画布底部分页栏**。默认隐藏（`showPagination: false`），多页打印时调用显示 | `tpl.setPaginationVisible(true)` |
 | `tpl.on(event, callback)` | 监听事件（数据变更、保存等）| 见下 |
 
 ### 事件

@@ -29,6 +29,8 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 
 由于 hiprint 官网最后一次更新时间为 2019 年【hiprint 2.5.4 是 [LGPL](#关于lgpl协议) 协议】，后在诸多使用者及反馈下进行了许多优化调整。
 
+> **当前版本**：v1.0.0+，Vue 3 + Vite；已支持 25+ 项深度改进（安全、A11y、功能、API）。详见 [CHANGELOG.md](./CHANGELOG.md) 及 [docs/CODEMAPS](./docs/CODEMAPS/)。
+
 ## vue-plugin-hiprint
 
 > [✨ 立即体验(Github 访问慢)](https://ccsimple.github.io/vue-plugin-hiprint/) <br/><br/> [✨ 国内访问(www.ibujian.cn)](https://www.ibujian.cn/) <br/><br/> [🌈 更新日志 (页面支持 Ctrl + F 搜索)](CHANGELOG.md) <br/><br/> [🐛 常见问题(入门必看!)](#常见问题) <br/><br/> [🚀 项目生态(打印客户端、node 服务端、uniapp)](#插件生态)
@@ -670,3 +672,56 @@ LGPL允许商业软件通过类库引用(link)方式使用LGPL类库而不需要
 
 GPL/LGPL都保障原作者的知识产权，避免有人利用开源代码复制并开发类似的产品。
 ```
+
+---
+
+## E2E 测试
+
+### 安装 Playwright（首次）
+
+```bash
+npm install --save-dev @playwright/test
+npx playwright install --with-deps chromium
+```
+
+### 运行测试
+
+```bash
+# 启动 dev server（另开终端，或让 playwright.config.ts 自动启动）
+npm run dev
+
+# 运行全部 E2E 测试（无头模式）
+npm run test:e2e
+
+# 有头模式调试
+npm run test:e2e:headed
+
+# 交互式 UI 模式
+npm run test:e2e:ui
+
+# 查看 HTML 报告
+npm run test:e2e:report
+```
+
+### 测试目录结构
+
+```
+e2e/
+  playwright.config.ts          # Playwright 配置 (baseURL: localhost:8080)
+  tests/
+    destroy.spec.ts             # PrintTemplate.destroy 幂等 / 内存释放
+    xss.spec.ts                 # barcode/qrcode/title XSS 防护
+    nested-field.spec.ts        # data.a.b===0/false/null 不被 reduce 回退
+    dedup.spec.ts               # addPrintElementTypes 同 tid 不累积
+    toolbar-panel-manager.spec.ts  # 分页管理 / deletePanel 守卫
+    a11y.spec.ts                # focus-visible / ARIA / Tab 顺序
+    multi-instance.spec.ts      # 多实例不冲突
+    helpers/
+      wait-for-hiprint.ts       # 等待 window.hiprint 加载的工具函数
+    fixtures/
+      sample-template.json      # 测试用模板 JSON fixture
+```
+
+### CI
+
+`.github/workflows/e2e.yml` 在每次推送到 `main` 或 PR 时自动运行，报告上传为 GitHub Artifact（保留 14 天）。

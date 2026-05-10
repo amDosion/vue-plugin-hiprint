@@ -246,13 +246,15 @@ const toolbarCtrl = hiprint.buildToolbar('#hiprintToolbar', hiprintTemplate, {
   showCustomPaper: true,   // 自定义纸张按钮
   showScale: true,         // 缩放按钮
   showRotate: true,        // 旋转按钮
-  showAlign: true,         // 对齐按钮组（8个）
+  showAlign: true,         // 对齐按钮组（8个，可通过 alignItems 自定义）
   showPreview: true,       // 预览按钮
   showClear: true,         // 清空按钮
   showPrint: true,         // 打印按钮
   showBusinessSelect: true, // 业务选择按钮（位于模板选择前）
   showTemplateSelect: true, // 模版选择按钮（位于纸张选择前）
   showSave: true,          // 保存按钮（位于打印后）
+  showPanelManager: false, // (NEW) 分页管理 UI（segmented 下拉 + add 按钮），默认关闭
+  showPagination: false,   // (NEW) 画布底部分页栏，默认关闭。多页打印时设 true 或调 tpl.setPaginationVisible(true)
 
   // 回调函数
   onPreview: (template) => {
@@ -266,8 +268,20 @@ const toolbarCtrl = hiprint.buildToolbar('#hiprintToolbar', hiprintTemplate, {
   onClear: (template) => {
     // 必传：使用项目 UI 组件弹窗确认后再清空
   },
+  onClearConfirm: (template) => {
+    // (NEW) Promise 风格确认，返回 Promise<boolean>
+    // 优先级：onClear > onClearConfirm > 原生 confirm
+    return new Promise((resolve) => {
+      if (confirm('确定清空？')) {
+        template.clear()
+        resolve(true)
+      } else {
+        resolve(false)
+      }
+    })
+  },
   onSave: (template, json, event, api, ctx) => {
-    // ctx.name 为“保存弹窗”中输入的模版名称
+    // ctx.name 为”保存弹窗”中输入的模版名称
     // 保存按钮回调（可直接对接后端 API）
     // 未传 onSave 时，内置默认下载 json 文件
     return fetch('/api/templates/save', {
@@ -277,6 +291,12 @@ const toolbarCtrl = hiprint.buildToolbar('#hiprintToolbar', hiprintTemplate, {
         templateJson: json
       })
     })
+  },
+  onCustomPaperOpen: (template, toolbarApi) => {
+    // (NEW) 自定义纸张弹窗打开时回调（Promise）
+    // 可用于 custom paper 前的业务逻辑（如权限检查、引导）
+    console.log('Custom paper dialog opened')
+    return Promise.resolve()
   },
   onPaperChange: (name, size) => {
     console.log('纸张切换:', name, size.width, 'x', size.height)
@@ -298,6 +318,23 @@ const toolbarCtrl = hiprint.buildToolbar('#hiprintToolbar', hiprintTemplate, {
     // businessData 可携带后端返回的字段配置、默认模板、打印策略等
     // 例如：
     // hiprint.setDynamicFields('orderModule', businessData.fieldGroups || [])
+  },
+  onBusinessSelectError: (err) => {
+    // (NEW) 业务选择过程中的错误回调
+    console.error('Business select error:', err)
+  },
+  onTemplateSelectError: (err) => {
+    // (NEW) 模板选择过程中的错误回调
+    console.error('Template select error:', err)
+  },
+  panelManagerLabel: '分页',         // (NEW) panel manager 标签文本（默认'分页'）
+  addPanelButtonText: '+',          // (NEW) add panel 按钮文本（默认'+'）
+  alignItems: [                     // (NEW) 自定义对齐选项，可完全替换默认的8个
+    // { type: 'left', label: '左对齐', icon: 'icon-left' },
+    // { type: 'right', label: '右对齐', icon: 'icon-right' },
+    // ...
+    // 留空或不传则使用默认8项
+  ],
     // if (businessData.templateJson) template.update(businessData.templateJson)
     console.log('已选择业务', item, businessData)
   },

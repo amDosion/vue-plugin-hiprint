@@ -1,0 +1,79 @@
+{
+  "panels": [
+    {
+      "index": 0,
+      "name": "1",
+      "height": 297,
+      "width": 210,
+      "paperHeader": 49.5,
+      "paperFooter": 780,
+      "printElements": [
+        {
+          "options": {
+            "left": 10,
+            "top": 10,
+            "height": 16,
+            "width": 100,
+            "field": "title",
+            "testData": "Smoke Test Title",
+            "title": "标题",
+            "fontSize": 14,
+            "fontWeight": "bold"
+          },
+          "printElementType": { "type": "text", "tid": "defaultModule.text" }
+        },
+        {
+          "options": {
+            "left": 10,
+            "top": 30,
+            "height": 16,
+            "width": 100,
+            "field": "nested.value",
+            "testData": "nested field",
+            "title": "嵌套字段"
+          },
+          "printElementType": { "type": "text", "tid": "defaultModule.text" }
+        },
+        {
+          "options": {
+            "left": 10,
+            "top": 50,
+            "height": 16,
+            "width": 100,
+            "field": "zeroField",
+            "testData": "0",
+            "title": "零值字段"
+          },
+          "printElementType": { "type": "text", "tid": "defaultModule.text" }
+        },
+        {
+          "options": {
+            "left": 120,
+            "top": 10,
+            "height": 60,
+            "width": 60,
+            "field": "barcode",
+            "testData": "1234567890",
+            "title": "条形码",
+            "codeType": "CODE128"
+          },
+          "printElementType": { "type": "barcode", "tid": "defaultModule.barcode" }
+        },
+        {
+          "options": {
+            "left": 120,
+            "top": 80,
+            "height": 60,
+            "width": 60,
+            "field": "qrcode",
+            "testData": "https://example.com",
+            "title": "二维码"
+          },
+          "printElementType": { "type": "qrcode", "tid": "defaultModule.qrcode" }
+        }
+      ],
+      "paperNumberLeft": 565,
+      "paperNumberTop": 819
+    }
+  ]
+}
