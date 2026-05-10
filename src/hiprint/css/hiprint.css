@@ -913,7 +913,7 @@ font-weight: normal;*/
 }
 
 .params_setting_container .hinnn-layout-sider,
-.params_setting_container #PrintElementOptionSetting {
+.params_setting_container .hiprint-option-setting-container {
     height: 100%;
     min-height: 0;
     display: flex;

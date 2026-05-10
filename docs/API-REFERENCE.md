@@ -134,6 +134,8 @@ const tpl = new PrintTemplate({
 | `tpl.toJpeg()` | 导出 JPEG（需 `dom-to-image-more`）| `tpl.toJpeg().then(blob => ...)` |
 | `tpl.toPdf(args, name)` | 导出 PDF | `tpl.toPdf({}, '订单A001.pdf')` |
 | `tpl.clear()` | 清空画布元素 + 参考线 | `tpl.clear()` |
+| **`tpl.destroy()`** | **完全销毁实例**（清画布 + 解绑事件 + 移出单例 map + 解引用），Vue/SPA 必备 | `onBeforeUnmount(() => tpl.destroy())` |
+| `tpl._destroyed` | 销毁后变 `true`，可用于业务方判断 | `if (!tpl._destroyed) tpl.print(...)` |
 | `tpl.on(event, callback)` | 监听事件（数据变更、保存等）| 见下 |
 
 ### 事件
@@ -488,9 +490,36 @@ A: 客户端（electron-hiprint）必须先启动。检查：
 
 A:
 ```js
-tpl.destroy && tpl.destroy()
-$('#hiprintDesigner').empty()
+// designer 是 buildDesigner() 的返回值
+designer && designer.destroy()    // 清 toolbar + 解绑全局 click + 清容器
+
+// tpl 是 new PrintTemplate(...) 的实例
+tpl && tpl.destroy()              // 清画布 + 解绑 panel 事件 + 移出单例 map
 ```
+
+Vue 3 完整示例：
+
+```vue
+<script setup>
+import { onMounted, onBeforeUnmount } from 'vue'
+import { PrintTemplate, buildDesigner } from 'vue-plugin-hiprint'
+
+let tpl = null
+let designer = null
+
+onMounted(() => {
+  tpl = new PrintTemplate({ template: {}, dataMode: 1 })
+  designer = buildDesigner('#hiprintDesigner', { template: tpl })
+})
+
+onBeforeUnmount(() => {
+  designer && designer.destroy()
+  tpl && tpl.destroy()
+})
+</script>
+```
+
+**KeepAlive / 路由切换场景必须做 destroy**，否则全局 click handler、单例 map 条目、panel 事件都会累积，造成内存泄漏。
 
 ---
 
@@ -516,6 +545,8 @@ declare module 'vue-plugin-hiprint' {
     toJpeg(): Promise<Blob>
     toPdf(args?: any, name?: string): void
     clear(): void
+    destroy(): void
+    readonly _destroyed?: boolean
     on(event: string, callback: (action: string) => void): void
   }
   export class PrintElementTypeManager { /* ... */ }
