@@ -13148,6 +13148,11 @@ var hiprint = function (t) {
       onTemplateDeleteConfirm: null,
       showTemplateSelect: true,
       showSave: true,
+      // 分页管理(下拉选择当前分页 + '+' 添加新分页)。默认 false:
+      // 单页打印模板(常见场景)不需要;多页模板设 true 启用。
+      showPanelManager: false,
+      panelManagerLabel: i18n.__('分页'),
+      addPanelButtonText: '+',
       templateButtonText: i18n.__('选择模版'),
       onSaveDialogOpen: null,
       onSaveDialogClose: null,
@@ -14230,6 +14235,56 @@ var hiprint = function (t) {
       });
       $printGroup.append($printBtn);
       $toolbar.append($printGroup);
+    }
+
+    // --- 分页管理(替代画布底部 .hiprint-printPagination) ---
+    // 下拉显示当前所有分页(panel.name 或"第N页"),"+" 按钮添加新分页。
+    // 业务方设 opts.showPanelManager:true 显式启用(默认 false)。
+    if (opts.showPanelManager) {
+      var $panelMgrGroup = registerToolbarGroup('panels', $('<div class="hiprint-toolbar-group hiprint-toolbar-panels"></div>'));
+      var $panelLabel = $('<span class="hiprint-toolbar-scale-label" style="margin:0 4px 0 2px;"></span>').text(opts.panelManagerLabel || i18n.__('分页'));
+      var $panelSelect = $('<select class="hiprint-toolbar-input hiprint-toolbar-panel-select" style="min-width:90px;"></select>')
+        .attr('aria-label', i18n.__('选择分页'));
+      var $addPanelBtn = registerToolbarButton('panels:add',
+        $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"></button>')
+          .attr('title', i18n.__('添加分页'))
+          .attr('aria-label', i18n.__('添加分页'))
+          .text(opts.addPanelButtonText || '+'),
+        { groupKey: 'panels' });
+
+      function refreshPanelSelect() {
+        $panelSelect.empty();
+        var total = (template.getPaneltotal && template.getPaneltotal()) || 1;
+        for (var i = 0; i < total; i++) {
+          var p = template.printPanels && template.printPanels[i];
+          var name = (p && p.name) ? String(p.name) : (i18n.__('第') + (i + 1) + i18n.__('页'));
+          // .text() 防 panel.name 含用户输入时 XSS
+          $panelSelect.append($('<option></option>').attr('value', i).text(name));
+        }
+        var current = template.editingPanel && template.editingPanel.index;
+        if (current != null) $panelSelect.val(String(current));
+      }
+
+      // mousedown/focus 时 lazy refresh — 用户每次打开下拉立即同步最新分页列表,
+      // 无需订阅事件总线(避免 destroy 时的解绑复杂度)。
+      $panelSelect.on('mousedown focus', refreshPanelSelect);
+      $panelSelect.on('change', function () {
+        var idx = parseInt($panelSelect.val(), 10);
+        if (!isNaN(idx) && template.selectPanel) template.selectPanel(idx);
+      });
+      $addPanelBtn.on('click', function () {
+        if (!template.addPrintPanel) return;
+        try {
+          template.addPrintPanel(undefined, true);   // 立即切换到新页
+          refreshPanelSelect();
+        } catch (err) {
+          console.error('[hiprint] addPrintPanel failed:', err);
+        }
+      });
+
+      refreshPanelSelect();
+      $panelMgrGroup.append($panelLabel, $panelSelect, $addPanelBtn);
+      $toolbar.append($panelMgrGroup);
     }
 
     // --- 保存 ---

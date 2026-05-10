@@ -32,8 +32,9 @@
 | `paper:custom` | `paper` | `showCustomPaper` | `onPaperChange('custom', {w,h})` | popover 输入宽高后 `setPaper` | 仅控制显隐，UI 不可替换 |
 | `scale:zoomOut` / `scale:zoomIn` | `scale` | `showScale` | `onScaleChange(value)` | `template.zoom(v)` | `scaleMin/Max/Step` 可配 |
 | `rotate` | `rotate` | `showRotate` | `onRotate(template)` | `template.rotatePaper()` | `rotateButtonText` 改文本 |
-| `align:*` (×8) | `align` | `showAlign` | `onAlign(type, template)` | `template.alignElements(type)` | 8 种对齐类型当前硬编码（计划暴露 `alignItems` 配置）|
+| `align:*` (×8) | `align` | `showAlign` | `onAlign(type, template)` | `template.alignElements(type)` | `opts.alignItems` 可完全替换/裁剪/重排序 |
 | `preview` | `preview` | `showPreview` | `onPreview(template)` | **无默认行为**（必须传 onPreview） | 纯钩子 |
+| `panel-select` + `panels:add` | `panels` | `showPanelManager`（默认 `false`）| `selectPanel(idx)` / `addPrintPanel` | 下拉切换当前分页 + `+` 按钮添加新分页 | `panelManagerLabel` 改 label，`addPanelButtonText` 改 `+` 文本 |
 | `clear` | `clear` | `showClear` | `onClear(template)` | `confirm()` + `template.clear()` | 业务接管完全替换 |
 | `print` | `print` | `showPrint` | `onPrint(template)` | **无默认行为** | 纯钩子 |
 | `save` | `save` | `showSave` | `onSave(template, json, event, api, {name})` | 内置保存弹窗 → 无 onSave 时下载 JSON | `onSaveDialogOpen/Close` 拦截弹窗 |
@@ -147,39 +148,50 @@ a.instance (PrintElementTypeManager 单例)
       → it.enableDrag(...)                     [绑定拖拽事件]
 ```
 
-### 分页栏（多页打印模板）
+### 分页管理（多页打印模板）
 
-`buildDesigner` 默认**隐藏**画布底部的分页栏（`.hiprint-printPagination`，含 `+` 添加新页按钮）。单页模板（绝大多数）用不到。
+提供 3 种 UI 模式 + 1 种程序化方式：
 
-启用方式：
+**模式 A — 工具栏内嵌分页管理（推荐）**：
+
+下拉选择当前分页 + `+` 添加新分页，统一在工具栏：
 
 ```js
-buildDesigner('#hiprintDesigner', {
-  showPagination: true,    // 启用画布底部分页栏 + 添加按钮
-  // ...
+buildToolbar('#toolbar', tpl, {
+  showPanelManager: true,           // 启用工具栏分页管理
+  panelManagerLabel: '分页',        // 下拉前的 label 文本（可选）
+  addPanelButtonText: '+',          // 添加按钮文本（可选）
 });
+```
 
+下拉项 = `panel.name`（业务方 panel JSON 里有 name）或 fallback 到 "第 N 页"。点击 `+` 调 `template.addPrintPanel(undefined, true)` 自动切换到新页。
+
+**模式 B — 画布底部分页栏（默认隐藏）**：
+
+```js
+buildDesigner('#designer', { showPagination: true });
 // 或运行时切换
 designerCtrl.setPaginationVisible(true);
 ```
 
-**业务方推荐做法**：不启用分页栏，自己在工具栏放"添加分页"按钮（更清晰的 UX）：
+**模式 C — 自定义 extraButton**：
 
 ```js
 buildToolbar('#toolbar', tpl, {
   extraButtons: [{
     key: 'addPanel',
     label: '+ 添加分页',
-    type: 'default',
-    onClick: function (template) {
-      template.addPrintPanel(undefined, true);   // 添加 + 立即切换到新页
-    }
-  }],
-  extraPosition: 'end'
+    onClick: t => t.addPrintPanel(undefined, true)
+  }]
 });
+```
 
-// 或程序化添加(完全不要 UI)
+**模式 D — 纯程序化**：
+
+```js
 designerCtrl.getTemplate().addPrintPanel({ paperType: 'A4' }, true);
+designerCtrl.getTemplate().selectPanel(2);
+designerCtrl.getTemplate().deletePanel(1);    // 注意 length>=1 不变式
 ```
 
 ### componentPanelSlot 插槽机制
