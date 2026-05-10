@@ -262,15 +262,17 @@ export default function (hiprint) {
             }
           },
           {
-            // 快递单号：barcode 类型，扫码直接追踪物流。default barcodeType=code128 兼容性最好。
+            // 快递单号：text + textType=barcode，扫码直接追踪物流。default barcodeType=code128 兼容性最好。
+            // 用 textType 而非 type:'barcode'，统一渲染管道，用户可在属性面板切换为文本/二维码/图片。
             tid: "defaultModule.trackingNo",
             title: "快递单号",
             field: "trackingNo",
-            type: "barcode",
+            type: "text",
             icon: "ep:list",
             options: {
               width: 180,
               height: 50,
+              textType: "barcode",
               barcodeType: "code128",
               testData: "SF1234567890",
             }
@@ -320,16 +322,38 @@ export default function (hiprint) {
             icon: "ep:aim"
           },
           {
+            // 条形码：text + textType=barcode（统一渲染管道，可在属性面板切换为 text/qrcode/image）。
+            // 必须有 field —— hiprint:9888 无 field 时会把 title 当成 barcode 编码内容，
+            // "条形码" 中文字符 code128 不支持，会显示"此格式不支持该文本"。
+            // 业务方传入数据时通过 templateData.barcode 字段提供编码。
             tid: 'defaultModule.barcode',
             title: '条形码',
-            type: 'barcode',
-            icon: 'ep:list'
+            field: 'barcode',
+            type: 'text',
+            icon: 'ep:list',
+            options: {
+              width: 140,
+              height: 35,
+              textType: 'barcode',
+              hideTitle: true,
+              testData: '123456789',
+            }
           },
           {
+            // 二维码：text + textType=qrcode，渲染走 hiprint 内部 QR 库。
+            // 同样必须有 field（理由同条形码）。业务方通过 templateData.qrcode 字段传入二维码内容。
             tid: 'defaultModule.qrcode',
             title: '二维码',
-            type: 'qrcode',
-            icon: 'ep:grid'
+            field: 'qrcode',
+            type: 'text',
+            icon: 'ep:grid',
+            options: {
+              width: 50,
+              height: 50,
+              textType: 'qrcode',
+              hideTitle: true,
+              testData: 'https://example.com',
+            }
           }
         ]),
         new hiprint.PrintElementTypeGroup("实用", [
