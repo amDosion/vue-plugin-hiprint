@@ -12301,7 +12301,7 @@ var hiprint = function (t) {
           n.container.append(t.getTarget()), i > 0 && t.disable(), t.design(e);
         }), this.selectPanel(0);
       }, t.prototype.getSimpleHtml = function (t, e) {
-        if (this._destroyed) { console.warn('[hiprint] getSimpleHtml called on destroyed template'); return $('<div class="hiprint-printTemplate"></div>'); }
+        if (this._assertNotDestroyed('getSimpleHtml')) return $('<div class="hiprint-printTemplate"></div>');
         var n = this;
         e || (e = {});
         var i = $('<div class="hiprint-printTemplate"></div>');
@@ -12322,10 +12322,7 @@ var hiprint = function (t) {
         });
         return e && e.imgToBase64 && this.transformImg(i.find("img")), i;
       }, t.prototype.getSimpleHtmlAsync = function (dataItemOrList, e) {
-        if (this._destroyed) {
-          console.warn('[hiprint] getHtmlAsync called on destroyed template');
-          return Promise.resolve($('<div></div>'));
-        }
+        if (this._assertNotDestroyed('getHtmlAsync')) return Promise.resolve($('<div></div>'));
         return new Promise(resolve => {
           var that = this;
           e || (e = {});
@@ -12362,7 +12359,7 @@ var hiprint = function (t) {
           appendElementByParamsList(paramsListToCreateHTML, onFinish);
         });
       }, t.prototype.getHtml = function (t, e) {
-        if (this._destroyed) { console.warn('[hiprint] getHtml called on destroyed template'); return $('<div></div>'); }
+        if (this._assertNotDestroyed('getHtml')) return $('<div></div>');
         return t || (t = {}), this.getSimpleHtml(t, e);
       }, t.prototype.getHtmlAsync = function (t, e) {
         // 分解生成HTML任务，留下空隙发送socket信息，避免断开连接
@@ -12382,10 +12379,10 @@ var hiprint = function (t) {
       }, t.prototype.rotatePaper = function () {
         this.editingPanel.rotatePaper();
       }, t.prototype.alignElements = function (type) {
-        if (this._destroyed) { console.warn('[hiprint] alignElements called on destroyed template'); return; }
+        if (this._assertNotDestroyed('alignElements')) return;
         this.editingPanel && this.editingPanel.alignElements(type);
       }, t.prototype.zoom = function (s, p) {
-        if (this._destroyed) { console.warn('[hiprint] zoom called on destroyed template'); return; }
+        if (this._assertNotDestroyed('zoom')) return;
         this.editingPanel && this.editingPanel.zoom(s, p);
       }, t.prototype.addPrintPanel = function (t, e) {
         var n = t ? new pt(new rt(t), this.id) : this.createDefaultPanel();
@@ -12415,7 +12412,7 @@ var hiprint = function (t) {
       }, t.prototype.createContainer = function (t) {
         t ? (this.container = $(t), this.container.addClass("hiprint-printTemplate")) : this.container = $('<div class="hiprint-printTemplate"></div>');
       }, t.prototype.getJsonTid = function () {
-        if (this._destroyed) { console.warn('[hiprint] getJsonTid called on destroyed template'); return new st({ panels: [] }); }
+        if (this._assertNotDestroyed('getJsonTid')) return new st({ panels: [] });
         var t = [];
         return this.printPanels.forEach(function (e) {
           e.getPanelEntity().printElements.length && t.push(e.getPanelEntity());
@@ -12423,7 +12420,7 @@ var hiprint = function (t) {
           panels: t
         });
       }, t.prototype.getJson = function () {
-        if (this._destroyed) { console.warn('[hiprint] getJson called on destroyed template'); return new st({ panels: [] }); }
+        if (this._assertNotDestroyed('getJson')) return new st({ panels: [] });
         var t = [];
         return this.printPanels.forEach(function (e) {
           t.push(e.getPanelEntity(!0));
@@ -12431,14 +12428,22 @@ var hiprint = function (t) {
           panels: t
         });
       }, t.prototype.undo = function (t) {
-        if (this._destroyed) { console.warn('[hiprint] undo called on destroyed template'); return; }
+        if (this._assertNotDestroyed('undo')) return;
         o.a.event.trigger("hiprintTemplateDataShortcutKey_" + this.id, "undo");
       }, t.prototype.redo = function (t) {
-        if (this._destroyed) { console.warn('[hiprint] redo called on destroyed template'); return; }
+        if (this._assertNotDestroyed('redo')) return;
         o.a.event.trigger("hiprintTemplateDataShortcutKey_" + this.id, "redo");
       }, t.prototype.isDestroyed = function () {
         // 公开 getter — 业务方代码替代直接读 _destroyed (后者是私有约定)
         return !!this._destroyed;
+      }, t.prototype._assertNotDestroyed = function (n) {
+        // Helper - 16+ 公开方法共用的销毁守卫,集中管理 warn 格式 + return 语义。
+        // 用法: if (this._assertNotDestroyed('methodName')) return <fallback>;
+        if (this._destroyed) {
+          console.warn('[hiprint] ' + n + ' called on destroyed template');
+          return true;
+        }
+        return false;
       }, t.prototype.getPrintElementSelectEventKey = function () {
         return "PrintElementSelectEventKey_" + this.id;
       }, t.prototype.getBuildCustomOptionSettingEventKey = function () {
@@ -12517,19 +12522,19 @@ var hiprint = function (t) {
         this.lastJson = null;
         this.historyList = [];
       }, t.prototype.getPaperType = function (t) {
-        if (this._destroyed) { console.warn('[hiprint] getPaperType called on destroyed template'); return undefined; }
+        if (this._assertNotDestroyed('getPaperType')) return undefined;
         return null == t && (t = 0), this.printPanels[0].paperType;
       }, t.prototype.getOrient = function (t) {
-        if (this._destroyed) { console.warn('[hiprint] getOrient called on destroyed template'); return undefined; }
+        if (this._assertNotDestroyed('getOrient')) return undefined;
         return null == t && (t = 0), this.printPanels[t].height > this.printPanels[t].width ? 1 : 2;
       }, t.prototype.getPrintStyle = function (t) {
-        if (this._destroyed) { console.warn('[hiprint] getPrintStyle called on destroyed template'); return undefined; }
+        if (this._assertNotDestroyed('getPrintStyle')) return undefined;
         return this.printPanels[t].getPrintStyle();
       }, t.prototype.print = function (t, e, o) {
-        if (this._destroyed) { console.warn('[hiprint] print called on destroyed template'); return; }
+        if (this._assertNotDestroyed('print')) return;
         t || (t = {}), this.getHtml(t, e).hiwprint(o);
       }, t.prototype.print2 = function (t, e) {
-        if (this._destroyed) { console.warn('[hiprint] print2 called on destroyed template'); return; }
+        if (this._assertNotDestroyed('print2')) return;
         if (t || (t = {}), e || (e = {}), this.clientIsOpened()) {
           var n = this,
             i = 0,
@@ -12745,7 +12750,7 @@ var hiprint = function (t) {
           t = Object.assign(t, e.getTestData());
         }), t;
       }, t.prototype.update = function (t, idx) {
-        if (this._destroyed) { console.warn('[hiprint] update called on destroyed template'); return; }
+        if (this._assertNotDestroyed('update')) return;
         var e = this;
         try {
           if (t && "object" == _typeof(t) && t.panels.length > 0) {
@@ -13107,6 +13112,14 @@ var hiprint = function (t) {
     // 自增会产生相同 namespace 误解绑对方事件；timestamp+random 跨 frame 唯一。
     var _toolbarUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
     var _toolbarClickNs = ".hiprintToolbar_" + _toolbarUid;
+
+    // Helper - 业务回调隔离调用; throw → console.error 不冒泡冻结 UI。
+    // 用法: _safeCall(opts.onPreview, [template], 'onPreview');
+    function _safeCall(fn, args, name) {
+      if (typeof fn !== 'function') return undefined;
+      try { return fn.apply(null, args || []); }
+      catch (err) { console.error('[hiprint] ' + name + ' threw:', err); }
+    }
 
     var opts = $.extend({
       paperTypes: _defaultPaperTypes,
@@ -14162,10 +14175,7 @@ var hiprint = function (t) {
         var $btn = registerToolbarButton(alignKey, $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn" title="' + item.label + '" aria-label="' + item.label + '">' + item.icon + '</button>'), { groupKey: 'align' });
         $btn.on('click', function () {
           template.alignElements(item.type);
-          if (opts.onAlign) {
-            try { opts.onAlign(item.type, template); }
-            catch (err) { console.error('[hiprint] onAlign threw:', err); }
-          }
+          _safeCall(opts.onAlign, [item.type, template], 'onAlign');
         });
         $alignGroup.append($btn);
       });
@@ -14178,9 +14188,7 @@ var hiprint = function (t) {
       var $previewBtn = registerToolbarButton('preview', $('<button type="button" class="hiprint-toolbar-btn">' + (opts.previewButtonText || i18n.__('预览')) + '</button>'), { groupKey: 'preview' });
       $previewBtn.on('click', function () {
         if (opts.onPreview) {
-          // try-catch 防止业务回调抛错冒泡冻结 UI; warn 让业务方看到错误。
-          try { opts.onPreview(template); }
-          catch (err) { console.error('[hiprint] onPreview threw:', err); }
+          _safeCall(opts.onPreview, [template], 'onPreview');
         } else {
           console.warn('[hiprint] preview button clicked but opts.onPreview not provided');
         }
@@ -14196,8 +14204,7 @@ var hiprint = function (t) {
       $clearBtn.on('click', function () {
         // 优先级: onClear (完全接管) > onClearConfirm (异步确认 + 默认 clear) > 原生 confirm
         if (opts.onClear) {
-          try { opts.onClear(template); }
-          catch (err) { console.error('[hiprint] onClear threw:', err); }
+          _safeCall(opts.onClear, [template], 'onClear');
           return;
         }
         if (typeof opts.onClearConfirm === 'function') {
@@ -14227,8 +14234,7 @@ var hiprint = function (t) {
       var $printBtn = registerToolbarButton('print', $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-btn-primary">' + (opts.printButtonText || i18n.__('打印')) + '</button>'), { groupKey: 'print' });
       $printBtn.on('click', function () {
         if (opts.onPrint) {
-          try { opts.onPrint(template); }
-          catch (err) { console.error('[hiprint] onPrint threw:', err); }
+          _safeCall(opts.onPrint, [template], 'onPrint');
         } else {
           console.warn('[hiprint] print button clicked but opts.onPrint not provided');
         }
