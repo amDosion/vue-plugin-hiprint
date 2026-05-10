@@ -69,7 +69,8 @@ import 'vue-plugin-hiprint/dist/vue-plugin-hiprint.css'
 | `hiPrintPlugin` | Vue plugin | `app.use(hiPrintPlugin)` 注册全局 `$hiPrint` / `$print` / `$print2` |
 | `defaultElementTypeProvider` | class | 默认元素类型 provider（订单号 / 条形码 / 二维码 / 横线 / ...） |
 | `PrintTemplate` | class | **核心类**，所有打印模板都是它的实例 |
-| `PrintElementTypeManager` | class | 元素类型注册器 |
+| `PrintElementTypeManager` | class | 元素类型 **UI builder utility**（含静态方法 `build / buildByHtml / setPanelSlot / getElementTypeGroups`） |
+| `PrintElementTypeRegistry` | class | 元素类型 **数据层注册器**（实例方法 `addPrintElementTypes / removePrintElementTypes / allElementTypes`,内部单例为 `.instance` 静态 getter） |
 | `PrintElementTypeGroup` | class | 元素类型分组 |
 
 ### 元素类型 / 模板配置

@@ -40,31 +40,40 @@ f.split('.').reduce((a, c) => a ? a[c] : t[c], !1)
 
 ## How it was fixed
 
+### Round 1 (2026-04-27): reduce 内部回调
 统一改为 null-safe pattern：
 
 ```js
-// ✅ 修复后
+// ✅ Round 1 修复
 f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t)
 ```
 
-关键差异：
-- `a != null` 同时排除 `null` 和 `undefined`，但允许 `0`/`false`/`""` 通过
-- 失败 fallback 是 `undefined`（不是根对象），让上层显式处理"取不到"
-- 起始值是 `t`（根对象），不是 `!1`
+### Round 2 (2026-05-10): 外层 || "" falsy fallback (e2e 暴露)
+e2e nested-field.spec.ts `data.a.b === 0` 渲染为空字符串而非 "0",证明 reduce 内部正确但外层有第二个 falsy 回退:
 
-具体 diff（一例）：
+```js
+// ❌ Round 1 修完但还有这层
+... reduce(...) || ""    // 0 || "" === ""; false || "" === ""
+```
+
+### Round 2 修复
 
 ```diff
-- f.split('.').reduce((a, c) => a ? a[c] : t[c], !1)
-+ f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t)
+- f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || ""
++ f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? ""
 ```
+
+`??` (nullish coalescing) 只在 null/undefined 回退,保留 0/false/"" 原值。
+全 7 处统一替换 (text/longText/image/barcode/qrcode/html/table)。
 
 ## Why it kept happening
 
-1. **复制粘贴**：6 处 reduce 模式相似，开发时 copy
+1. **复制粘贴**：6+ 处 reduce 模式相似，开发时 copy
 2. **测试盲区**：上游 hiprint 没有 falsy-中间值 的测试 case
 3. **隐蔽**：bug 不会 throw，只是返回错的数据，业务方很久才发现
-4. **直觉错误**：JS 开发者写 `a ? a[c] : ...` 习惯成自然，意识不到语义跟"安全嵌套访问"不一样
+4. **直觉错误**：JS 开发者写 `a ? a[c] : ...` / `expr || ""` 习惯成自然
+5. **Round 1 覆盖不完整**: reviewer 只 grep 内部回调 pattern, 漏了外层 `|| ""`. 必须按完整 falsy-rejection 链 audit 才发现.
+6. **e2e 是唯一发现路径**: 单元测试缺失,只有运行时渲染对比才暴露 0/false 显示空
 
 ## Prevention
 
@@ -87,5 +96,11 @@ f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t)
   - `data.deeply.nested.path` 多层正常工作
 
 ### 类似 pattern 的横向检查
-- 全仓库 grep `reduce.*split` 统一 audit
+- 全仓库 grep `reduce.*split` 统一 audit (内部回调)
+- **新增**: grep `reduce(...) || ""` audit 外层 falsy fallback (Round 2 教训)
 - 业务方代码也提醒：如果他们扩展了元素类型且自己实现 getData，要遵循同一 pattern
+
+### 教训 (Round 2 后补)
+- 修一个 falsy bug 必须同时审查"内部回调" + "外层 fallback chain" + "渲染层 toString" 三处
+- 单纯改 reduce 内部不够,JS 的 `||` 运算符是隐藏 falsy trap
+- e2e 必须覆盖 0/false/""/null 边界值的实际渲染输出对比 (不只是 throw 与否)

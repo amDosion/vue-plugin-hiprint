@@ -334,7 +334,7 @@ var hiprint = function (t) {
 
       return e;
     } catch (t) {
-      return console.log(t), "";
+      return console.warn(t), "";
     }
     return "";
   }, hinnn.numFormat = function (t, e) {
@@ -346,7 +346,7 @@ var hiprint = function (t) {
       }
       return parseInt(o.toString());
     } catch (t) {
-      return console.log(t), "";
+      return console.warn(t), "";
     }
     return "";
   }, hinnn.toUpperCase = function(type, val) {
@@ -510,7 +510,7 @@ var hiprint = function (t) {
         try {
           this.xhrLoadImage(t);
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
       }
     }, t.prototype.xhrLoadImage = function (t) {
@@ -1262,7 +1262,7 @@ var hiprint = function (t) {
         }
       }, BasePrintElement.prototype.getData = function (t) {
         var f = this.getField();
-        return t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.printElementType.getData();
+        return t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "" : this.printElementType.getData();
       }, BasePrintElement.prototype.copyFromType = function () {
         var options = this.options, type = this.printElementType;
         var o = this.getConfigOptions();
@@ -1493,9 +1493,9 @@ var hiprint = function (t) {
           var flag = false;
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(json).then(function () {
-              console.log('copyJson success (clipboard API)');
+              console.warn('copyJson success (clipboard API)');
             }).catch(function () {
-              console.log('clipboard API failed, fallback to execCommand');
+              console.warn('clipboard API failed, fallback to execCommand');
             });
             flag = true;
           } else {
@@ -1508,10 +1508,10 @@ var hiprint = function (t) {
             copyArea.css('visibility', 'hidden');
           }
           n.designTarget.focus();
-          console.log('copyJson success');
+          console.warn('copyJson success');
         } catch (e) {
           flag = false;
-          console.log('copyJson error', e);
+          console.warn('copyJson error', e);
         }
         return flag;
       }, BasePrintElement.prototype.clone = function (t) {
@@ -2083,7 +2083,7 @@ var hiprint = function (t) {
           if (!t.checked) return;
           var rowsColumnsMerge = ''
           if (n.rowsColumnsMerge) {
-            try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.log(e); }
+            try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.warn(e); }
             var rowsColumnsArr = rowsColumnsMerge(e, t, i, rowIndex, tableData, printData) || [1, 1]
             var r = $(`<td style = 'display:${!(rowsColumnsArr[0] && rowsColumnsArr[1]) ? "none" : ""}' rowspan = '${rowsColumnsArr[0]}' colspan = '${rowsColumnsArr[1]}'></td>`);
           } else {
@@ -2281,7 +2281,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFieldsFormatter && (groupFieldsFormatter = tablePrintElementType.groupFieldsFormatter), options.groupFieldsFormatter) try {
           groupFieldsFormatter = new Function('return ' + options.groupFieldsFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return groupFieldsFormatter;
       }, TableExcelHelper.getGroupFormatter = function (options, tablePrintElementType) {
@@ -2289,7 +2289,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFormatter && (groupFormatter = tablePrintElementType.groupFormatter), options.groupFormatter) try {
           groupFormatter = new Function('return ' + options.groupFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return groupFormatter;
       }, TableExcelHelper.getGroupFooterFormatter = function (options, tablePrintElementType) {
@@ -2297,7 +2297,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFooterFormatter && (groupFooterFormatter = tablePrintElementType.groupFooterFormatter), options.groupFooterFormatter) try {
           groupFooterFormatter = new Function('return ' + options.groupFooterFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return groupFooterFormatter;
       }, TableExcelHelper.getFooterFormatter = function (options, tablePrintElementType) {
@@ -2305,7 +2305,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.footerFormatter && (footerFormatter = tablePrintElementType.footerFormatter), options.footerFormatter) try {
           footerFormatter = new Function('return ' + options.footerFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return footerFormatter;
       }, TableExcelHelper.getRowStyler = function (options, tablePrintElementType) {
@@ -2313,7 +2313,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.rowStyler && (rowStyler = tablePrintElementType.rowStyler), options.rowStyler) try {
           rowStyler = new Function('return ' + options.rowStyler)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return rowStyler;
       }, TableExcelHelper.getColumnTableSummaryFormatter = function (column) {
@@ -2321,7 +2321,7 @@ var hiprint = function (t) {
         if (column.tableSummaryFormatter && (tableSummaryFormatter = column.tableSummaryFormatter), column.tableSummaryFormatter) try {
           tableSummaryFormatter = new Function('return ' + column.tableSummaryFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return tableSummaryFormatter;
       }, TableExcelHelper.getColumnStyler = function (column) {
@@ -2329,7 +2329,7 @@ var hiprint = function (t) {
         if (column.styler && (styler = column.styler), column.styler2) try {
           styler = new Function('return ' + column.styler2)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return styler;
       }, TableExcelHelper.getHeaderStyler = function (column) {
@@ -2337,7 +2337,7 @@ var hiprint = function (t) {
         if (column.stylerHeader && (stylerHeader = column.stylerHeader), column.stylerHeader) try {
           stylerHeader = new Function('return ' + column.stylerHeader)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return stylerHeader;
       }, TableExcelHelper.getColumnRenderFormatter = function (column) {
@@ -2345,7 +2345,7 @@ var hiprint = function (t) {
         if (column.renderFormatter && (renderFormatter = column.renderFormatter), column.renderFormatter) try {
           renderFormatter = new Function('return ' + column.renderFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return renderFormatter;
       }, TableExcelHelper.getColumnFormatter = function (column) {
@@ -2353,7 +2353,7 @@ var hiprint = function (t) {
         if (column.formatter && (formatter = column.formatter), column.formatter2) try {
           formatter = new Function('return ' + column.formatter2)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return formatter;
       }, TableExcelHelper.getOrderdColumns = function (t) {
@@ -6511,12 +6511,12 @@ var hiprint = function (t) {
             let testData = this.options.testData || '[{}]';
             return JSON.parse(testData);
           } catch (e) {
-            console.log('table testData parse error', e);
+            console.warn('table testData parse error', e);
             return [{}];
           }
         };
         var f = this.getField();
-        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "";
+        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "";
         return e ? JSON.parse(JSON.stringify(e)) : [];
       }, TablePrintElement.prototype.onResize = function (t, e, n, i, o) {
         _super.prototype.updateSizeAndPositionOptions.call(this, o, i, n, e), _table_TableExcelHelper__WEBPACK_IMPORTED_MODULE_6__.a.resizeTableCellWidth(this.designTarget, this.getColumns(), this.options.getWidth());
@@ -6655,7 +6655,7 @@ var hiprint = function (t) {
         if (this.printElementType.footerFormatter && (footerFormatter = this.printElementType.footerFormatter), this.options.footerFormatter) try {
           footerFormatter = new Function('return ' + this.options.footerFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return footerFormatter;
       }, TablePrintElement.prototype.getGridColumnsFooterFormatter = function () {
@@ -6663,7 +6663,7 @@ var hiprint = function (t) {
         if (this.printElementType.gridColumnsFooterFormatter && (gridColumnsFooterFormatter = this.printElementType.gridColumnsFooterFormatter), this.options.gridColumnsFooterFormatter) try {
           gridColumnsFooterFormatter = new Function('return ' + this.options.gridColumnsFooterFormatter)();
         } catch (t) {
-          console.log(t);
+          console.warn(t);
         }
         return gridColumnsFooterFormatter;
       }, TablePrintElement;
@@ -8369,7 +8369,7 @@ var hiprint = function (t) {
       try {
         this.socket.emit("news", t);
       } catch (e) {
-        console.log("send data error:" + (t || "") + JSON.stringify(e));
+        console.warn("send data error:" + (t || "") + JSON.stringify(e));
       }
     },
     sendByFragments: function(content) {
@@ -8403,7 +8403,7 @@ var hiprint = function (t) {
           }, sendInterval * index);
         })
       } catch (e) {
-        console.log("send data fragment error:" + (content || "") + JSON.stringify(e));
+        console.warn("send data fragment error:" + (content || "") + JSON.stringify(e));
       }
     },
     getPrinterList: function getPrinterList() {
@@ -8413,7 +8413,7 @@ var hiprint = function (t) {
       try {
         this.socket.emit("refreshPrinterList");
       } catch (e) {
-        console.log("refreshPrinterList error:" + JSON.stringify(e));
+        console.warn("refreshPrinterList error:" + JSON.stringify(e));
       }
     },
     getPaperSizeInfo: function getPaperSizeInfo(printer) {
@@ -8421,42 +8421,42 @@ var hiprint = function (t) {
         console.warn("getPaperSizeInfo 是一个测试功能，仅win客户端支持该api！")
         this.socket.emit("getPaperSizeInfo", printer);
       } catch (e) {
-        console.log("getPaperSizeInfo error:" + JSON.stringify(e))
+        console.warn("getPaperSizeInfo error:" + JSON.stringify(e))
       }
     },
     getClients: function getClients() {
       try {
         this.socket.emit("getClients");
       } catch (e) {
-        console.log("getClients error:" + JSON.stringify(e));
+        console.warn("getClients error:" + JSON.stringify(e));
       }
     },
     getClientInfo: function getClientInfo() {
       try {
         this.socket.emit("getClientInfo");
       } catch (e) {
-        console.log("getClientInfo error:" + JSON.stringify(e))
+        console.warn("getClientInfo error:" + JSON.stringify(e))
       }
     },
     getAddress: function getAddress(type, ...args) {
       try {
         this.socket.emit("address", type, ...args);
       } catch (e) {
-        console.log("getAddress error:" + JSON.stringify(e));
+        console.warn("getAddress error:" + JSON.stringify(e));
       }
     },
     ippPrint: function ippPrint(options) {
       try {
         this.socket.emit("ippPrint", options);
       } catch (e) {
-        console.log("ippPrint error:" + JSON.stringify(e));
+        console.warn("ippPrint error:" + JSON.stringify(e));
       }
     },
     ippRequest: function ippRequest(options) {
       try {
         this.socket.emit("ippRequest", options);
       } catch (e) {
-        console.log("ippRequest error:" + JSON.stringify(e));
+        console.warn("ippRequest error:" + JSON.stringify(e));
       }
     },
     setHost: function (host, token, cb) {
@@ -8474,7 +8474,7 @@ var hiprint = function (t) {
 
       var t = this;
       if (!window.WebSocket) {
-        console.log("WebSocket start fail");
+        console.warn("WebSocket start fail");
         cb && cb(false);
         return;
       }
@@ -8489,7 +8489,7 @@ var hiprint = function (t) {
           token: this.token
         }
       }), this.socket.on("connect", function (e) {
-        t.opened = !0, console.log("Websocket opened."),
+        t.opened = !0, console.warn("Websocket opened."),
         _this.socket.off("success").on("success", function (t) {
           hinnn.event.trigger("printSuccess_" + t.templateId, t);
         }), _this.socket.off("error").on("error", function (t) {
@@ -8527,10 +8527,10 @@ var hiprint = function (t) {
       });
     },
     reconnect: function reconnect() {
-      this.state !== n && this.state !== i || (this.stop(), this.ensureReconnectingState() && (console.log("Websocket reconnecting."), this.start()));
+      this.state !== n && this.state !== i || (this.stop(), this.ensureReconnectingState() && (console.warn("Websocket reconnecting."), this.start()));
     },
     stop: function stop() {
-      this.socket && (console.log("Closing the Websocket."), this.socket.close(), this.socket = null, this.printerList = []);
+      this.socket && (console.warn("Closing the Websocket."), this.socket.close(), this.socket = null, this.printerList = []);
     },
     ensureReconnectingState: function ensureReconnectingState() {
       return this.state = i, this.state === i;
@@ -9210,7 +9210,7 @@ var hiprint = function (t) {
         return ["s","w","e","se","r"];
       }, e.prototype.getData = function (t) {
         var e = "", f = this.getField();
-        t ? e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : this.options.src || this.printElementType.getData() : e = this.options.src || this.printElementType.getData();
+        t ? e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : this.options.src || this.printElementType.getData() : e = this.options.src || this.printElementType.getData();
         var n = this.getFormatter();
         return n && (e = n(e, this.options, this._currenttemplateData)), e || "";
       }, e.prototype.createTarget = function (t, e) {
@@ -9727,7 +9727,7 @@ var hiprint = function (t) {
         return this.options.title || this.printElementType.title;
       }, e.prototype.getData = function (t) {
         var f = this.getField();
-        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "";
+        var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "";
         return t ? e || "" : this.options.testData || this.printElementType.getData() || "";
       }, e.prototype.updateTargetText = function (t, e, n) {
         var i = t.find(".hiprint-printElement-longText-content"),
@@ -9969,7 +9969,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        if (e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || "", this.options.format) {
+        if (e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "" : this.options.testData || this.printElementType.getData() || "", this.options.format) {
           if ("datetime" == this.options.dataType) return o.a.dateFormat(e, this.options.format);
 
           if ("boolean" == this.options.dataType) {
@@ -10330,7 +10330,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || ""
+        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "" : this.options.testData || this.printElementType.getData() || ""
         return e;
       }, e.prototype.initBarcode = function (designTarget, title, text) {
         designTarget = designTarget || this.designTarget
@@ -10396,7 +10396,7 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var e = void 0;
         var f = this.getField();
-        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : "" : this.options.testData || this.printElementType.getData() || ""
+        e = t ? f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "" : this.options.testData || this.printElementType.getData() || ""
         return e;
       }, e.prototype.initQrcode = function (designTarget, title, text) {
         designTarget = designTarget || this.designTarget
@@ -10998,7 +10998,7 @@ var hiprint = function (t) {
               a.options.qid = template.qtDesignderFunction(a.options.field)
             }
             n.printElements.push(a), a.design(void 0, n.designPaper);
-            console.log('pasteJson success');
+            console.warn('pasteJson success');
             o.a.event.trigger("hiprintTemplateDataChanged_" + n.templateId, "复制");
             // 点击克隆出来的元素
             ele.designTarget.trigger($.Event('blur'))
@@ -12598,7 +12598,7 @@ var hiprint = function (t) {
           try {
             this.xhrLoadImage(t);
           } catch (t) {
-            console.log(t);
+            console.warn(t);
           }
         }
       }, t.prototype.xhrLoadImage = function (t) {
@@ -15139,6 +15139,10 @@ var hiprint = function (t) {
     return buildDesigner;
   }), n.d(e, "PrintElementTypeManager", function () {
     return it;
+  }), n.d(e, "PrintElementTypeRegistry", function () {
+    // 数据层单例 - 业务方 / e2e 测试访问 allElementTypes / addPrintElementTypes /
+    // removePrintElementTypes 等用; PrintElementTypeManager 是 UI builder utility (build/buildByHtml).
+    return a;
   }), n.d(e, "PrintElementTypeGroup", function () {
     return ot;
   }), n.d(e, "PrintTemplate", function () {

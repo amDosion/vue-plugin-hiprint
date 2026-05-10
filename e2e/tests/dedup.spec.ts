@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 test('同 tid 注册两次后 allElementTypes 中只有一条', async ({ page }) => {
   const result = await page.evaluate(() => {
     const h = (window as any).hiprint;
-    const mgr = new h.PrintElementTypeManager();
+    const mgr = new h.PrintElementTypeRegistry();
     const group = [{ printElementTypes: [{ tid: 'dedup.item' }] }];
     mgr.addPrintElementTypes('dedupMod', group);
     const before = mgr.allElementTypes.filter((e: any) => e.tid === 'dedup.item').length;
@@ -34,7 +34,7 @@ test('同 tid 注册两次后 allElementTypes 中只有一条', async ({ page })
 test('removePrintElementTypes 前缀精确: order 不删 order_v2', async ({ page }) => {
   const result = await page.evaluate(() => {
     const h = (window as any).hiprint;
-    const mgr = new h.PrintElementTypeManager();
+    const mgr = new h.PrintElementTypeRegistry();
     mgr.addPrintElementTypes('order',    [{ printElementTypes: [{ tid: 'order.item' }] }]);
     mgr.addPrintElementTypes('order_v2', [{ printElementTypes: [{ tid: 'order_v2.item' }] }]);
     mgr.removePrintElementTypes('order');
@@ -54,7 +54,7 @@ test('removePrintElementTypes 前缀精确: order 不删 order_v2', async ({ pag
 test('removePrintElementTypes 空字符串不删任何组', async ({ page }) => {
   const result = await page.evaluate(() => {
     const h = (window as any).hiprint;
-    const mgr = new h.PrintElementTypeManager();
+    const mgr = new h.PrintElementTypeRegistry();
     mgr.addPrintElementTypes('mod1', [{ printElementTypes: [{ tid: 'mod1.x' }] }]);
     const before = mgr.allElementTypes.length;
     mgr.removePrintElementTypes('');
@@ -69,7 +69,7 @@ test('hiprint.init providers 注册后 addPrintElementTypes 可查询 tid', asyn
     const h = (window as any).hiprint;
     // Use the real defaultElementTypeProvider via window context
     // since direct import is not available in evaluate()
-    const mgr = new h.PrintElementTypeManager();
+    const mgr = new h.PrintElementTypeRegistry();
     mgr.addPrintElementTypes('smokeGroup', [{
       printElementTypes: [
         { tid: 'smokeGroup.alpha' },

@@ -90,7 +90,8 @@ let buildDesigner = hiprint.buildDesigner;
 
 // === 核心类（外部项目集成时常用）===
 let PrintTemplate = hiprint.PrintTemplate;
-let PrintElementTypeManager = hiprint.PrintElementTypeManager;
+let PrintElementTypeManager = hiprint.PrintElementTypeManager;       // UI builder utility (build/buildByHtml/setPanelSlot 等静态)
+let PrintElementTypeRegistry = hiprint.PrintElementTypeRegistry;     // 数据层单例 class (.instance / addPrintElementTypes / allElementTypes 等)
 let PrintElementTypeGroup = hiprint.PrintElementTypeGroup;
 
 // === 直接打印 / HTML 输出 ===
@@ -116,6 +117,7 @@ export {
   defaultElementTypeProvider,
   PrintTemplate,
   PrintElementTypeManager,
+  PrintElementTypeRegistry,
   PrintElementTypeGroup,
   // 元素类型 / 模板配置
   setDynamicFields,

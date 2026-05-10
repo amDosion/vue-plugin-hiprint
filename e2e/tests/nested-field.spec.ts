@@ -35,7 +35,9 @@ async function renderField(page: any, field: string, data: object): Promise<stri
           }]
         }
       });
-      const html = tpl.getHtml(data) || '';
+      // tpl.getHtml(data) returns jQuery wrapper around DOM root; need outerHTML string
+      const $html = tpl.getHtml(data);
+      const html = ($html && $html[0]) ? $html[0].outerHTML : '';
       tpl.destroy();
       return html;
     },
@@ -45,13 +47,13 @@ async function renderField(page: any, field: string, data: object): Promise<stri
 
 test('data.a.b === 0 渲染为 "0" 而不是空字符串', async ({ page }) => {
   const html = await renderField(page, 'a.b', { a: { b: 0 }, c: 99 });
-  // The rendered html should contain "0" somewhere in the element's text node
-  expect(html).toContain('>0<');
+  // text 元素渲染为 `<title>：<value>` 形式 (中文冒号),验证 value 0 在闭合 div 之前出现
+  expect(html).toMatch(/[:：]\s*0\s*<\/div>/);
 });
 
 test('data.a.b === false 渲染为 "false"', async ({ page }) => {
   const html = await renderField(page, 'a.b', { a: { b: false } });
-  expect(html).toContain('>false<');
+  expect(html).toMatch(/[:：]\s*false\s*<\/div>/);
 });
 
 test('data.a.b === null 渲染为空而不回退到 testData', async ({ page }) => {

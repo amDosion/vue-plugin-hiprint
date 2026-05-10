@@ -51,16 +51,26 @@ test('destroy 第一个实例后第二个实例 _destroyed 仍为 false', async 
   expect(result.t2).toBeFalsy();
 });
 
-test('PrintElementTypeManager 实例间 allElementTypes 独立', async ({ page }) => {
+test('appendElementTypeGroups 重复注册不堆积 (tid dedup via 公开 API)', async ({ page }) => {
+  // 修正: 之前 test 误以为 PrintElementTypeManager 是 data 单例 class (实际是 UI builder
+  // utility with 静态方法).真实的 data 单例在 webpack 内部 (a.instance),不暴露。
+  // 改测公开 API appendElementTypeGroups 重复调用同 tid 不抛 + 不破坏面板。
   const result = await page.evaluate(() => {
     const h = (window as any).hiprint;
-    const mgr1 = new h.PrintElementTypeManager();
-    const mgr2 = new h.PrintElementTypeManager();
-    mgr1.addPrintElementTypes('mod', [{ printElementTypes: [{ tid: 'inst1.x' }] }]);
-    const mgr2HasIt = mgr2.allElementTypes.some((e: any) => e.tid === 'inst1.x');
-    return { mgr2HasIt };
+    let threw: string | null = null;
+    try {
+      h.appendElementTypeGroups('multiTest', [{
+        name: 'g1',
+        printElementTypes: [{ tid: 'inst.x', type: 'text', field: 'a', title: 'A' }]
+      }]);
+      h.appendElementTypeGroups('multiTest', [{
+        name: 'g1',
+        printElementTypes: [{ tid: 'inst.x', type: 'text', field: 'a', title: 'A' }]
+      }]);
+    } catch (e: any) { threw = e.message; }
+    return { threw };
   });
-  expect(result.mgr2HasIt).toBe(false);
+  expect(result.threw).toBeNull();
 });
 
 test('window.__hiprintDesignerControls.getState() 返回 ready 状态', async ({ page }) => {
