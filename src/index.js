@@ -101,11 +101,13 @@ let print2 = hiprint.print2.bind(hiprint);
 let getHtml = hiprint.getHtml.bind(hiprint);
 
 // === 客户端 / 静默打印（hiwebSocket 场景）===
-let getClients = hiprint.getClients;
-let getClientInfo = hiprint.getClientInfo;
-let getAddress = hiprint.getAddress;
-let ippPrint = hiprint.ippPrint;
-let ippRequest = hiprint.ippRequest;
+// 与 print/print2/getHtml 同样 .bind(hiprint):内部用 this.socket / this.xxx,
+// 集成方解构后调用会丢 this(严格模式抛 TypeError)。保持 5 个客户端方法行为一致。
+let getClients = hiprint.getClients.bind(hiprint);
+let getClientInfo = hiprint.getClientInfo.bind(hiprint);
+let getAddress = hiprint.getAddress.bind(hiprint);
+let ippPrint = hiprint.ippPrint.bind(hiprint);
+let ippRequest = hiprint.ippRequest.bind(hiprint);
 
 export {
   // 核心

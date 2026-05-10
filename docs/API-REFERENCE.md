@@ -90,9 +90,11 @@ import 'vue-plugin-hiprint/dist/vue-plugin-hiprint.css'
 ### 直接打印 / HTML 输出
 | 名称 | 用途 |
 |---|---|
-| `print(provider, template, data, options)` | 直接打印（不需要设计器）|
-| `print2(provider, template, data, options)` | 直接打印走客户端（静默打印） |
-| `getHtml(template, data, options)` | 取出打印 HTML 字符串（自定义场景）|
+| `print(provider, template, ...args)` | 直接打印（不需要设计器）。`...args` 透传给 `PrintTemplate.print(data, options)` |
+| `print2(provider, template, ...args)` | 直接打印走客户端（静默打印）。`...args` 透传给 `PrintTemplate.print2(data, options)` |
+| `getHtml(template, ...args)` | 取出打印 HTML 字符串（自定义场景）。`...args` 透传给 `PrintTemplate.getHtml(data, options)` |
+
+> 这 3 个函数都已 `.bind(hiprint)`，可放心解构 `import { print } from 'vue-plugin-hiprint'` 后调用。
 
 ### 客户端 / 静默打印（需配合 electron-hiprint）
 | 名称 | 用途 |
@@ -134,8 +136,8 @@ const tpl = new PrintTemplate({
 | `tpl.toJpeg()` | 导出 JPEG（需 `dom-to-image-more`）| `tpl.toJpeg().then(blob => ...)` |
 | `tpl.toPdf(args, name)` | 导出 PDF | `tpl.toPdf({}, '订单A001.pdf')` |
 | `tpl.clear()` | 清空画布元素 + 参考线 | `tpl.clear()` |
-| **`tpl.destroy()`** | **完全销毁实例**（清画布 + 解绑事件 + 移出单例 map + 解引用），Vue/SPA 必备 | `onBeforeUnmount(() => tpl.destroy())` |
-| `tpl._destroyed` | 销毁后变 `true`，可用于业务方判断 | `if (!tpl._destroyed) tpl.print(...)` |
+| **`tpl.destroy()`** | **完全销毁实例**（幂等；清事件订阅 + 画布 + 元素列表面板 + 移出单例 map + 解引用），Vue/SPA 必备 | `onBeforeUnmount(() => tpl.destroy())` |
+| `tpl._destroyed` | 销毁后变 `true`，destroy 后调 `print/print2/getHtml/getPaperType/getOrient/getPrintStyle` 会 `console.warn` 并返回 undefined（不抛错也不静默工作）| `if (!tpl._destroyed) tpl.print(...)` |
 | `tpl.on(event, callback)` | 监听事件（数据变更、保存等）| 见下 |
 
 ### 事件

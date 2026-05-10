@@ -9466,11 +9466,33 @@ var hiprint = function (t) {
         }, this.updateGuideDrag(e), this.renderGuideLines();
         var a = this,
           p = ".hiprintGuideDrag_" + this.templateId + "_" + this.panelIdx + "_" + this.index;
-        this._guideDragNamespace = p, $(document).off("mousemove" + p).off("mouseup" + p), $(document).on("mousemove" + p, function (t) {
-          a.updateGuideDrag(t);
-        }), $(document).on("mouseup" + p, function (t) {
+        // rAF 节流 mousemove - updateGuideDrag 内部 renderGuideLines 会
+        // guideLayer.empty()+append() 全量重建,60fps mousemove 直触发会导致
+        // 每秒 60 次 layout thrashing,CPU 峰值高。rAF 节流后跟浏览器渲染帧对齐。
+        var _guideMoveRaf = null, _guideMoveLastEv = null;
+        var _onGuideMove = function (ev) {
+          _guideMoveLastEv = ev;
+          if (_guideMoveRaf) return;
+          var raf = window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); };
+          _guideMoveRaf = raf(function () {
+            _guideMoveRaf = null;
+            var e = _guideMoveLastEv; _guideMoveLastEv = null;
+            if (e) a.updateGuideDrag(e);
+          });
+        };
+        this._guideDragNamespace = p;
+        $(document).off("mousemove" + p).off("mouseup" + p);
+        $(document).on("mousemove" + p, _onGuideMove);
+        $(document).on("mouseup" + p, function (t) {
+          // 取消 pending raf,避免 finish 后还有未消费的 mousemove 改 pos
+          if (_guideMoveRaf) {
+            (window.cancelAnimationFrame || clearTimeout)(_guideMoveRaf);
+            _guideMoveRaf = null; _guideMoveLastEv = null;
+          }
           a.finishGuideDrag(t);
-        }), s.a.instance.draging = !0, $("body").addClass("hiprint-guide-dragging");
+        });
+        s.a.instance.draging = !0;
+        $("body").addClass("hiprint-guide-dragging");
       }, t.prototype.updateGuideDrag = function (t) {
         if (!this.guideDragState) return;
         var e = this.getGuideLineById(this.guideDragState.id);
@@ -9871,7 +9893,7 @@ var hiprint = function (t) {
           n = this.createTarget(this.printElementType.getText(!0), e);
         return this.updateTargetSize(n), this.css(n, e), n;
       }, e.prototype.updateDesignViewFromOptions = function () {
-        // ! pub-beta 0.0.57-beta22 这里的处理似乎重复了，影响了 updateTargetText 方法执行，故在此处注释掉
+        // 此处的处理与 updateTargetText 重复(老版本残留),为避免影响 updateTargetText 执行,整段注释保留作历史参考
         // var els = this.panel.printElements.filter(function (t) {
         //   return ('block' == t.designTarget.children().last().css('display')
         //     && t.designTarget.children().last().hasClass('selected')) && !t.printElementType.type.includes('table');
@@ -9916,7 +9938,7 @@ var hiprint = function (t) {
             })
             // 分离显示条形码文本
             var divMode = this.options.getBarTextMode() == 'text';
-            // pub-beta 0.0.57-beta22 移除插件通过 div 添加的文本元素，默认使用 JsBarcode 生成条形码文本
+            // 移除 div 文本元素，改用 JsBarcode 内置文本
             a.html('<svg width="100%" display="block" height="100%" class="hibarcode_imgcode" preserveAspectRatio="none slice"></svg>');
             if (divMode) {
               a.append(`<div class="hibarcode_displayValue" style="white-space:nowrap">`);
@@ -9932,7 +9954,7 @@ var hiprint = function (t) {
                 displayValue: divMode ? false : !this.options.hideTitle,
               }), a.find(".hibarcode_imgcode").attr("height", "100%"), a.find(".hibarcode_imgcode").attr("width", "100%"),
               divMode && (this.options.hideTitle || a.find(".hibarcode_displayValue").text(n))): a.html("");
-              // pub-beta 0.0.57-beta22 解决条形码自动宽度问题
+              // 修正条形码自动宽度: svg 宽度超出时扩展父容器宽度
               let svgWidth = a.find(".hibarcode_imgcode rect")[0].attributes.width.value
               svgWidth = Math.ceil(hinnn.px.toPt(svgWidth * 1.05));
               if (this.options.getBarAutoWidth() && svgWidth > this.options.width) {
@@ -10270,9 +10292,9 @@ var hiprint = function (t) {
             textsize: this.options.fontSize ? parseInt(this.options.fontSize) : 10,
             barcolor: this.options.barColor || "#000",
           })
-          // pub-beta 0.0.57-beta22 优化了条码自动调整宽度的逻辑，title 文本改为使用 bwipjs 文本内部实现
+          // 条码自动调整宽度: title 文本改用 bwipjs 内置实现
           barcode = $(barcode)
-          // pub-beta 0.0.57-beta22 svg 元素需要添加 preserveAspectRatio 属性，使其横向可以自适应缩放
+          // svg 元素需 preserveAspectRatio,使横向可自适应缩放
           barcode.attr("preserveAspectRatio", "none slice")
           let svgWidth = barcode[0].attributes.viewBox.value.split(" ")[2]; // 通过 viewBox 属性获取 bwipjs 内部生成的 svg 宽度
           svgWidth = Math.ceil(hinnn.px.toPt(svgWidth * 1.05));
@@ -12279,6 +12301,7 @@ var hiprint = function (t) {
           appendElementByParamsList(paramsListToCreateHTML, onFinish);
         });
       }, t.prototype.getHtml = function (t, e) {
+        if (this._destroyed) { console.warn('[hiprint] getHtml called on destroyed template'); return $('<div></div>'); }
         return t || (t = {}), this.getSimpleHtml(t, e);
       }, t.prototype.getHtmlAsync = function (t, e) {
         // 分解生成HTML任务，留下空隙发送socket信息，避免断开连接
@@ -12353,41 +12376,84 @@ var hiprint = function (t) {
         }), this.printPanels = [this.printPanels[0]], this.printPaginationCreator && this.printPaginationCreator.buildPagination();
       }, t.prototype.destroy = function () {
         // 完全销毁 PrintTemplate 实例，供 Vue / SPA 路由销毁时调用，避免内存泄漏。
-        // 1) 清画布（含参考线）—— 复用 PrintPanel.clear 的清理逻辑
+        // 幂等 - 防 Vue onBeforeUnmount + watch 同时触发等场景的重入。
+        if (this._destroyed) return;
+        this._destroyed = true;
+
+        // 0) 中断进行中的全局拖拽 - 避免 destroy 后用户 mouseup 时
+        //    finishGuideDrag/拖拽 handler 还想操作已清空的 DOM,留下 draging=true
+        //    + body 残留 CSS class 让后续操作行为异常。
+        try {
+          if (s.a.instance) s.a.instance.draging = false;
+          $("body").removeClass("hiprint-guide-dragging hiprint-el-list-dragging");
+        } catch (err) { /* 状态重置失败不阻断 destroy */ }
+
+        // 1) 先 off 事件总线订阅 - 避免 step 2 panel.clear() 触发"清空"事件时,
+        //    历史/选中/属性面板的 handler 还在 active,导致回写 historyList、
+        //    刷新已销毁的属性面板等连锁反应。订阅闭包持有 PrintTemplate 引用,
+        //    不 off 即使从单例 map 删除也无法 GC。
+        try {
+          o.a.event.off("hiprintTemplateDataChanged_" + this.id);
+          o.a.event.off("hiprintTemplateDataShortcutKey_" + this.id);
+          o.a.event.off("PrintElementSelectEventKey_" + this.id);
+          o.a.event.off("BuildCustomOptionSettingEventKey_" + this.id);
+        } catch (err) {
+          console.warn('[hiprint] destroy: event bus off failed', err);
+        }
+
+        // 2) 清画布(含参考线) + 元素列表面板 DOM + 解绑 panel.target 事件
         try {
           (this.printPanels || []).forEach(function (p) {
             if (p && typeof p.clear === "function") p.clear();
             if (p && p.target && p.target.length) {
-              p.target.off(".hiprint");                  // 解绑 panel 上以 .hiprint 命名空间的事件
+              p.target.off(".hiprint");
             }
+            // 元素列表面板(_elListPanel/_elListToggle)挂在 mountTarget(designer-card)
+            // 而非 panel.target,$container.empty() 不会清到。它们的 click/drag 闭包
+            // 持有 panel 引用,不显式 remove DOM 节点 + jQuery 数据缓存会泄漏。
+            if (p && p._elListPanel && p._elListPanel.length) p._elListPanel.remove();
+            if (p && p._elListToggle && p._elListToggle.length) p._elListToggle.remove();
           });
         } catch (err) {
-          // 销毁阶段不阻断后续清理，但保留可见诊断信号
-          console.warn('[hiprint] PrintTemplate.destroy: panel cleanup failed', err);
+          console.warn('[hiprint] destroy: panel cleanup failed', err);
         }
-        // 2) 从 HiPrintlib 单例 map 移除自身（防止 GC 不回收）
-        if (s.a.instance && typeof s.a.instance.removePrintTemplateById === "function") {
+
+        // 3) 从 HiPrintlib 单例 map 移除自身。先 identity check,只在 map 中存的
+        //    就是 this 时才删 - 防 guid 碰撞或异常状态下误删别的同 id 实例。
+        if (s.a.instance && s.a.instance.printTemplateContainer
+            && s.a.instance.printTemplateContainer[this.id] === this
+            && typeof s.a.instance.removePrintTemplateById === "function") {
           s.a.instance.removePrintTemplateById(this.id);
         }
-        // 3) 清模板容器 DOM
+
+        // 4) 清容器 DOM(empty 而非 remove,保留宿主结构由业务方控制;
+        //    panel.target 上的事件已在 step 2 用 .off('.hiprint') 解绑)
         if (this.target && this.target.length) {
           this.target.empty();
         }
-        // 4) 解引用，让 GC 能回收
+        if (this.container && this.container.length) {
+          this.container.empty();
+        }
+
+        // 5) 解引用让 GC 能回收
         this.printPanels = [];
         this.template = null;
         this.lastJson = null;
         this.historyList = [];
-        this._destroyed = true;
       }, t.prototype.getPaperType = function (t) {
+        if (this._destroyed) { console.warn('[hiprint] getPaperType called on destroyed template'); return undefined; }
         return null == t && (t = 0), this.printPanels[0].paperType;
       }, t.prototype.getOrient = function (t) {
+        if (this._destroyed) { console.warn('[hiprint] getOrient called on destroyed template'); return undefined; }
         return null == t && (t = 0), this.printPanels[t].height > this.printPanels[t].width ? 1 : 2;
       }, t.prototype.getPrintStyle = function (t) {
+        if (this._destroyed) { console.warn('[hiprint] getPrintStyle called on destroyed template'); return undefined; }
         return this.printPanels[t].getPrintStyle();
       }, t.prototype.print = function (t, e, o) {
+        if (this._destroyed) { console.warn('[hiprint] print called on destroyed template'); return; }
         t || (t = {}), this.getHtml(t, e).hiwprint(o);
       }, t.prototype.print2 = function (t, e) {
+        if (this._destroyed) { console.warn('[hiprint] print2 called on destroyed template'); return; }
         if (t || (t = {}), e || (e = {}), this.clientIsOpened()) {
           var n = this,
             i = 0,
@@ -12954,8 +13020,8 @@ var hiprint = function (t) {
     // 避免多 toolbar 并存时事件冲突，避免 destroy 时残留 handler（多次进出 Vue 路由时累积内存泄漏）。
     // 用 timestamp + random 而非自增 _uid，多 iframe 共存时各 frame 各自函数对象的计数器不共享，
     // 自增会产生相同 namespace 误解绑对方事件；timestamp+random 跨 frame 唯一。
-    var __toolbarUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
-    var __toolbarClickNs = ".hiprintToolbar_" + __toolbarUid;
+    var _toolbarUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
+    var _toolbarClickNs = ".hiprintToolbar_" + _toolbarUid;
 
     var opts = $.extend({
       paperTypes: _defaultPaperTypes,
@@ -13863,7 +13929,7 @@ var hiprint = function (t) {
         });
         // 全局 click 关闭自定义纸张 popover —— 必须用 toolbar 实例 namespace 绑定，
         // 否则多次 buildToolbar / 多实例并存时 handler 永远残留 + 重复触发。
-        $(document).on('click' + __toolbarClickNs, function (e) {
+        $(document).on('click' + _toolbarClickNs, function (e) {
           if (!$(e.target).closest('.hiprint-toolbar-popover, [data-paper="custom"]').length) {
             $customPopover.hide();
           }
@@ -14322,7 +14388,7 @@ var hiprint = function (t) {
         closeTemplateDialog();
         closeSaveDialog();
         // 解绑本 toolbar 实例的所有 $(document) 全局事件（namespace 化）
-        $(document).off(__toolbarClickNs);
+        $(document).off(_toolbarClickNs);
         $container.empty();
       }
     };
@@ -14354,10 +14420,11 @@ var hiprint = function (t) {
     var leftWidth = opts.leftWidth;
     var rightWidth = opts.rightWidth;
 
-    // 用 timestamp + random 防多 iframe 共存时计数器不共享导致 designerId 冲突
-    // (与上面 buildToolbar 的 __toolbarUid 同样逻辑)。
-    var __designerUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
-    var designerId = (opts.designerId || ('hiprint-designer-' + __designerUid)).replace(/[^\w-]/g, '-');
+    // 用 timestamp + random 生成唯一 ID,防多 iframe / 多次 buildDesigner 调用产生相同
+    // designerId(用作 DOM 元素 id 属性)。注意与 buildToolbar 的 _toolbarUid 用途不同 —
+    // 后者是 jQuery 事件 namespace(用于 destroy 时精确解绑),这里仅是 DOM id 唯一性。
+    var _designerUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
+    var designerId = (opts.designerId || ('hiprint-designer-' + _designerUid)).replace(/[^\w-]/g, '-');
 
     // --- 构建 HTML 结构 ---
     var $root = $('<div class="hiprint-designer"></div>');
@@ -14459,16 +14526,38 @@ var hiprint = function (t) {
       applyRightState();
     });
 
+    // --- rAF 节流 helper: 把 mousemove handler 跟浏览器渲染帧对齐,
+    //     避免 60fps mousemove 直接触发布局抖动。 ---
+    function _rafThrottle(fn) {
+      var raf = null, lastEv = null;
+      var rafFn = window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); };
+      var cancelFn = window.cancelAnimationFrame || clearTimeout;
+      function throttled(ev) {
+        lastEv = ev;
+        if (raf) return;
+        raf = rafFn(function () {
+          raf = null;
+          var e = lastEv; lastEv = null;
+          if (e) fn(e);
+        });
+      }
+      throttled.cancel = function () {
+        if (raf) { cancelFn(raf); raf = null; lastEv = null; }
+      };
+      return throttled;
+    }
+
     // --- 拖拽调整宽度 ---
     $leftResizeHandle.on('mousedown', function (e) {
       e.preventDefault();
       var startX = e.clientX;
       var startWidth = leftWidth;
-      var onMouseMove = function (ev) {
+      var onMouseMove = _rafThrottle(function (ev) {
         leftWidth = Math.max(opts.leftMinWidth, Math.min(opts.leftMaxWidth, startWidth + ev.clientX - startX));
         $panelLeft.css('width', leftWidth + 'px');
-      };
+      });
       var onMouseUp = function () {
+        onMouseMove.cancel();
         $(document).off('mousemove', onMouseMove);
         $(document).off('mouseup', onMouseUp);
         document.body.style.cursor = '';
@@ -14484,11 +14573,12 @@ var hiprint = function (t) {
       e.preventDefault();
       var startX = e.clientX;
       var startWidth = rightWidth;
-      var onMouseMove = function (ev) {
+      var onMouseMove = _rafThrottle(function (ev) {
         rightWidth = Math.max(opts.rightMinWidth, Math.min(opts.rightMaxWidth, startWidth - (ev.clientX - startX)));
         $panelRight.css('width', rightWidth + 'px');
-      };
+      });
       var onMouseUp = function () {
+        onMouseMove.cancel();
         $(document).off('mousemove', onMouseMove);
         $(document).off('mouseup', onMouseUp);
         document.body.style.cursor = '';

@@ -323,7 +323,8 @@ export default function (hiprint) {
           },
           {
             // 条形码：text + textType=barcode（统一渲染管道，可在属性面板切换为 text/qrcode/image）。
-            // 必须有 field —— hiprint:9888 无 field 时会把 title 当成 barcode 编码内容，
+            // 必须有 field —— hiprint 内部 updateTargetText 在 textType=barcode 分支
+            // 无 field 时会把 title 作为 barcode 编码内容渲染，
             // "条形码" 中文字符 code128 不支持，会显示"此格式不支持该文本"。
             // 业务方传入数据时通过 templateData.barcode 字段提供编码。
             tid: 'defaultModule.barcode',
