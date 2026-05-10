@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "vue-plugin-hiprint 项目级 Claude Code 配置。secret 放 settings.local.json (已 .gitignore)",
+
+  "metadata": {
+    "project": "vue-plugin-hiprint",
+    "fork_origin": "CcSimple/vue-plugin-hiprint",
+    "fork_status": "detached (independent maintenance)",
+    "primary_language": "javascript",
+    "frameworks": ["vue", "jquery"],
+    "high_risk_paths": [
+      "src/hiprint/hiprint.bundle.js",
+      "src/index.js",
+      "src/hiprint/etypes/**",
+      "src/hiprint/css/print-lock.css",
+      ".github/workflows/**"
+    ],
+    "verification_commands": {
+      "build": "npm run pack:fixed",
+      "syntax": "node --check dist/vue-plugin-hiprint.cjs.js && node --check dist/vue-plugin-hiprint.esm.js",
+      "e2e": "npm run test:e2e",
+      "smoke": "see docs/SMOKE-TEST.md"
+    }
+  },
+
+  "rules": {
+    "_comment": "层叠规则索引: 全局 baseline + 项目 specialize",
+    "baseline": [
+      "~/.claude/rules/common/",
+      "~/.claude/rules/web/",
+      "~/.claude/rules/typescript/",
+      "~/.claude/rules/zh/",
+      "~/.claude/rules/deep-debug/"
+    ],
+    "project": [
+      ".claude/rules/hiprint-bundle.md",
+      ".claude/rules/api-contract.md",
+      ".claude/rules/testing.md",
+      ".claude/rules/security.md",
+      ".claude/rules/jquery-vue3.md"
+    ]
+  },
+
+  "agents": {
+    "_comment": "项目专属 agents 索引",
+    "project": [
+      ".claude/agents/hiprint-bundle-reviewer.md",
+      ".claude/agents/smoke-runner.md",
+      ".claude/agents/codemap-syncer.md"
+    ]
+  },
+
+  "workflow": {
+    "must_use_agent_when": {
+      "src/hiprint/hiprint.bundle.js": "hiprint-bundle-reviewer (任何改动后)",
+      "after_pack:fixed": "smoke-runner (升级 tgz 给业务方前)",
+      "after_bundle_change": "codemap-syncer (同步 docs 行号)"
+    },
+    "must_run_skill_when": {
+      "recurring_bug": "/deep-system-debug",
+      "high_risk_path_change": "/deep-system-debug",
+      "before_release": "/security-review"
+    }
+  }
+}
