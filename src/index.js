@@ -94,9 +94,11 @@ let PrintElementTypeManager = hiprint.PrintElementTypeManager;
 let PrintElementTypeGroup = hiprint.PrintElementTypeGroup;
 
 // === 直接打印 / HTML 输出 ===
-let print = hiprint.print;
-let print2 = hiprint.print2;
-let getHtml = hiprint.getHtml;
+// .bind(hiprint) 是必要的:hiprint.print/print2/getHtml 内部用 this.getHtml,
+// 集成方 `import { print } from 'vue-plugin-hiprint'` 后调用会丢 this(严格模式抛 TypeError)。
+let print = hiprint.print.bind(hiprint);
+let print2 = hiprint.print2.bind(hiprint);
+let getHtml = hiprint.getHtml.bind(hiprint);
 
 // === 客户端 / 静默打印（hiwebSocket 场景）===
 let getClients = hiprint.getClients;

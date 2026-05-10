@@ -525,7 +525,8 @@ var hiprint = function (t) {
       return t.instance.printTemplateContainer[e] = n;
     }, t.prototype.removePrintTemplateById = function (e) {
       // 用于 PrintTemplate.destroy() 时清单例 map，避免实例引用泄漏。
-      if (t.instance && t.instance.printTemplateContainer && e) {
+      // 用 e != null 判断,允许 id=0/'' 这类合法但 falsy 的边缘值。
+      if (t.instance && t.instance.printTemplateContainer && e != null) {
         delete t.instance.printTemplateContainer[e];
       }
     }, t;
@@ -9915,7 +9916,7 @@ var hiprint = function (t) {
                 height: parseInt(o.a.pt.toPx(this.options.getHeight() || 10).toString()),
                 displayValue: divMode ? false : !this.options.hideTitle,
               }), a.find(".hibarcode_imgcode").attr("height", "100%"), a.find(".hibarcode_imgcode").attr("width", "100%"),
-              divMode && (this.options.hideTitle || a.find(".hibarcode_displayValue").html(n))): a.html("");
+              divMode && (this.options.hideTitle || a.find(".hibarcode_displayValue").text(n))): a.html("");
               // pub-beta 0.0.57-beta22 解决条形码自动宽度问题
               let svgWidth = a.find(".hibarcode_imgcode rect")[0].attributes.width.value
               svgWidth = Math.ceil(hinnn.px.toPt(svgWidth * 1.05));
@@ -9951,7 +9952,8 @@ var hiprint = function (t) {
                   useSVG: !0,
                   correctLevel: this.options.getQRcodeLevel()
                 }).makeCode(n);
-                a.html(box), !this.options.hideTitle && a.append(`<div class="hiqrcode_displayValue" style="white-space:nowrap">${n}</div>`);
+                // 安全:用 .text(n) 而非模板字符串拼接, 防止用户数据 n 中含 HTML 时 XSS。
+                a.html(box), !this.options.hideTitle && a.append($('<div class="hiqrcode_displayValue" style="white-space:nowrap"></div>').text(n));
               }
             } catch (t) {
               console.log(t), a.html(`${i18n.__('二维码生成失败')}`);
@@ -11707,11 +11709,20 @@ var hiprint = function (t) {
           var isHidden = el.designTarget && el.designTarget.css && el.designTarget.css("display") === "none";
           var posLocked = !!options.positionLocked;
           var sizeLocked = !!options.sizeLocked;
-          var row = $('<div class="hiprint-el-list-row' + (isHidden ? ' hidden-el' : '') + '"></div>');
-          var cb = $('<input type="checkbox"' + (isHidden ? '' : ' checked') + '>');
-          var tag = $('<span class="el-type-tag tag-' + type + '">' + typeName + '</span>');
-          var descSpan = $('<span class="el-desc" title="' + desc + (field ? ' [' + field + ']' : '') + '">' + desc + '</span>');
-          var lockIcon = posLocked ? $('<span class="el-lock-icon" title="' + i18n.__('位置已锁定') + '">🔒</span>') : sizeLocked ? $('<span class="el-lock-icon el-lock-size" title="' + i18n.__('大小已锁定') + '">🔐</span>') : null;
+          // 安全:全部改用 jQuery DOM API + .text() / .attr(),
+          // 防止 type / typeName / desc / field 中的 HTML 字符注入 (XSS)。
+          var row = $('<div></div>').addClass('hiprint-el-list-row');
+          if (isHidden) row.addClass('hidden-el');
+          var cb = $('<input>').attr('type', 'checkbox').prop('checked', !isHidden);
+          var tag = $('<span></span>').addClass('el-type-tag').addClass('tag-' + type).text(typeName);
+          var titleAttr = desc + (field ? ' [' + field + ']' : '');
+          var descSpan = $('<span></span>').addClass('el-desc').attr('title', titleAttr).text(desc);
+          var lockIcon = null;
+          if (posLocked) {
+            lockIcon = $('<span></span>').addClass('el-lock-icon').attr('title', i18n.__('位置已锁定')).text('🔒');
+          } else if (sizeLocked) {
+            lockIcon = $('<span></span>').addClass('el-lock-icon').addClass('el-lock-size').attr('title', i18n.__('大小已锁定')).text('🔐');
+          }
           row.append(cb).append(tag).append(descSpan);
           if (lockIcon) row.append(lockIcon);
           // 复选框切换可见性
@@ -12327,7 +12338,10 @@ var hiprint = function (t) {
               p.target.off(".hiprint");                  // 解绑 panel 上以 .hiprint 命名空间的事件
             }
           });
-        } catch (err) { /* 销毁阶段尽量静默 */ }
+        } catch (err) {
+          // 销毁阶段不阻断后续清理，但保留可见诊断信号
+          console.warn('[hiprint] PrintTemplate.destroy: panel cleanup failed', err);
+        }
         // 2) 从 HiPrintlib 单例 map 移除自身（防止 GC 不回收）
         if (s.a.instance && typeof s.a.instance.removePrintTemplateById === "function") {
           s.a.instance.removePrintTemplateById(this.id);
