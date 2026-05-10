@@ -523,6 +523,11 @@ var hiprint = function (t) {
       return t.instance.printTemplateContainer[e];
     }, t.prototype.setPrintTemplateById = function (e, n) {
       return t.instance.printTemplateContainer[e] = n;
+    }, t.prototype.removePrintTemplateById = function (e) {
+      // 用于 PrintTemplate.destroy() 时清单例 map，避免实例引用泄漏。
+      if (t.instance && t.instance.printTemplateContainer && e) {
+        delete t.instance.printTemplateContainer[e];
+      }
     }, t;
   }();
 }, function (t, e, n) {
@@ -12105,8 +12110,8 @@ var hiprint = function (t) {
         i.append(a), this.jqPaginationContainer.append(i), a.click(function () {
           var createPanel = function(t) {
             n.template.addPrintPanel(t || void 0, !0), n.buildPagination();
-            $('.hiprint-pagination li').removeClass('selected');
-            $('.hiprint-pagination li:nth-last-child(2)').addClass('selected');
+            n.jqPaginationContainer.find('.hiprint-pagination li').removeClass('selected');
+            n.jqPaginationContainer.find('.hiprint-pagination li:nth-last-child(2)').addClass('selected');
           };
           if (n.template.onPanelAddClick) {
             var panel = {
@@ -12120,7 +12125,7 @@ var hiprint = function (t) {
         });
       }, t.prototype.selectPanel = function (idx) {
         var i = idx || this.template.editingPanel.index;
-        var li = $('.hiprint-pagination li:nth(' + i + ')');
+        var li = this.jqPaginationContainer.find('.hiprint-pagination li:nth(' + i + ')');
         if (li.length) {
           li.siblings().removeClass('selected');
           li.addClass("selected");
@@ -12312,6 +12317,31 @@ var hiprint = function (t) {
             e && e.length && e.remove();
           }
         }), this.printPanels = [this.printPanels[0]], this.printPaginationCreator && this.printPaginationCreator.buildPagination();
+      }, t.prototype.destroy = function () {
+        // 完全销毁 PrintTemplate 实例，供 Vue / SPA 路由销毁时调用，避免内存泄漏。
+        // 1) 清画布（含参考线）—— 复用 PrintPanel.clear 的清理逻辑
+        try {
+          (this.printPanels || []).forEach(function (p) {
+            if (p && typeof p.clear === "function") p.clear();
+            if (p && p.target && p.target.length) {
+              p.target.off(".hiprint");                  // 解绑 panel 上以 .hiprint 命名空间的事件
+            }
+          });
+        } catch (err) { /* 销毁阶段尽量静默 */ }
+        // 2) 从 HiPrintlib 单例 map 移除自身（防止 GC 不回收）
+        if (s.a.instance && typeof s.a.instance.removePrintTemplateById === "function") {
+          s.a.instance.removePrintTemplateById(this.id);
+        }
+        // 3) 清模板容器 DOM
+        if (this.target && this.target.length) {
+          this.target.empty();
+        }
+        // 4) 解引用，让 GC 能回收
+        this.printPanels = [];
+        this.template = null;
+        this.lastJson = null;
+        this.historyList = [];
+        this._destroyed = true;
       }, t.prototype.getPaperType = function (t) {
         return null == t && (t = 0), this.printPanels[0].paperType;
       }, t.prototype.getOrient = function (t) {
@@ -12883,6 +12913,11 @@ var hiprint = function (t) {
   };
 
   function buildToolbar(container, template, options) {
+    // 给每个 toolbar 实例分配独立 namespace，所有 $(document) 上的全局事件都用它绑定 + 解绑，
+    // 避免多 toolbar 并存时事件冲突，避免 destroy 时残留 handler（多次进出 Vue 路由时累积内存泄漏）。
+    buildToolbar._uid = (buildToolbar._uid || 0) + 1;
+    var __toolbarClickNs = ".hiprintToolbar" + buildToolbar._uid;
+
     var opts = $.extend({
       paperTypes: _defaultPaperTypes,
       defaultPaper: 'A4',
@@ -13778,7 +13813,9 @@ var hiprint = function (t) {
           e.stopPropagation();
           $customPopover.toggle();
         });
-        $(document).on('click', function (e) {
+        // 全局 click 关闭自定义纸张 popover —— 必须用 toolbar 实例 namespace 绑定，
+        // 否则多次 buildToolbar / 多实例并存时 handler 永远残留 + 重复触发。
+        $(document).on('click' + __toolbarClickNs, function (e) {
           if (!$(e.target).closest('.hiprint-toolbar-popover, [data-paper="custom"]').length) {
             $customPopover.hide();
           }
@@ -14236,6 +14273,8 @@ var hiprint = function (t) {
         closeBusinessDialog();
         closeTemplateDialog();
         closeSaveDialog();
+        // 解绑本 toolbar 实例的所有 $(document) 全局事件（namespace 化）
+        $(document).off(__toolbarClickNs);
         $container.empty();
       }
     };
@@ -14267,6 +14306,9 @@ var hiprint = function (t) {
     var leftWidth = opts.leftWidth;
     var rightWidth = opts.rightWidth;
 
+    buildDesigner._uid = (buildDesigner._uid || 0) + 1;
+    var designerId = (opts.designerId || ('hiprint-designer-' + buildDesigner._uid)).replace(/[^\w-]/g, '-');
+
     // --- 构建 HTML 结构 ---
     var $root = $('<div class="hiprint-designer"></div>');
     var $toolbarContainer = $('<div class="hiprint-designer-toolbar"></div>');
@@ -14274,10 +14316,13 @@ var hiprint = function (t) {
 
     // 左侧面板
     var $panelLeft = $('<div class="hiprint-designer-panel-left"></div>');
-    var $leftSidebar = $('<div class="hiprint-designer-sidebar">' +
-      '<div class="hiprint-designer-panel-header"><span>' + i18n.__('组件') + '</span></div>' +
-      '<div class="hiprint-designer-panel-body rect-printElement-types hiprintEpContainer" id="hiprintEpContainer"></div>' +
-      '</div>');
+    var $componentContainer = $('<div class="hiprint-designer-panel-body rect-printElement-types hiprintEpContainer"></div>')
+      .attr('id', designerId + '-ep-container');
+    var $leftSidebar = $('<div class="hiprint-designer-sidebar"></div>');
+    $leftSidebar.append(
+      $('<div class="hiprint-designer-panel-header"><span>' + i18n.__('组件') + '</span></div>'),
+      $componentContainer
+    );
     $panelLeft.append($leftSidebar);
 
     // 左侧拖拽条 + 折叠箭头
@@ -14289,9 +14334,11 @@ var hiprint = function (t) {
 
     // 中间设计区域
     var $panelCenter = $('<div class="hiprint-designer-panel-center"></div>');
-    var $cardDesign = $('<div class="hiprint-designer-card">' +
-      '<div id="hiprint-printTemplate" class="hiprint-printTemplate"></div>' +
-      '</div>');
+    var $printTemplateContainer = $('<div class="hiprint-printTemplate"></div>')
+      .attr('id', designerId + '-print-template');
+    var $paginationContainer = $('<div class="hiprint-printPagination hiprint-designer-pagination"></div>');
+    var $cardDesign = $('<div class="hiprint-designer-card"></div>');
+    $cardDesign.append($printTemplateContainer, $paginationContainer);
     $panelCenter.append($cardDesign);
 
     // 右侧拖拽条 + 折叠箭头
@@ -14303,12 +14350,17 @@ var hiprint = function (t) {
 
     // 右侧属性面板
     var $panelRight = $('<div class="hiprint-designer-panel-right params_setting_container"></div>');
-    var $rightSidebar = $('<div class="hiprint-designer-sidebar">' +
-      '<div class="hiprint-designer-panel-header"><span>' + i18n.__('属性') + '</span></div>' +
-      '<div class="hiprint-designer-panel-body">' +
-      '<div class="hinnn-layout-sider"><div id="PrintElementOptionSetting"></div></div>' +
-      '</div>' +
-      '</div>');
+    var $optionSettingContainer = $('<div class="hiprint-option-setting-container"></div>')
+      .attr('id', designerId + '-option-setting');
+    var $rightSidebar = $('<div class="hiprint-designer-sidebar"></div>');
+    var $rightBody = $('<div class="hiprint-designer-panel-body"></div>');
+    var $rightSider = $('<div class="hinnn-layout-sider"></div>');
+    $rightSider.append($optionSettingContainer);
+    $rightBody.append($rightSider);
+    $rightSidebar.append(
+      $('<div class="hiprint-designer-panel-header"><span>' + i18n.__('属性') + '</span></div>'),
+      $rightBody
+    );
     $panelRight.append($rightSidebar);
 
     // 组装布局
@@ -14405,17 +14457,17 @@ var hiprint = function (t) {
       it.clearPanelSlot();
     }
     if (opts.componentModule) {
-      it.build('#hiprintEpContainer', opts.componentModule);
+      it.build($componentContainer[0], opts.componentModule);
     }
 
     // --- 创建模板 ---
     var templateOpts = $.extend({
-      settingContainer: '#PrintElementOptionSetting',
-      paginationContainer: '.hiprint-printPagination'
+      settingContainer: $optionSettingContainer[0],
+      paginationContainer: $paginationContainer[0]
     }, opts.templateOptions || {});
 
     var hiprintTemplate = new ct(templateOpts);
-    hiprintTemplate.design('#hiprint-printTemplate', {});
+    hiprintTemplate.design($printTemplateContainer[0], {});
 
     // --- 左侧组件面板点击 → 选中画布元素 + 同步属性栏 ---
     $panelLeft.on('click', '.ep-draggable-item', function (e) {
@@ -14446,6 +14498,9 @@ var hiprint = function (t) {
       getToolbarCtrl: function () { return toolbarCtrl; },
       getLeftWidth: function () { return leftWidth; },
       getRightWidth: function () { return rightWidth; },
+      getComponentContainer: function () { return $componentContainer[0]; },
+      getTemplateContainer: function () { return $printTemplateContainer[0]; },
+      getSettingContainer: function () { return $optionSettingContainer[0]; },
       setLeftCollapsed: function (v) { leftCollapsed = v; applyLeftState(); },
       setRightCollapsed: function (v) { rightCollapsed = v; applyRightState(); },
       isLeftCollapsed: function () { return leftCollapsed; },
@@ -14461,13 +14516,13 @@ var hiprint = function (t) {
       },
       rebuildComponentPanel: function (moduleName, slotOptions) {
         void 0 !== slotOptions && (opts.componentPanelSlot = slotOptions);
-        $('#hiprintEpContainer').empty();
+        $componentContainer.empty();
         if (opts.componentPanelSlot && opts.componentPanelSlot.enabled) {
           it.setPanelSlot(opts.componentPanelSlot);
         } else {
           it.clearPanelSlot();
         }
-        it.build('#hiprintEpContainer', moduleName || opts.componentModule);
+        it.build($componentContainer[0], moduleName || opts.componentModule);
       },
       destroy: function () {
         toolbarCtrl.destroy();
