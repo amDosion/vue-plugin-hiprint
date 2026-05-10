@@ -12327,6 +12327,7 @@ var hiprint = function (t) {
           n.container.append(t.getTarget()), i > 0 && t.disable(), t.design(e);
         }), this.selectPanel(0);
       }, t.prototype.getSimpleHtml = function (t, e) {
+        if (this._destroyed) { console.warn('[hiprint] getSimpleHtml called on destroyed template'); return $('<div class="hiprint-printTemplate"></div>'); }
         var n = this;
         e || (e = {});
         var i = $('<div class="hiprint-printTemplate"></div>');
@@ -12347,6 +12348,10 @@ var hiprint = function (t) {
         });
         return e && e.imgToBase64 && this.transformImg(i.find("img")), i;
       }, t.prototype.getSimpleHtmlAsync = function (dataItemOrList, e) {
+        if (this._destroyed) {
+          console.warn('[hiprint] getHtmlAsync called on destroyed template');
+          return Promise.resolve($('<div></div>'));
+        }
         return new Promise(resolve => {
           var that = this;
           e || (e = {});
@@ -12362,11 +12367,15 @@ var hiprint = function (t) {
           });
 
           function appendElementByParamsList(paramsListToCreateHTML, onFinish) {
+            // 关键: 每轮 setTimeout 回调时检查 destroyed,防止 destroy 后幽灵调用
+            // 已被清空的 panel.printElements / DOM。
+            if (that._destroyed) {
+              console.warn('[hiprint] getHtmlAsync aborted: template destroyed mid-async');
+              return onFinish();
+            }
             if (!paramsListToCreateHTML.length) return onFinish();
             const [panel, data, e] = paramsListToCreateHTML.shift();
             rootElement.append(panel.getHtml(data, e));
-            // 每次生成Html之间留一些间隔，默认10，通过generateHTMLInterval字段控制
-            console.log('e.generateHTMLInterval', e.generateHTMLInterval)
             setTimeout(() => appendElementByParamsList(paramsListToCreateHTML, onFinish), e.generateHTMLInterval ?? 10)
           }
 
@@ -12762,6 +12771,7 @@ var hiprint = function (t) {
           t = Object.assign(t, e.getTestData());
         }), t;
       }, t.prototype.update = function (t, idx) {
+        if (this._destroyed) { console.warn('[hiprint] update called on destroyed template'); return; }
         var e = this;
         try {
           if (t && "object" == _typeof(t) && t.panels.length > 0) {
@@ -12780,7 +12790,7 @@ var hiprint = function (t) {
             e.selectPanel(idx || 0);
           }
         } catch (er) {
-          console.log(er);
+          console.warn('[hiprint] template.update failed:', er);
           e.onUpdateError && e.onUpdateError(er);
         }
       }, t.prototype.getSelectEls = function () {
@@ -12938,6 +12948,8 @@ var hiprint = function (t) {
         o.a.event.on("hiprintTemplateDataShortcutKey_" + this.id, function (key) {
           if (!t.history) return;
           t._isUndoRedoing = true;
+          // 记录原 pos,update 失败时回滚 - 防"指针已动 DOM 未变"造成连续 undo/redo 错位
+          var prevPos = t.historyPos;
           try {
             switch (key) {
             case "undo":
@@ -12955,6 +12967,9 @@ var hiprint = function (t) {
               }
               break;
             }
+          } catch (uerr) {
+            console.warn('[hiprint] undo/redo update failed, rolling back historyPos:', uerr);
+            t.historyPos = prevPos;
           } finally {
             t._isUndoRedoing = false;
             // 刷新元素列表面板
