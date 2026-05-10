@@ -2170,7 +2170,7 @@ var hiprint = function (t) {
                   r.append(
                       '<div class="hiqrcode_displayValue"></div>'
                     )
-                  r.find('.hiqrcode_displayValue').html(p)
+                  r.find('.hiqrcode_displayValue').text(p)
                   }
                 }
               } catch (t) {
@@ -8919,16 +8919,23 @@ var hiprint = function (t) {
           });
         });
         if (this[t]) {
-          // 旧 group 中含 incoming tid 的项过滤掉(替换语义)
-          var dedupedOld = this[t].filter(function (oldGroup) {
-            var hasOverlap = (oldGroup.printElementTypes || []).some(function (pt) {
-              return pt && incomingTids[pt.tid];
+          // 旧 group 中含 incoming tid 的元素 per-element 过滤掉(替换语义)。
+          // 之前只在整组只剩 1 个 overlap tid 时移除整组,length>1 含 overlap 的旧 group
+          // 仍保留旧 tid 副本 -> 面板渲染重复。
+          var dedupedOld = [];
+          this[t].forEach(function (oldGroup) {
+            if (!oldGroup) return;
+            var oldTypes = oldGroup.printElementTypes || [];
+            var keptTypes = oldTypes.filter(function (pt) {
+              return pt && !incomingTids[pt.tid];
             });
-            if (hasOverlap && oldGroup.printElementTypes.length === 1) {
-              // 整组只有 1 个被替换的 tid -> 整组移除
-              return false;
+            if (keptTypes.length === 0) return; // 整组都被新版替换 -> 丢弃
+            if (keptTypes.length !== oldTypes.length) {
+              // 部分 tid 被替换 -> 直接覆盖原 group 的 printElementTypes
+              // (保持 group 本身的 prototype 链)
+              oldGroup.printElementTypes = keptTypes;
             }
-            return true;
+            dedupedOld.push(oldGroup);
           });
           this[t] = dedupedOld.concat(e);
         } else {
@@ -9202,7 +9209,7 @@ var hiprint = function (t) {
         return ["s","w","e","se","r"];
       }, e.prototype.getData = function (t) {
         var e = "", f = this.getField();
-        t ? e = f ? f.split('.').reduce((a, c) => a ? a[c] : t[c], !1) || "" : this.options.src || this.printElementType.getData() : e = this.options.src || this.printElementType.getData();
+        t ? e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) || "" : this.options.src || this.printElementType.getData() : e = this.options.src || this.printElementType.getData();
         var n = this.getFormatter();
         return n && (e = n(e, this.options, this._currenttemplateData)), e || "";
       }, e.prototype.createTarget = function (t, e) {
@@ -9940,16 +9947,6 @@ var hiprint = function (t) {
           n = this.createTarget(this.printElementType.getText(!0), e);
         return this.updateTargetSize(n), this.css(n, e), n;
       }, e.prototype.updateDesignViewFromOptions = function () {
-        // 此处的处理与 updateTargetText 重复(老版本残留),为避免影响 updateTargetText 执行,整段注释保留作历史参考
-        // var els = this.panel.printElements.filter(function (t) {
-        //   return ('block' == t.designTarget.children().last().css('display')
-        //     && t.designTarget.children().last().hasClass('selected')) && !t.printElementType.type.includes('table');
-        // });
-        // els.forEach(ele => {
-        //   var t = ele.getData()
-        //   ele.css(ele.designTarget, t)
-        //   this.updateTargetText(ele.designTarget, ele.getTitle(), t)
-        // })
         if (this.designTarget) {
           var t = this.getData();
           this.css(this.designTarget, t), this.updateTargetText(this.designTarget, this.getTitle(), t);
@@ -10351,13 +10348,6 @@ var hiprint = function (t) {
             this.options.width = svgWidth;
           }
           content.html(barcode)
-          // if (!this.options.hideTitle) {
-          //   const titleText = title ? title + ( text ? ':' : '' ) : '';
-          //   const textAlign = this.options.textAlign || 'center';
-          //   // 支持type为barcode的textAlign属性
-          //   const textStyle = textAlign === 'justify' ? 'text-align-last: justify;text-justify: distribute-all-lines;' : `text-align: ${ textAlign };`
-          //   content.append($(`<div class="hiprint-printElement-barcode-content-title" style="${ textStyle }">${ titleText }${ text }</div>`))
-          // }
         } catch (error) {
           console.error(error)
           content.html($(`<div>${i18n.__('条形码生成失败')}</div>`))
