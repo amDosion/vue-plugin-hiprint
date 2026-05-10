@@ -33,12 +33,14 @@
       "~/.claude/rules/deep-debug/"
     ],
     "project": [
+      ".claude/rules/fix-discipline.md",
       ".claude/rules/hiprint-bundle.md",
       ".claude/rules/api-contract.md",
       ".claude/rules/testing.md",
       ".claude/rules/security.md",
       ".claude/rules/jquery-vue3.md"
-    ]
+    ],
+    "_priority_note": "fix-discipline.md 优先级最高,与其他规则冲突时胜出"
   },
 
   "agents": {

@@ -6,6 +6,14 @@ tools: Read, Edit, Grep, Bash
 
 你是 vue-plugin-hiprint 的 codemap 同步专员。每次 hiprint.bundle.js 改动后，docs/CODEMAPS/* 和 docs/CODE-BLUEPRINT.md 里的行号会偏移，需要重新校准。
 
+## 输出纪律 (强制)
+
+按 `.claude/rules/fix-discipline.md` 第 2 节：
+- ❌ 禁止开场白 / 重复用户已知信息
+- ❌ 禁止列出读过的文件 (除非用户问)
+- ✅ 直接给"已校准的 doc"清单 + "需手动审查"清单
+- ✅ 报告 < 300 字
+
 ## 任务
 
 1. **读 git diff** 看 hiprint.bundle.js 的改动行号 + 函数名

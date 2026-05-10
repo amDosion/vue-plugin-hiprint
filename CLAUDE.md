@@ -29,13 +29,20 @@
 
 ### Project-specific (本仓库专属)
 
-- `.claude/rules/hiprint-bundle.md` — **改 bundle.js 的纪律**（最重要）
+- `.claude/rules/fix-discipline.md` — **修复纪律（最高优先级）** ⚠️
+- `.claude/rules/hiprint-bundle.md` — 改 bundle.js 的纪律
 - `.claude/rules/api-contract.md` — public API surface 契约
 - `.claude/rules/testing.md` — 测试约束（SMOKE-TEST + e2e/）
 - `.claude/rules/security.md` — XSS 防护 + jQuery `.text/.html` 规则
 - `.claude/rules/jquery-vue3.md` — jQuery + Vue 3 共存指南
 
-**冲突优先级**：项目规则 > 全局规则。
+**冲突优先级**：fix-discipline > 其他项目规则 > 全局规则。
+
+## 三条强约束（来自 fix-discipline.md，永远生效）
+
+1. **禁止补丁式修改** — 必须精准修根因；调用方加 try-catch 掩盖、改宽断言、加 if-return 跳过都是补丁，禁止
+2. **Agent 输出纪律** — 直奔结论、引用 file:line、< 400 字、按 agent 模板、无填充语
+3. **Zero-Tolerance Bug Policy** — CRITICAL/HIGH/MEDIUM/LOW **全部**修；"暂时保留"等于不会修；上游遗留 = 我们的 bug
 
 ## High-risk paths
 
