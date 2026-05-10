@@ -524,11 +524,19 @@ var hiprint = function (t) {
     }, t.prototype.setPrintTemplateById = function (e, n) {
       return t.instance.printTemplateContainer[e] = n;
     }, t.prototype.removePrintTemplateById = function (e) {
-      // 用于 PrintTemplate.destroy() 时清单例 map，避免实例引用泄漏。
-      // 用 e != null 判断,允许 id=0/'' 这类合法但 falsy 的边缘值。
-      if (t.instance && t.instance.printTemplateContainer && e != null) {
-        delete t.instance.printTemplateContainer[e];
+      // 用于 PrintTemplate.destroy() 时清单例 map,避免实例引用泄漏。
+      // 返回 boolean: true=成功删除, false=未删除(无效 id / 不存在 / map 不可用)。
+      if (!t.instance || !t.instance.printTemplateContainer) return false;
+      if (e == null) {
+        console.warn('[hiprint] removePrintTemplateById: id is null/undefined');
+        return false;
       }
+      if (!(e in t.instance.printTemplateContainer)) {
+        console.warn('[hiprint] removePrintTemplateById: id not in map:', e);
+        return false;
+      }
+      delete t.instance.printTemplateContainer[e];
+      return true;
     }, t;
   }();
 }, function (t, e, n) {
@@ -2124,7 +2132,7 @@ var hiprint = function (t) {
                     r.find('.hibarcode_displayValue').html(p)
                 }
               } catch (t) {
-                console.log(t), r.html(`${i18n.__('此格式不支持该文本')}`);
+                console.warn('[hiprint] barcode render failed (table cell):', t); r.html(`${i18n.__('此格式不支持该文本')}`);
               }
             }
             if ("image" == t.tableTextType) {
@@ -2165,7 +2173,7 @@ var hiprint = function (t) {
                   }
                 }
               } catch (t) {
-                console.log(t), r.html(`${i18n.__('二维码生成失败')}`);
+                console.warn('[hiprint] qrcode render failed (table cell):', t); r.html(`${i18n.__('二维码生成失败')}`);
               }
             }
             if ('sequence' === t.tableTextType) {
@@ -5303,6 +5311,10 @@ var hiprint = function (t) {
       }, t.prototype.setValue = function (t) {
         var val = parseFloat(t);
         var enabled = !(void 0 === t || null === t);
+        if (isNaN(val) && t != null && t !== '') {
+          // 调用方传入非数字值(string/object/...),记录诊断,fallback 到默认 10。
+          console.warn('[hiprint] paperHeader.setValue: non-numeric value, fallback to 10:', t);
+        }
         isNaN(val) && (val = 10);
         this.target.find('.paper-header-toggle').prop('checked', !!enabled);
         this.syncInputConstraint();
@@ -5388,6 +5400,9 @@ var hiprint = function (t) {
         var panelInfo = this.getPanelInfo();
         var val = parseFloat(t);
         var enabled = !(void 0 === t || null === t);
+        if (isNaN(val) && t != null && t !== '') {
+          console.warn('[hiprint] paperFooter.setValue: non-numeric value, fallback to default:', t);
+        }
         isNaN(val) && (val = panelInfo.height ? Math.max(panelInfo.height - 10, 1) : 10);
         this.target.find('.paper-footer-toggle').prop('checked', !!enabled);
         this.syncInputConstraint();
@@ -9925,7 +9940,7 @@ var hiprint = function (t) {
                 this.options.width = svgWidth;
               }
             } catch (t) {
-              console.log(t), a.html(`${i18n.__('此格式不支持该文本')}`);
+              console.warn('[hiprint] barcode render failed:', t); a.html(`${i18n.__('此格式不支持该文本')}`);
             }
           }
 
@@ -9956,7 +9971,7 @@ var hiprint = function (t) {
                 a.html(box), !this.options.hideTitle && a.append($('<div class="hiqrcode_displayValue" style="white-space:nowrap"></div>').text(n));
               }
             } catch (t) {
-              console.log(t), a.html(`${i18n.__('二维码生成失败')}`);
+              console.warn('[hiprint] qrcode render failed:', t); a.html(`${i18n.__('二维码生成失败')}`);
             }
           }
         }
@@ -11554,8 +11569,16 @@ var hiprint = function (t) {
         // panel.target 是 .hiprint-printPanel（与 paper 左缘对齐），按钮挂这里；
         // listPanel 弹窗挂到 .hiprint-designer-card，clamp 边界用稳定容器尺寸。
         var mountTarget = panel.target.closest(".hiprint-designer-card");
-        if (!mountTarget.length) mountTarget = panel.target.parent();
-        if (!mountTarget.length) mountTarget = panel.target;
+        if (!mountTarget.length) {
+          // 业务方未把 panel 嵌在 .hiprint-designer-card 内,弹窗位置/clamp 会以 panel.parent() 为基准
+          // (画布尺寸可能不稳定)。建议把设计器容器加 .hiprint-designer-card class。
+          console.warn('[hiprint] element-list panel: .hiprint-designer-card not found, falling back to panel.parent()');
+          mountTarget = panel.target.parent();
+        }
+        if (!mountTarget.length) {
+          console.warn('[hiprint] element-list panel: panel.parent() also empty, falling back to panel.target');
+          mountTarget = panel.target;
+        }
 
         function applyPanelPosition(left, top) {
           var parentWidth = mountTarget.innerWidth() || mountTarget.width() || 0;
@@ -12929,8 +12952,10 @@ var hiprint = function (t) {
   function buildToolbar(container, template, options) {
     // 给每个 toolbar 实例分配独立 namespace，所有 $(document) 上的全局事件都用它绑定 + 解绑，
     // 避免多 toolbar 并存时事件冲突，避免 destroy 时残留 handler（多次进出 Vue 路由时累积内存泄漏）。
-    buildToolbar._uid = (buildToolbar._uid || 0) + 1;
-    var __toolbarClickNs = ".hiprintToolbar" + buildToolbar._uid;
+    // 用 timestamp + random 而非自增 _uid，多 iframe 共存时各 frame 各自函数对象的计数器不共享，
+    // 自增会产生相同 namespace 误解绑对方事件；timestamp+random 跨 frame 唯一。
+    var __toolbarUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
+    var __toolbarClickNs = ".hiprintToolbar_" + __toolbarUid;
 
     var opts = $.extend({
       paperTypes: _defaultPaperTypes,
@@ -13143,10 +13168,19 @@ var hiprint = function (t) {
       return true;
     }
 
+    /**
+     * 修改工具栏按钮文本。
+     * @param {string} key 按钮 key
+     * @param {string} text 文本内容
+     * @param {boolean} [useHtml=false] 是否当作 HTML 渲染。⚠️ 默认 false (安全)。
+     *   useHtml=true 时调用方负责保证 text 是受信任内容（不要直接拼接用户输入），
+     *   否则有 XSS 风险；推荐保持默认 false 走 .text() 安全转义。
+     */
     function setToolbarButtonText(key, text, useHtml) {
       var record = getToolbarButtonRecord(key);
       if (!record || !record.$el || !record.$el.length) return false;
-      if (useHtml) {
+      if (useHtml === true) {
+        // 显式 useHtml=true 时才走 .html(),其余(包括 undefined / 任何 truthy 非 true 值)走安全 .text()。
         record.$el.html(text == null ? '' : text);
       } else {
         record.$el.text(text == null ? '' : text);
@@ -14320,8 +14354,10 @@ var hiprint = function (t) {
     var leftWidth = opts.leftWidth;
     var rightWidth = opts.rightWidth;
 
-    buildDesigner._uid = (buildDesigner._uid || 0) + 1;
-    var designerId = (opts.designerId || ('hiprint-designer-' + buildDesigner._uid)).replace(/[^\w-]/g, '-');
+    // 用 timestamp + random 防多 iframe 共存时计数器不共享导致 designerId 冲突
+    // (与上面 buildToolbar 的 __toolbarUid 同样逻辑)。
+    var __designerUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
+    var designerId = (opts.designerId || ('hiprint-designer-' + __designerUid)).replace(/[^\w-]/g, '-');
 
     // --- 构建 HTML 结构 ---
     var $root = $('<div class="hiprint-designer"></div>');

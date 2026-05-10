@@ -101,7 +101,7 @@ import 'vue-plugin-hiprint/dist/vue-plugin-hiprint.css'
 | `disAutoConnect()` | 断开客户端 |
 | `getClients()` | 取已连接客户端列表 |
 | `getClientInfo(clientId)` | 取客户端详细信息 |
-| `getAddress(callback)` | 取客户端 MAC 地址 |
+| `getAddress(type, callback, ...args)` | 取客户端地址。`type`: 通常 `'MAC'` 或 `'IP'`；`callback(addr)`: 收到地址后调用；`...args`: 透传给底层 socket emit |
 | `ippPrint(options)` | IPP 协议打印 |
 | `ippRequest(options)` | 发送 IPP 请求 |
 
@@ -333,7 +333,7 @@ autoConnect((status, msg) => {
     console.log('已连接 hi 客户端')
     const clients = getClients()
     // [{ clientId: 'xxx', name: 'PC-01', printerList: [...] }, ...]
-    getAddress((addr) => {
+    getAddress('MAC', (addr) => {
       console.log('客户端 MAC:', addr)
     })
   }
@@ -565,7 +565,7 @@ declare module 'vue-plugin-hiprint' {
   export function disAutoConnect(): void
   export function getClients(): Array<{ clientId: string; [k: string]: any }>
   export function getClientInfo(clientId: string): any
-  export function getAddress(cb: (addr: string) => void): void
+  export function getAddress(type: 'MAC' | 'IP' | string, cb: (addr: string) => void, ...args: any[]): void
   export function print(provider: any, template: any, data?: any, options?: any): any
   export function print2(provider: any, template: any, data?: any, options?: any): any
   export function getHtml(template: any, data?: any, options?: any): string
