@@ -14241,12 +14241,16 @@ var hiprint = function (t) {
     // 下拉显示当前所有分页(panel.name 或"第N页"),"+" 按钮添加新分页。
     // 业务方设 opts.showPanelManager:true 显式启用(默认 false)。
     if (opts.showPanelManager) {
+      // panel manager 是一个"复合组件":label + select + '+' 按钮视觉无缝合并(共享边框)。
+      // 外层 hiprint-toolbar-group 仍保留(统一 toolbar 布局),内层 hiprint-toolbar-panel-manager
+      // 才是真正的 segmented 控件。
       var $panelMgrGroup = registerToolbarGroup('panels', $('<div class="hiprint-toolbar-group hiprint-toolbar-panels"></div>'));
-      var $panelLabel = $('<span class="hiprint-toolbar-scale-label" style="margin:0 4px 0 2px;"></span>').text(opts.panelManagerLabel || i18n.__('分页'));
-      var $panelSelect = $('<select class="hiprint-toolbar-input hiprint-toolbar-panel-select" style="min-width:90px;"></select>')
+      var $panelMgr = $('<div class="hiprint-toolbar-panel-manager"></div>');
+      var $panelLabel = $('<span class="hiprint-toolbar-panel-manager-label"></span>').text(opts.panelManagerLabel || i18n.__('分页'));
+      var $panelSelect = $('<select class="hiprint-toolbar-panel-manager-select"></select>')
         .attr('aria-label', i18n.__('选择分页'));
       var $addPanelBtn = registerToolbarButton('panels:add',
-        $('<button type="button" class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"></button>')
+        $('<button type="button" class="hiprint-toolbar-panel-manager-add"></button>')
           .attr('title', i18n.__('添加分页'))
           .attr('aria-label', i18n.__('添加分页'))
           .text(opts.addPanelButtonText || '+'),
@@ -14283,7 +14287,8 @@ var hiprint = function (t) {
       });
 
       refreshPanelSelect();
-      $panelMgrGroup.append($panelLabel, $panelSelect, $addPanelBtn);
+      $panelMgr.append($panelLabel, $panelSelect, $addPanelBtn);
+      $panelMgrGroup.append($panelMgr);
       $toolbar.append($panelMgrGroup);
     }
 

@@ -2546,3 +2546,81 @@ body.hiprint-el-list-dragging {
     animation: none !important;
   }
 }
+
+/* ==================== 工具栏分页管理(segmented 复合组件) ====================
+ * label + select + '+' 视觉无缝合并 - 单一边框 + 内部分隔线,
+ * 整体看起来是一个组件而非 3 个独立元素。
+ */
+.hiprint-toolbar-panel-manager {
+  display: inline-flex;
+  align-items: stretch;
+  height: 28px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+.hiprint-toolbar-panel-manager:hover {
+  border-color: #c0c4cc;
+}
+.hiprint-toolbar-panel-manager:focus-within {
+  border-color: #409eff;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.15);
+}
+.hiprint-toolbar-panel-manager-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  background: #f5f7fa;
+  border-right: 1px solid #dcdfe6;
+  color: #606266;
+  font-weight: 500;
+  user-select: none;
+  white-space: nowrap;
+}
+.hiprint-toolbar-panel-manager-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border: none;
+  outline: none;
+  padding: 0 22px 0 8px;
+  height: 100%;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 4l3 3 3-3' fill='none' stroke='%23606266' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center;
+  font-size: 12px;
+  color: #303133;
+  min-width: 80px;
+  max-width: 160px;
+  cursor: pointer;
+}
+.hiprint-toolbar-panel-manager-select:focus {
+  outline: none;
+}
+.hiprint-toolbar-panel-manager-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 100%;
+  border: none;
+  border-left: 1px solid #dcdfe6;
+  background: transparent;
+  color: #606266;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.hiprint-toolbar-panel-manager-add:hover {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.hiprint-toolbar-panel-manager-add:active {
+  background: #d9ecff;
+}
+.hiprint-toolbar-panel-manager-add:focus-visible {
+  outline: 2px solid #1665d8;
+  outline-offset: -2px;
+}
