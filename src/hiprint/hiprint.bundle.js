@@ -11155,6 +11155,13 @@ var hiprint = function (t) {
         this.printElements.forEach(function (t) {
           t.designTarget && t.designTarget.length && t.designTarget.remove();
         }), this.printElements = [];
+        // 同时清掉标尺拖出来的参考线(designPaper.guideLines),
+        // 否则点"清空"按钮后参考线还会保留。
+        // 第二参数 true = silent, 不重复触发 onGuideLinesChanged(下面已统一触发"清空")。
+        this.guideLines = [];
+        if (this.designPaper && this.designPaper.setGuideLines) {
+          this.designPaper.setGuideLines([], true);
+        }
         o.a.event.trigger("hiprintTemplateDataChanged_" + this.templateId, "清空");
       }, t.prototype.insertPrintElementToPanel = function (t) {
         var e = this.getPrintElementTypeByEntity(t);
