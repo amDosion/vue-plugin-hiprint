@@ -11541,7 +11541,8 @@ var hiprint = function (t) {
           } // end if (hasSelection)
           $("body").append(menu);
           menu.css({ left: e.pageX + 2, top: e.pageY + 2 });
-          $(document).one("click", function () { $(".hiprint-ctx-menu").remove(); });
+          // 用 namespace + setTimeout 避开当前 contextmenu 事件冒泡到 click,保留 single-shot 语义。
+          $(document).one("click.hiprintCtxMenu", function () { $(".hiprint-ctx-menu").remove(); });
         });
       }, t.prototype.getSelectedElements = function () {
         if (this.mouseRect && this.mouseRect.mouseRectSelectedElement && this.mouseRect.mouseRectSelectedElement.length) {
@@ -12389,7 +12390,8 @@ var hiprint = function (t) {
           this.editingPanel.resize(t, n.width, n.height, !1);
         }
       }, t.prototype.rotatePaper = function () {
-        this.editingPanel.rotatePaper();
+        if (this._assertNotDestroyed('rotatePaper')) return;
+        this.editingPanel && this.editingPanel.rotatePaper();
       }, t.prototype.alignElements = function (type) {
         if (this._assertNotDestroyed('alignElements')) return;
         this.editingPanel && this.editingPanel.alignElements(type);
@@ -12397,15 +12399,18 @@ var hiprint = function (t) {
         if (this._assertNotDestroyed('zoom')) return;
         this.editingPanel && this.editingPanel.zoom(s, p);
       }, t.prototype.addPrintPanel = function (t, e) {
+        if (this._assertNotDestroyed('addPrintPanel')) return undefined;
         var n = t ? new pt(new rt(t), this.id) : this.createDefaultPanel();
         return t && (t.index = this.printPanels.length), e && (this.container.append(n.getTarget()), n.design(this.designOptions)), this.printPanels.push(n), e && this.selectPanel(n.index), n;
       }, t.prototype.selectPanel = function (t) {
+        if (this._assertNotDestroyed('selectPanel')) return;
         var e = this;
         if (t > e.printPanels.length - 1) t = e.printPanels.length - 1;
         this.printPanels.forEach(function (n, i) {
           t == i ? (n.enable(), e.editingPanel = n, e.printPaginationCreator && e.printPaginationCreator.selectPanel(t)) : n.disable();
         });
       }, t.prototype.deletePanel = function (t) {
+        if (this._assertNotDestroyed('deletePanel')) return;
         // 不变式: printPanels 必须 >= 1, 否则 getPaperType / getOrient / print
         // 等方法访问 printPanels[0] 抛 TypeError。
         if (!this.printPanels || this.printPanels.length <= 1) {
@@ -12414,14 +12419,17 @@ var hiprint = function (t) {
         }
         this.printPanels[t].clear(), this.printPanels[t].getTarget().remove(), this.printPanels.splice(t, 1);
       }, t.prototype.getPaneltotal = function () {
+        if (this._assertNotDestroyed('getPaneltotal')) return 0;
         return this.printPanels.length;
       }, t.prototype.createDefaultPanel = function () {
+        if (this._assertNotDestroyed('createDefaultPanel')) return undefined;
         return new pt(new rt({
           index: this.printPanels.length,
           name: this.defaultPanelName,
           paperType: "A4"
         }), this.id);
       }, t.prototype.createContainer = function (t) {
+        if (this._assertNotDestroyed('createContainer')) return;
         t ? (this.container = $(t), this.container.addClass("hiprint-printTemplate")) : this.container = $('<div class="hiprint-printTemplate"></div>');
       }, t.prototype.getJsonTid = function () {
         if (this._assertNotDestroyed('getJsonTid')) return new st({ panels: [] });
@@ -12457,10 +12465,13 @@ var hiprint = function (t) {
         }
         return false;
       }, t.prototype.getPrintElementSelectEventKey = function () {
+        if (this._assertNotDestroyed('getPrintElementSelectEventKey')) return "";
         return "PrintElementSelectEventKey_" + this.id;
       }, t.prototype.getBuildCustomOptionSettingEventKey = function () {
+        if (this._assertNotDestroyed('getBuildCustomOptionSettingEventKey')) return "";
         return "BuildCustomOptionSettingEventKey_" + this.id;
       }, t.prototype.clear = function () {
+        if (this._assertNotDestroyed('clear')) return;
         this.printPanels.forEach(function (t) {
           if (t.clear(), t.index > 0) {
             var e = t.getTarget();
@@ -13073,6 +13084,15 @@ var hiprint = function (t) {
     return result;
   }
 
+  // Module-level helper - 共享给 buildToolbar + buildDesigner;
+  // 业务回调 (opts.onXxx) throw 时不冒泡冻结 UI,记录后返回 undefined。
+  // 用法: _safeCall(opts.onXxx, [args...], 'onXxx');
+  function _safeCall(fn, args, name) {
+    if (typeof fn !== 'function') return undefined;
+    try { return fn.apply(null, args || []); }
+    catch (err) { console.error('[hiprint] ' + name + ' threw:', err); }
+  }
+
   function setDynamicFields(moduleName, fieldGroups) {
     // 必须校验 moduleName,否则 removePrintElementTypes(undefined) +
     // String.startsWith(undefined) 会把所有 tid 以 'undefined' 开头的元素静默删除。
@@ -13125,13 +13145,7 @@ var hiprint = function (t) {
     var _toolbarUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
     var _toolbarClickNs = ".hiprintToolbar_" + _toolbarUid;
 
-    // Helper - 业务回调隔离调用; throw → console.error 不冒泡冻结 UI。
-    // 用法: _safeCall(opts.onPreview, [template], 'onPreview');
-    function _safeCall(fn, args, name) {
-      if (typeof fn !== 'function') return undefined;
-      try { return fn.apply(null, args || []); }
-      catch (err) { console.error('[hiprint] ' + name + ' threw:', err); }
-    }
+    // _safeCall is module-level (shared with buildDesigner)
 
     var opts = $.extend({
       paperTypes: _defaultPaperTypes,
@@ -13514,7 +13528,7 @@ var hiprint = function (t) {
         closeDefault: closeBusinessDialogDefault
       };
       if (typeof opts.onBusinessDialogClose === 'function') {
-        var result = opts.onBusinessDialogClose(context);
+        var result = _safeCall(opts.onBusinessDialogClose, [context], 'onBusinessDialogClose');
         if (result === false || result === true) return;
       }
       closeBusinessDialogDefault();
@@ -13531,9 +13545,7 @@ var hiprint = function (t) {
       if (!item) return Promise.resolve();
       return resolveBusinessData(item).then(function (rawData) {
         var parsedData = parseBusinessData(rawData);
-        if (typeof opts.onBusinessSelect === 'function') {
-          opts.onBusinessSelect(item, parsedData == null ? rawData : parsedData, template, toolbarApi);
-        }
+        _safeCall(opts.onBusinessSelect, [item, parsedData == null ? rawData : parsedData, template, toolbarApi], 'onBusinessSelect');
         if (opts.closeBusinessDialogOnSelect !== false) {
           closeBusinessDialog();
         }
@@ -13608,7 +13620,7 @@ var hiprint = function (t) {
         closeDefault: closeBusinessDialogDefault
       };
       if (typeof opts.onBusinessDialogOpen === 'function') {
-        var result = opts.onBusinessDialogOpen(context);
+        var result = _safeCall(opts.onBusinessDialogOpen, [context], 'onBusinessDialogOpen');
         if (result === false || result === true) return;
       }
       openBusinessDialogDefault();
@@ -13702,7 +13714,7 @@ var hiprint = function (t) {
         closeDefault: closeTemplateDialogDefault
       };
       if (typeof opts.onTemplateDialogClose === 'function') {
-        var result = opts.onTemplateDialogClose(context);
+        var result = _safeCall(opts.onTemplateDialogClose, [context], 'onTemplateDialogClose');
         if (result === false || result === true) return;
       }
       closeTemplateDialogDefault();
@@ -13722,18 +13734,14 @@ var hiprint = function (t) {
         if (json) {
           applyTemplateData(json);
         }
-        if (typeof opts.onTemplateSelect === 'function') {
-          opts.onTemplateSelect(item, json || rawData, template, toolbarApi);
-        }
+        _safeCall(opts.onTemplateSelect, [item, json || rawData, template, toolbarApi], 'onTemplateSelect');
         if (opts.closeTemplateDialogOnSelect !== false) {
           closeTemplateDialog();
         }
       }).catch(function (err) {
         // 失败时关闭 dialog 避免卡死;业务方可监听 onTemplateSelectError 自定义反馈。
         console.error('[hiprint] template select failed:', err);
-        if (typeof opts.onTemplateSelectError === 'function') {
-          try { opts.onTemplateSelectError(err, item, template, toolbarApi); } catch (e) { /* swallow */ }
-        }
+        _safeCall(opts.onTemplateSelectError, [err, item, template, toolbarApi], 'onTemplateSelectError');
         closeTemplateDialog();
       });
     }
@@ -13827,9 +13835,9 @@ var hiprint = function (t) {
         if (action === 'select') {
           handleTemplateSelect(item);
         } else if (action === 'preview') {
-          typeof opts.onTemplatePreview === 'function' && opts.onTemplatePreview(item, template, toolbarApi);
+          _safeCall(opts.onTemplatePreview, [item, template, toolbarApi], 'onTemplatePreview');
         } else if (action === 'edit') {
-          typeof opts.onTemplateEdit === 'function' && opts.onTemplateEdit(item, template, toolbarApi);
+          _safeCall(opts.onTemplateEdit, [item, template, toolbarApi], 'onTemplateEdit');
         } else if (action === 'delete') {
           handleTemplateDelete(item);
         }
@@ -13855,7 +13863,7 @@ var hiprint = function (t) {
         closeDefault: closeTemplateDialogDefault
       };
       if (typeof opts.onTemplateDialogOpen === 'function') {
-        var result = opts.onTemplateDialogOpen(context);
+        var result = _safeCall(opts.onTemplateDialogOpen, [context], 'onTemplateDialogOpen');
         if (result === false || result === true) return;
       }
       openTemplateDialogDefault();
@@ -13877,8 +13885,7 @@ var hiprint = function (t) {
       };
       if (typeof opts.onSaveDialogClose === 'function') {
         var result;
-        try { result = opts.onSaveDialogClose(context); }
-        catch (err) { console.error('[hiprint] onSaveDialogClose threw:', err); }
+        result = _safeCall(opts.onSaveDialogClose, [context], 'onSaveDialogClose');
         if (result === false || result === true) return;
       }
       closeSaveDialogDefault();
@@ -13891,7 +13898,7 @@ var hiprint = function (t) {
         name = i18n.__('未命名模版');
       }
       if (typeof opts.onSave === 'function') {
-        return opts.onSave(template, json, event, toolbarApi, { name: name });
+        return _safeCall(opts.onSave, [template, json, event, toolbarApi, { name: name }], 'onSave');
       }
       if (json) {
         var filename = name.endsWith('.json') ? name : (name + '.json');
@@ -13997,8 +14004,7 @@ var hiprint = function (t) {
       };
       if (typeof opts.onSaveDialogOpen === 'function') {
         var result;
-        try { result = opts.onSaveDialogOpen(context); }
-        catch (err) { console.error('[hiprint] onSaveDialogOpen threw:', err); }
+        result = _safeCall(opts.onSaveDialogOpen, [context], 'onSaveDialogOpen');
         if (result === false || result === true) return;
       }
       openSaveDialogDefault(defaultName);
@@ -14022,7 +14028,7 @@ var hiprint = function (t) {
       $businessSelectBtn.on('click', function () {
         var result = true;
         if (typeof opts.onBusinessClick === 'function') {
-          result = opts.onBusinessClick(template, toolbarApi);
+          result = _safeCall(opts.onBusinessClick, [template, toolbarApi], 'onBusinessClick');
         }
         if (result !== false) {
           openBusinessDialog();
@@ -14057,7 +14063,7 @@ var hiprint = function (t) {
           $(this).addClass('active').attr('aria-pressed', 'true');
           $customBtn && $customBtn.removeClass('active');
           template.setPaper(size.width, size.height);
-          opts.onPaperChange && opts.onPaperChange(name, size);
+          _safeCall(opts.onPaperChange, [name, size], 'onPaperChange');
         });
         $paperGroup.append($btn);
       });
@@ -14079,7 +14085,7 @@ var hiprint = function (t) {
             $customBtn.addClass('active');
             template.setPaper(w, h);
             $customPopover.hide();
-            opts.onPaperChange && opts.onPaperChange('custom', { width: w, height: h });
+            _safeCall(opts.onPaperChange, ['custom', { width: w, height: h }], 'onPaperChange');
           }
         });
         $customContent.append($wInput, $sep, $hInput, $okBtn);
@@ -14088,12 +14094,8 @@ var hiprint = function (t) {
           e.stopPropagation();
           // 业务方自定义 popover UI 钩子:返回 false 阻止默认 popover 打开,业务方用自己的弹窗组件替代
           if (typeof opts.onCustomPaperOpen === 'function') {
-            try {
-              var ret = opts.onCustomPaperOpen(template, toolbarApi);
-              if (ret === false) return;
-            } catch (err) {
-              console.error('[hiprint] onCustomPaperOpen threw:', err);
-            }
+            var ret = _safeCall(opts.onCustomPaperOpen, [template, toolbarApi], 'onCustomPaperOpen');
+            if (ret === false) return;
           }
           $customPopover.toggle();
           // a11y: 同步 aria-expanded 让屏幕阅读器知道 popover 当前状态
@@ -14139,13 +14141,13 @@ var hiprint = function (t) {
         scaleValue = Math.max(opts.scaleMin, +(scaleValue - opts.scaleStep).toFixed(2));
         template.zoom(scaleValue);
         updateScaleLabel();
-        opts.onScaleChange && opts.onScaleChange(scaleValue);
+        _safeCall(opts.onScaleChange, [scaleValue], 'onScaleChange');
       });
       $zoomIn.on('click', function () {
         scaleValue = Math.min(opts.scaleMax, +(scaleValue + opts.scaleStep).toFixed(2));
         template.zoom(scaleValue);
         updateScaleLabel();
-        opts.onScaleChange && opts.onScaleChange(scaleValue);
+        _safeCall(opts.onScaleChange, [scaleValue], 'onScaleChange');
       });
       $scaleGroup.append($zoomOut, $scaleLabel, $zoomIn);
       $toolbar.append($scaleGroup);
@@ -14158,7 +14160,7 @@ var hiprint = function (t) {
       var $rotateBtn = registerToolbarButton('rotate', $('<button type="button" class="hiprint-toolbar-btn" title="' + rotateText + '">↻ ' + rotateText + '</button>'), { groupKey: 'rotate' });
       $rotateBtn.on('click', function () {
         template.rotatePaper();
-        opts.onRotate && opts.onRotate(template);
+        _safeCall(opts.onRotate, [template], 'onRotate');
       });
       $rotateGroup.append($rotateBtn);
       $toolbar.append($rotateGroup);
@@ -14701,6 +14703,7 @@ var hiprint = function (t) {
     // designerId(用作 DOM 元素 id 属性)。注意与 buildToolbar 的 _toolbarUid 用途不同 —
     // 后者是 jQuery 事件 namespace(用于 destroy 时精确解绑),这里仅是 DOM id 唯一性。
     var _designerUid = Date.now().toString(36) + '_' + Math.floor(Math.random() * 1679616).toString(36);
+    var _designerEventNs = '.hiprintDesigner_' + _designerUid;
     var designerId = (opts.designerId || ('hiprint-designer-' + _designerUid)).replace(/[^\w-]/g, '-');
 
     // --- 构建 HTML 结构 ---
@@ -14841,15 +14844,15 @@ var hiprint = function (t) {
       });
       var onMouseUp = function () {
         onMouseMove.cancel();
-        $(document).off('mousemove', onMouseMove);
-        $(document).off('mouseup', onMouseUp);
+        // namespace 解绑: 只解我们这个 designer 的 mousemove/mouseup 监听,不影响其他实例 / 业务方
+        $(document).off('mousemove' + _designerEventNs).off('mouseup' + _designerEventNs);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       };
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      $(document).on('mousemove', onMouseMove);
-      $(document).on('mouseup', onMouseUp);
+      $(document).on('mousemove' + _designerEventNs, onMouseMove);
+      $(document).on('mouseup' + _designerEventNs, onMouseUp);
     });
 
     $rightResizeHandle.on('mousedown', function (e) {
@@ -14862,15 +14865,15 @@ var hiprint = function (t) {
       });
       var onMouseUp = function () {
         onMouseMove.cancel();
-        $(document).off('mousemove', onMouseMove);
-        $(document).off('mouseup', onMouseUp);
+        // namespace 解绑 (同 left handle)
+        $(document).off('mousemove' + _designerEventNs).off('mouseup' + _designerEventNs);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       };
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      $(document).on('mousemove', onMouseMove);
-      $(document).on('mouseup', onMouseUp);
+      $(document).on('mousemove' + _designerEventNs, onMouseMove);
+      $(document).on('mouseup' + _designerEventNs, onMouseUp);
     });
 
     // --- 构建组件面板 ---
@@ -14912,7 +14915,7 @@ var hiprint = function (t) {
 
     // --- onReady 回调 ---
     if (opts.onReady) {
-      opts.onReady(hiprintTemplate, toolbarCtrl);
+      _safeCall(opts.onReady, [hiprintTemplate, toolbarCtrl], 'onReady');
     }
 
     // --- 返回控制对象 ---
