@@ -31,9 +31,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
 import {
+  buildElementContextItems,
   enableDesignerKeyboard,
   enableLasso,
   enableSelectionShortcuts,
+  openContextMenu,
+  type ContextMenuController,
 } from '@hiprint-v3/interactions'
 import {
   TextElement,
@@ -147,6 +150,34 @@ watch(
   }
 )
 
+// ----- Context menu (right-click) -----
+
+// Track the active controller so we can close any open menu when a new
+// right-click opens another one (V1 parity: one menu at a time).
+let activeMenu: ContextMenuController | null = null
+
+function onContextMenu(e: MouseEvent): void {
+  if (props.readonly) return
+  const targetEl = e.target as HTMLElement | null
+  if (!targetEl) return
+  const elNode = targetEl.closest('[data-element-id]')
+  const elementId = elNode?.getAttribute('data-element-id')
+  // Only intercept when the right-click is on an element. Background
+  // right-click (panel/empty area) falls through to the native menu so we
+  // don't surprise users with an empty menu in non-element zones.
+  if (!elementId) return
+  e.preventDefault()
+  try {
+    activeMenu?.close()
+  } catch {
+    /* ignore — close is idempotent */
+  }
+  activeMenu = openContextMenu(
+    { x: e.clientX, y: e.clientY },
+    { items: buildElementContextItems(elementId) }
+  )
+}
+
 onBeforeUnmount(() => {
   cleanupLasso?.()
   cleanupKeyboard?.()
@@ -154,6 +185,12 @@ onBeforeUnmount(() => {
   cleanupLasso = null
   cleanupKeyboard = null
   cleanupShortcuts = null
+  try {
+    activeMenu?.close()
+  } catch {
+    /* ignore */
+  }
+  activeMenu = null
 })
 </script>
 
@@ -162,6 +199,7 @@ onBeforeUnmount(() => {
     ref="canvasEl"
     class="hiprint-canvas"
     :class="{ 'hiprint-canvas--readonly': readonly }"
+    @contextmenu="onContextMenu"
   >
     <template v-if="activePanel">
       <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">
