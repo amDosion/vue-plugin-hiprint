@@ -31,7 +31,7 @@ import {
   useHistoryStore,
   useTemplateStore,
 } from '@hiprint-v3/stores'
-import { browserPrint, downloadPdf } from '@hiprint-v3/print'
+import { browserPrint, downloadPdf, getPrintHtml } from '@hiprint-v3/print'
 import { safeCall } from '@hiprint-v3/internal'
 import type { TemplateJson } from '@hiprint-v3/schemas'
 import type { PrintTemplate } from '@hiprint-v3/compat/print-template'
@@ -238,9 +238,12 @@ const props = withDefaults(defineProps<Props>(), {
   showPrint: true,
   showPdf: true,
   showClear: true,
-  showPanelManager: false,
+  // V1 parity: panel-manager + custom-paper visible by default. Business
+  // code passes showXxx=false to hide. (User-reported "默认第一页 / 自定义纸张"
+  // missing — V3 had them off by default, V1 had them on.)
+  showPanelManager: true,
   showPaperSelect: true,
-  showCustomPaper: false,
+  showCustomPaper: true,
   showRotate: true,
   showAlign: true,
   showScale: true,
@@ -467,8 +470,34 @@ function handleSave(): void {
     )
     emit('save', props.tpl, tpl.getJson(), null, undefined, {})
   } else {
+    // V1 default behavior: mark dirty=false + download template JSON as a
+    // file. Business code overrides via onSave / saveHandler prop.
     const json = tpl.save()
+    downloadJson(json, 'template.json')
     emit('save', props.tpl, json, null, undefined, {})
+  }
+}
+
+/**
+ * Trigger a browser download of the JSON template (V1 default save).
+ * Uses Blob + anchor click — works in all modern browsers, no library deps.
+ */
+function downloadJson(data: unknown, filename: string): void {
+  if (typeof document === 'undefined') return
+  try {
+    const text = JSON.stringify(data, null, 2)
+    const blob = new Blob([text], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // Revoke after a tick so Chrome has time to fetch the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (err) {
+    console.warn('[hiprint-v3] downloadJson failed:', err)
   }
 }
 
@@ -479,9 +508,44 @@ function handlePreview(): void {
       [],
       'toolbar.previewHandler'
     )
+  } else if (!props.onPreview && !props.previewHandler) {
+    // V1 default behavior: open a print-preview window via window.print on a
+    // new tab populated with renderTemplate output. Business code overrides
+    // via onPreview / previewHandler.
+    runDefaultPreview()
   }
   // Emit invokes onPreview prop (auto-listener bridge) with V1 signature.
   emit('preview', props.tpl)
+}
+
+/**
+ * V1 default preview: open a new window, write the rendered HTML, trigger
+ * print dialog. Business code overrides via onPreview prop.
+ */
+function runDefaultPreview(): void {
+  try {
+    // tpl.getJson() is the safe accessor; tpl.currentJson is a Pinia computed
+    // auto-unwrapped on the store proxy (already a plain value, not a Ref),
+    // but using the function avoids the auto-unwrap ambiguity in tests.
+    const json = tpl.getJson()
+    const html = getPrintHtml(json)
+    if (typeof window === 'undefined') return
+    const win = window.open('', '_blank', 'width=1024,height=768')
+    if (!win) {
+      console.warn('[hiprint-v3] preview: window.open blocked (popup?)')
+      return
+    }
+    win.document.open()
+    win.document.write(
+      '<html><head><title>Print Preview</title></head><body>' +
+        html +
+        '<script>setTimeout(function(){window.print()},300)<\/script>' +
+        '</body></html>'
+    )
+    win.document.close()
+  } catch (err) {
+    console.warn('[hiprint-v3] preview failed:', err)
+  }
 }
 
 function handlePrint(): void {
