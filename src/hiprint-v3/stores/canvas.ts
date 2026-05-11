@@ -231,6 +231,43 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     }
   }
 
+  /**
+   * Patch a panel immutably (paper width/height/header/footer/name/paperType
+   * /paperMargin/watermark/etc.). Custom paper popover (TB-004) + paper
+   * property panel (PP-101~PP-113) both go through this. `id` is preserved.
+   */
+  function updatePanel(id: string, patch: Partial<Panel>): void {
+    const idx = panels.value.findIndex((p) => p.id === id)
+    if (idx < 0) {
+      console.warn('[hiprint] updatePanel: unknown panel id', id)
+      return
+    }
+    const cur = panels.value[idx]
+    if (!cur) return
+    const next = panels.value.slice()
+    next[idx] = { ...cur, ...patch, id: cur.id }
+    panels.value = next
+  }
+
+  /**
+   * Reorder a panel from `fromIdx` to `toIdx` (drag-rearrange chips, MP-005).
+   * Re-numbers `Panel.index` to keep contiguous. Active panel id is stable
+   * (we move panels around it, not the selection).
+   */
+  function reorderPanel(fromIdx: number, toIdx: number): void {
+    const len = panels.value.length
+    if (fromIdx < 0 || fromIdx >= len || toIdx < 0 || toIdx >= len) return
+    if (fromIdx === toIdx) return
+    const next = panels.value.slice()
+    const [moved] = next.splice(fromIdx, 1)
+    if (!moved) return
+    next.splice(toIdx, 0, moved)
+    next.forEach((p, i) => {
+      if (p.index !== i) p.index = i
+    })
+    panels.value = next
+  }
+
   /** Add an element to a specific panel. Returns new element (with assigned id). */
   function addElement(
     panelId: string,
@@ -448,6 +485,8 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     addPanel,
     removePanel,
     setActivePanel,
+    updatePanel,
+    reorderPanel,
     addElement,
     removeElement,
     updateElement,
