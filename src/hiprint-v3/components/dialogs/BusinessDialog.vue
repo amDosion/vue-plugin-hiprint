@@ -13,7 +13,20 @@
  *   #8: every user-input emit is wrapped via safeCall (try/catch isolation).
  */
 import { computed, ref } from 'vue'
+import {
+  Modal as AModal,
+  Button as AButton,
+  Input,
+  List as AList,
+  ListItem as AListItem,
+  Card,
+  Spin as ASpin,
+} from 'ant-design-vue'
 import { safeCall } from '@hiprint-v3/internal'
+
+const AInputSearch = Input.Search
+const ACardMeta = Card.Meta
+const ACard = Card
 
 // ============ Public types ============
 
@@ -125,7 +138,7 @@ function onRefresh(): void {
 </script>
 
 <template>
-  <a-modal
+  <AModal
     :open="open"
     :title="title"
     :width="width"
@@ -137,17 +150,17 @@ function onRefresh(): void {
   >
     <div class="hiprint-business-dialog__body">
       <div class="hiprint-business-dialog__header">
-        <a-input-search
+        <AInputSearch
           v-model:value="searchQuery"
           placeholder="搜索业务场景..."
           allow-clear
           style="max-width: 320px"
           class="hiprint-business-dialog__search"
         />
-        <a-button :loading="loading" @click="onRefresh">刷新</a-button>
+        <AButton :loading="loading" @click="onRefresh">刷新</AButton>
       </div>
 
-      <a-spin :spinning="loading">
+      <ASpin :spinning="loading">
         <div
           v-if="filteredItems.length === 0"
           class="hiprint-business-dialog__empty"
@@ -164,49 +177,49 @@ function onRefresh(): void {
             class="hiprint-business-dialog__group"
           >
             <h4 class="hiprint-business-dialog__group-title">{{ group.category }}</h4>
-            <a-list :data-source="group.items" :grid="{ gutter: 12, column: 4 }">
+            <AList :data-source="group.items" :grid="{ gutter: 12, column: 4 }">
               <template #renderItem="{ item }">
-                <a-list-item>
-                  <a-card
+                <AListItem>
+                  <ACard
                     hoverable
                     :body-style="{ padding: '12px' }"
                     class="hiprint-business-dialog__card"
                     @click="pickItem(item as BusinessItem)"
                   >
-                    <a-card-meta :title="(item as BusinessItem).name" />
-                  </a-card>
-                </a-list-item>
+                    <ACardMeta :title="(item as BusinessItem).name" />
+                  </ACard>
+                </AListItem>
               </template>
-            </a-list>
+            </AList>
           </div>
         </div>
 
         <!-- Flat mode -->
-        <a-list
+        <AList
           v-else
           :data-source="filteredItems"
           :grid="{ gutter: 12, column: 4 }"
           class="hiprint-business-dialog__list"
         >
           <template #renderItem="{ item }">
-            <a-list-item>
-              <a-card
+            <AListItem>
+              <ACard
                 hoverable
                 :body-style="{ padding: '12px' }"
                 class="hiprint-business-dialog__card"
                 @click="pickItem(item as BusinessItem)"
               >
-                <a-card-meta
+                <ACardMeta
                   :title="(item as BusinessItem).name"
                   :description="(item as BusinessItem).category"
                 />
-              </a-card>
-            </a-list-item>
+              </ACard>
+            </AListItem>
           </template>
-        </a-list>
-      </a-spin>
+        </AList>
+      </ASpin>
     </div>
-  </a-modal>
+  </AModal>
 </template>
 
 <style scoped>

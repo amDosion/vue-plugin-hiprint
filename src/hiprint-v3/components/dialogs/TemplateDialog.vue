@@ -18,8 +18,21 @@
  *   - Empty-state message announced in-flow.
  */
 import { computed, ref } from 'vue'
+import {
+  Modal as AModal,
+  Button as AButton,
+  Input,
+  List as AList,
+  ListItem as AListItem,
+  Card,
+  Spin as ASpin,
+} from 'ant-design-vue'
 import { safeCall } from '@hiprint-v3/internal'
 import type { TemplateJson } from '@hiprint-v3/schemas'
+
+const AInputSearch = Input.Search
+const ACardMeta = Card.Meta
+const ACard = Card
 
 // ============ Public types ============
 
@@ -126,7 +139,7 @@ function onRefresh(): void {
 </script>
 
 <template>
-  <a-modal
+  <AModal
     :open="open"
     :title="title"
     :width="width"
@@ -138,17 +151,17 @@ function onRefresh(): void {
   >
     <div class="hiprint-template-dialog__body">
       <div class="hiprint-template-dialog__header">
-        <a-input-search
+        <AInputSearch
           v-model:value="searchQuery"
           placeholder="搜索模板..."
           allow-clear
           style="max-width: 320px"
           class="hiprint-template-dialog__search"
         />
-        <a-button :loading="loading" @click="onRefresh">刷新</a-button>
+        <AButton :loading="loading" @click="onRefresh">刷新</AButton>
       </div>
 
-      <a-spin :spinning="loading">
+      <ASpin :spinning="loading">
         <div
           v-if="filteredItems.length === 0"
           class="hiprint-template-dialog__empty"
@@ -157,15 +170,15 @@ function onRefresh(): void {
           {{ searchQuery ? '无匹配模板' : '暂无模板' }}
         </div>
 
-        <a-list
+        <AList
           v-else
           :data-source="filteredItems"
           :grid="{ gutter: 16, column: showPreview ? 3 : 1 }"
           class="hiprint-template-dialog__list"
         >
           <template #renderItem="{ item }">
-            <a-list-item>
-              <a-card
+            <AListItem>
+              <ACard
                 hoverable
                 :body-style="{ padding: '12px' }"
                 class="hiprint-template-dialog__card"
@@ -181,7 +194,7 @@ function onRefresh(): void {
                     无预览
                   </div>
                 </template>
-                <a-card-meta
+                <ACardMeta
                   :title="(item as TemplateItem).name"
                   :description="(item as TemplateItem).category"
                 />
@@ -198,13 +211,13 @@ function onRefresh(): void {
                     @click="onDelete(item as TemplateItem, $event)"
                   >删除</a>
                 </template>
-              </a-card>
-            </a-list-item>
+              </ACard>
+            </AListItem>
           </template>
-        </a-list>
-      </a-spin>
+        </AList>
+      </ASpin>
     </div>
-  </a-modal>
+  </AModal>
 </template>
 
 <style scoped>

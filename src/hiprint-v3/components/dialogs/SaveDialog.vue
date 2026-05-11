@@ -17,7 +17,20 @@
  *   #8: every user-input emit is wrapped via safeCall.
  */
 import { reactive, ref, watch } from 'vue'
+import {
+  Modal as AModal,
+  Form,
+  Input,
+  Select,
+} from 'ant-design-vue'
 import { safeCall } from '@hiprint-v3/internal'
+
+const AForm = Form
+const AFormItem = Form.Item
+const AInput = Input
+const ATextarea = Input.TextArea
+const ASelect = Select
+const ASelectOption = Select.Option
 
 // ============ Public types ============
 
@@ -140,7 +153,7 @@ function onSubmit(): void {
 </script>
 
 <template>
-  <a-modal
+  <AModal
     :open="open"
     :title="title"
     :width="width"
@@ -155,55 +168,55 @@ function onSubmit(): void {
     @ok="onSubmit"
     @cancel="onCancel"
   >
-    <a-form layout="vertical" class="hiprint-save-dialog__form">
-      <a-form-item
+    <AForm layout="vertical" class="hiprint-save-dialog__form">
+      <AFormItem
         label="模板名称"
         required
         :validate-status="nameError ? 'error' : ''"
         :help="nameError || undefined"
       >
-        <a-input
+        <AInput
           v-model:value="formState.name"
           placeholder="请输入模板名称"
           :maxlength="64"
           class="hiprint-save-dialog__name"
           @blur="validateName"
         />
-      </a-form-item>
+      </AFormItem>
 
-      <a-form-item label="分类">
-        <a-select
+      <AFormItem label="分类">
+        <ASelect
           v-if="categoryOptions.length > 0"
           v-model:value="formState.category"
           placeholder="请选择分类"
           allow-clear
           class="hiprint-save-dialog__category"
         >
-          <a-select-option
+          <ASelectOption
             v-for="cat in categoryOptions"
             :key="cat"
             :value="cat"
-          >{{ cat }}</a-select-option>
-        </a-select>
-        <a-input
+          >{{ cat }}</ASelectOption>
+        </ASelect>
+        <AInput
           v-else
           v-model:value="formState.category"
           placeholder="请输入分类（可选）"
           class="hiprint-save-dialog__category"
         />
-      </a-form-item>
+      </AFormItem>
 
-      <a-form-item label="标签">
-        <a-select
+      <AFormItem label="标签">
+        <ASelect
           v-model:value="formState.tags"
           mode="tags"
           placeholder="按回车添加标签"
           class="hiprint-save-dialog__tags"
         />
-      </a-form-item>
+      </AFormItem>
 
-      <a-form-item label="描述">
-        <a-textarea
+      <AFormItem label="描述">
+        <ATextarea
           v-model:value="formState.description"
           placeholder="可选描述"
           :rows="3"
@@ -211,9 +224,9 @@ function onSubmit(): void {
           show-count
           class="hiprint-save-dialog__description"
         />
-      </a-form-item>
-    </a-form>
-  </a-modal>
+      </AFormItem>
+    </AForm>
+  </AModal>
 </template>
 
 <style scoped>
