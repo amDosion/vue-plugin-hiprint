@@ -1,0 +1,209 @@
+<script setup lang="ts">
+/**
+ * HiprintCanvas.vue — V3 main editing surface (P18.1).
+ *
+ * Renders the currently-active panel from the canvas store and dispatches
+ * each printElement to the appropriate etype Vue SFC (P17). Installs the
+ * designer-wide interaction layer (lasso + keyboard + selection shortcuts).
+ *
+ * Architectural notes:
+ *  - Only the ACTIVE panel is rendered here. Multi-panel designers cycle the
+ *    active panel via canvas.setActivePanel; rendering one paper at a time
+ *    matches V1/V2's editingPanel concept (state-modeler R3 Invariant #10).
+ *  - HiprintPreview is the read-only multi-panel surface (mounts a detached
+ *    DOM from print/render.ts).
+ *  - Element dispatch happens via a static map (componentForType). Unknown
+ *    types fall back to TextElement so legacy/unknown tids still render
+ *    something instead of crashing.
+ *
+ * Interaction install order:
+ *  1. enableDesignerKeyboard() — window-scoped (delete/arrow/copy/paste/undo)
+ *  2. enableSelectionShortcuts() — window-scoped (Ctrl+A / Escape)
+ *  3. enableLasso(paperEl, panelId) — per-active-panel, re-attached on change
+ *
+ * Drag/drop/resize/click-selection are installed by individual ElementWrapper
+ * components (P17.0) so we don't double-bind here.
+ *
+ * Lifecycle:
+ *  - Each cleanup fn captured into a let — disposed onBeforeUnmount AND when
+ *    the active panel changes (lasso re-binds to the new paper element).
+ */
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
+import { useCanvasStore } from '@hiprint-v3/stores'
+import {
+  enableDesignerKeyboard,
+  enableLasso,
+  enableSelectionShortcuts,
+} from '@hiprint-v3/interactions'
+import {
+  TextElement,
+  ImageElement,
+  LongTextElement,
+  BarcodeElement,
+  QrcodeElement,
+  HtmlElement,
+  HlineElement,
+  VlineElement,
+  RectElement,
+  OvalElement,
+  TableElement,
+} from './elements'
+import HiprintPanel from './HiprintPanel.vue'
+
+const props = withDefaults(
+  defineProps<{
+    /** Bound business data — forwarded to etype components (field resolution). */
+    data?: Record<string, unknown>
+    /** Suppress interactions (lasso/keyboard/shortcuts) + element edit affordances. */
+    readonly?: boolean
+  }>(),
+  { readonly: false }
+)
+
+const canvas = useCanvasStore()
+const canvasEl = ref<HTMLDivElement | null>(null)
+
+const activePanel = computed(() => canvas.activePanel)
+
+/**
+ * Map etype.type → Vue component for v-for `:is` dispatch.
+ * Unknown types return TextElement (defensive fallback to keep canvas alive
+ * if legacy JSON contains an etype we don't yet support).
+ */
+function componentForType(type: string | undefined) {
+  switch (type) {
+    case 'text':
+      return TextElement
+    case 'image':
+      return ImageElement
+    case 'longText':
+      return LongTextElement
+    case 'barcode':
+      return BarcodeElement
+    case 'qrcode':
+      return QrcodeElement
+    case 'html':
+      return HtmlElement
+    case 'hline':
+      return HlineElement
+    case 'vline':
+      return VlineElement
+    case 'rect':
+      return RectElement
+    case 'oval':
+      return OvalElement
+    case 'table':
+      return TableElement
+    default:
+      return TextElement
+  }
+}
+
+// ----- Interaction lifecycle -----
+
+let cleanupKeyboard: (() => void) | null = null
+let cleanupShortcuts: (() => void) | null = null
+let cleanupLasso: (() => void) | null = null
+
+/**
+ * Locate the active panel's paper element inside the canvas root. We query
+ * by data-panel-id (set by HiprintPanel) instead of holding a ref because
+ * the active panel may change without remounting HiprintPanel.
+ */
+function findActivePaperEl(): HTMLElement | null {
+  const root = canvasEl.value
+  const id = canvas.activePanelId
+  if (!root || !id) return null
+  return root.querySelector<HTMLElement>(
+    `.hiprint-printPaper[data-panel-id="${CSS.escape(id)}"]`
+  )
+}
+
+function attachLassoToActivePanel(): void {
+  // Tear down previous binding before re-binding to a new paper element.
+  cleanupLasso?.()
+  cleanupLasso = null
+  if (props.readonly) return
+  const paper = findActivePaperEl()
+  const panelId = canvas.activePanelId
+  if (!paper || !panelId) return
+  cleanupLasso = enableLasso(paper, panelId)
+}
+
+onMounted(() => {
+  if (props.readonly) return
+  cleanupKeyboard = enableDesignerKeyboard()
+  cleanupShortcuts = enableSelectionShortcuts()
+  // Wait for HiprintPanel to mount its DOM, then attach lasso.
+  void nextTick(attachLassoToActivePanel)
+})
+
+// Re-attach lasso when the active panel changes.
+watch(
+  () => canvas.activePanelId,
+  () => {
+    if (props.readonly) return
+    void nextTick(attachLassoToActivePanel)
+  }
+)
+
+onBeforeUnmount(() => {
+  cleanupLasso?.()
+  cleanupKeyboard?.()
+  cleanupShortcuts?.()
+  cleanupLasso = null
+  cleanupKeyboard = null
+  cleanupShortcuts = null
+})
+</script>
+
+<template>
+  <div
+    ref="canvasEl"
+    class="hiprint-canvas"
+    :class="{ 'hiprint-canvas--readonly': readonly }"
+  >
+    <template v-if="activePanel">
+      <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">
+        <component
+          v-for="el in activePanel.printElements"
+          :key="el.id"
+          :is="componentForType(el.printElementType?.type)"
+          :element-id="el.id"
+          :panel-id="activePanel.id"
+          :data="data"
+          :interactive="!readonly"
+          :editable="!readonly"
+        />
+      </HiprintPanel>
+    </template>
+    <div v-else class="hiprint-canvas__empty">
+      <slot name="empty">
+        <span>No active panel</span>
+      </slot>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.hiprint-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #f5f5f5;
+  padding: 16pt;
+  box-sizing: border-box;
+}
+.hiprint-canvas--readonly {
+  background: #fafafa;
+}
+.hiprint-canvas__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  font-size: 14pt;
+}
+</style>
