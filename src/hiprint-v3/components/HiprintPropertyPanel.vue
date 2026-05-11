@@ -31,9 +31,40 @@ import {
   useHistoryStore,
   type CanvasElement,
 } from '@hiprint-v3/stores'
+import PaperPropertyPanel from './property/PaperPropertyPanel.vue'
+import ImagePropertyPanel from './property/ImagePropertyPanel.vue'
+import BarcodePropertyPanel from './property/BarcodePropertyPanel.vue'
+import QrcodePropertyPanel from './property/QrcodePropertyPanel.vue'
+import ShapePropertyPanel from './property/ShapePropertyPanel.vue'
+import HtmlPropertyPanel from './property/HtmlPropertyPanel.vue'
+import TablePropertyPanel from './property/TablePropertyPanel.vue'
 
 const canvas = useCanvasStore()
 const history = useHistoryStore()
+
+// ============ Dispatch ============
+//
+// Wave 2 Stream D: each per-etype panel renders its own field surface; this
+// orchestrator dispatches to them when a single element of a "known" etype
+// is selected. For multi-select OR for `text` / `longText` / unknown etypes,
+// we keep the original generic editor below (Position / Font / Border /
+// Background / Alignment / Rotate / Binding / Lock fieldsets).
+//
+// PaperPropertyPanel renders when nothing is selected so paper-level edits
+// remain reachable from the same panel surface.
+const dispatchedTypes = new Set<string>([
+  'image',
+  'barcode',
+  'qrcode',
+  'hline',
+  'vline',
+  'rect',
+  'oval',
+  'html',
+  'table',
+  // PP-009 / TableElement.vue uses `tableCustom` as the runtime etype.
+  'tableCustom',
+])
 
 // ============ Derived ============
 
@@ -61,6 +92,27 @@ const elementType = computed<string>(() => {
   if (!el) return ''
   return el.printElementType?.type ?? ''
 })
+
+const isShapeType = computed<boolean>(() =>
+  ['hline', 'vline', 'rect', 'oval'].includes(elementType.value)
+)
+
+const isTableType = computed<boolean>(() =>
+  ['table', 'tableCustom'].includes(elementType.value)
+)
+
+/**
+ * Use the per-etype dispatched panel when (a) exactly one element is
+ * selected and (b) its etype is in the dispatch list. Multi-select always
+ * falls through to the generic editor so bulk position / font edits keep
+ * working.
+ */
+const useDispatch = computed<boolean>(
+  () =>
+    single.value !== null &&
+    !isMulti.value &&
+    dispatchedTypes.has(elementType.value)
+)
 
 // Local field draft for text inputs — debounces store writes so typing in
 // a number field doesn't push a history snapshot on every keystroke.
@@ -239,10 +291,44 @@ const showBorder = computed<boolean>(() => {
     class="hiprint-property-panel"
     aria-label="Element properties"
   >
-    <p v-if="isEmpty" class="hiprint-property-empty">
-      Select an element to edit its properties.
-    </p>
+    <!-- 0 selected → paper-level panel (Wave 2 dispatch). -->
+    <PaperPropertyPanel v-if="isEmpty" />
 
+    <!-- 1 selected, known dispatched etype → per-etype panel.
+         Multi-select keeps the generic editor (bulk-edit path). -->
+    <template v-else-if="useDispatch && single">
+      <header class="hiprint-property-header">
+        <span class="hiprint-property-type">{{ elementType || 'element' }}</span>
+        <span class="hiprint-property-id">{{ single.id.slice(0, 8) }}</span>
+      </header>
+      <ImagePropertyPanel
+        v-if="elementType === 'image'"
+        :element="single"
+      />
+      <BarcodePropertyPanel
+        v-else-if="elementType === 'barcode'"
+        :element="single"
+      />
+      <QrcodePropertyPanel
+        v-else-if="elementType === 'qrcode'"
+        :element="single"
+      />
+      <ShapePropertyPanel
+        v-else-if="isShapeType"
+        :element="single"
+      />
+      <HtmlPropertyPanel
+        v-else-if="elementType === 'html'"
+        :element="single"
+      />
+      <TablePropertyPanel
+        v-else-if="isTableType"
+        :element="single"
+      />
+    </template>
+
+    <!-- Fallback generic editor — text / longText / unrecognized etype
+         AND every multi-select case. Keeps existing fieldset behavior. -->
     <template v-else>
       <header v-if="isMulti" class="hiprint-property-multi-hint">
         {{ selected.length }} elements selected — common properties only.
