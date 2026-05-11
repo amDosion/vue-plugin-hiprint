@@ -142,6 +142,59 @@ describe('HiprintCanvas — readonly mode', () => {
   })
 })
 
+describe('HiprintCanvas — ruler (CV-004)', () => {
+  it('ruler SVG renders mm text labels', () => {
+    const canvas = useCanvasStore()
+    // A4 portrait: width ≈ 595.28pt = 210mm → expect ~21 major ticks at
+    // 10mm spacing (10/20/.../210). text count for labels (excludes mm=0)
+    // should be at least 4.
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    const topSvg = w.element.querySelector(
+      'svg.hiprint-canvas__ruler--top'
+    ) as SVGElement | null
+    expect(topSvg).not.toBeNull()
+    const texts = topSvg!.querySelectorAll('text')
+    expect(texts.length).toBeGreaterThanOrEqual(4)
+    w.unmount()
+  })
+
+  it('ruler SVG renders left axis labels', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    const leftSvg = w.element.querySelector(
+      'svg.hiprint-canvas__ruler--left'
+    ) as SVGElement | null
+    expect(leftSvg).not.toBeNull()
+    const texts = leftSvg!.querySelectorAll('text')
+    // A4 height 297mm → 29 major ticks excluding 0 → at least 4.
+    expect(texts.length).toBeGreaterThanOrEqual(4)
+    w.unmount()
+  })
+
+  it('ruler hidden when rulerVisible=false', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 100, height: 100 })
+    canvas.rulerVisible = false
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    expect(w.element.querySelector('svg.hiprint-canvas__ruler--top')).toBeNull()
+    expect(w.element.querySelector('svg.hiprint-canvas__ruler--left')).toBeNull()
+    w.unmount()
+  })
+})
+
 describe('HiprintCanvas — reactivity', () => {
   it('re-renders when active panel changes', async () => {
     const canvas = useCanvasStore()

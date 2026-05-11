@@ -20,6 +20,8 @@ vi.mock('@hiprint-v3/print', async () => {
 
 import { browserPrint, getPrintHtml, getHiWebSocket } from '@hiprint-v3/print'
 import { PrintTemplate } from '../print-template'
+import { useCanvasStore } from '@hiprint-v3/stores'
+import { setActivePinia } from 'pinia'
 import type { TemplateJson } from '@hiprint-v3/schemas'
 
 const SAMPLE: TemplateJson = {
@@ -45,11 +47,28 @@ describe('PrintTemplate compat — constructor', () => {
     vi.mocked(getPrintHtml).mockClear()
   })
 
-  it('constructs without options (panels empty)', () => {
+  it('constructs without options (auto-creates default A4 panel — ST-001)', () => {
     const tpl = new PrintTemplate()
     expect(tpl).toBeInstanceOf(PrintTemplate)
     expect(tpl._destroyed).toBe(false)
-    expect(tpl.getJson().panels.length).toBe(0)
+    // ST-001: bare ctor now seeds a single A4 portrait panel so designer
+    // surface is editable immediately.
+    expect(tpl.getJson().panels.length).toBe(1)
+    tpl.destroy()
+  })
+
+  it('new PrintTemplate({}) auto-creates default A4 panel (ST-001)', () => {
+    const tpl = new PrintTemplate({})
+    // Activate this template's private pinia so we can introspect its store.
+    setActivePinia(tpl._getPinia())
+    const canvas = useCanvasStore()
+    expect(canvas.panels.length).toBe(1)
+    expect(canvas.activePanelId).not.toBeNull()
+    // A4 portrait in pt: 210mm/25.4*72 ≈ 595.28, 297mm/25.4*72 ≈ 841.89.
+    const panel = canvas.panels[0]!
+    expect(panel.width).toBeCloseTo(595.28, 1)
+    expect(panel.height).toBeCloseTo(841.89, 1)
+    expect(panel.name).toBe('1')
     tpl.destroy()
   })
 

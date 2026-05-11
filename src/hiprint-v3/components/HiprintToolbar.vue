@@ -35,6 +35,7 @@ import { browserPrint, downloadPdf, getPrintHtml } from '@hiprint-v3/print'
 import { safeCall } from '@hiprint-v3/internal'
 import type { TemplateJson } from '@hiprint-v3/schemas'
 import type { PrintTemplate } from '@hiprint-v3/compat/print-template'
+import CustomPaperPopover from './CustomPaperPopover.vue'
 
 // ============ Public types ============
 
@@ -184,6 +185,12 @@ interface Props {
   // ---- Panel manager opts ----
   panelManagerLabel?: string
   addPanelButtonText?: string
+  /**
+   * Show the pagination indicator + prev/next buttons next to the panel chip
+   * list (TB-006). Only renders when there are 2+ panels regardless of flag.
+   * Default true.
+   */
+  showPagination?: boolean
   // ---- Align customisation ----
   alignItems?: readonly ToolbarAlignType[]
   // ---- Extra buttons ----
@@ -266,6 +273,7 @@ const props = withDefaults(defineProps<Props>(), {
   onBusinessSelectClick: undefined,
   panelManagerLabel: '',
   addPanelButtonText: '+',
+  showPagination: true,
   alignItems: () => ['left', 'center', 'right', 'top', 'middle', 'bottom'],
   extraButtons: () => [],
   extraPosition: 'end',
@@ -311,6 +319,12 @@ const tpl = useTemplateStore()
 
 const toolbarRootEl = ref<HTMLElement | null>(null)
 const selectedPaperLabel = ref<string>(props.defaultPaper)
+/**
+ * TB-004 custom paper popover open state. Toggled by the ⚙ button in the
+ * paper section. Closes on submit / Cancel / outer click (outer click logic
+ * lives in the popover SFC).
+ */
+const customPaperOpen = ref<boolean>(false)
 // gridVisible / rulerVisible now live in canvas store so HiprintPanel /
 // HiprintCanvas can subscribe + render the actual grid background / ruler
 // overlay. Toolbar buttons toggle through the store (line 754 / 759).
@@ -451,6 +465,17 @@ function useHtmlFor(_id: ToolbarButtonId): boolean {
 }
 
 const scalePercent = computed<number>(() => Math.round(canvas.scale * 100))
+
+/**
+ * TB-006 — index of the currently-active panel inside `canvas.panels`.
+ * Returns -1 when no panel is active (used by `gotoPanelDelta` boundary
+ * checks + pagination "X / Y" indicator).
+ */
+const currentPanelIdx = computed<number>(() => {
+  const id = canvas.activePanelId
+  if (!id) return -1
+  return canvas.panels.findIndex((p) => p.id === id)
+})
 
 const orderedExtraButtons = computed<readonly ToolbarExtraButton[]>(
   () => props.extraButtons ?? []
@@ -621,6 +646,42 @@ function handleSwitchPanel(idx: number): void {
   if (!panel) return
   canvas.setActivePanel(panel.id)
   emit('switchPanel', props.tpl, idx)
+}
+
+/**
+ * TB-006 — Move active panel by ±1 (prev/next pagination). Boundaries are
+ * already enforced by the buttons' :disabled binding; this function still
+ * guards defensively so direct keyboard / programmatic calls cannot wrap.
+ */
+function gotoPanelDelta(d: number): void {
+  const idx = currentPanelIdx.value + d
+  const target = canvas.panels[idx]
+  if (!target) return
+  canvas.setActivePanel(target.id)
+  emit('switchPanel', props.tpl, idx)
+}
+
+/**
+ * TB-004 — Custom paper popover submit handler. Converts user-entered mm
+ * → pt (Panel.width/height unit) and patches the active panel via
+ * `canvas.updatePanel` (Sprint 22a prep, already in store). Marks
+ * `paperType: 'custom'` so the paper select no longer drives the size.
+ */
+function onCustomPaperSubmit(p: { width: number; height: number }): void {
+  const id = canvas.activePanelId
+  if (!id) {
+    customPaperOpen.value = false
+    return
+  }
+  const wPt = (p.width / 25.4) * 72
+  const hPt = (p.height / 25.4) * 72
+  canvas.updatePanel(id, {
+    width: wPt,
+    height: hPt,
+    paperType: 'custom',
+  })
+  history.pushSnapshot()
+  customPaperOpen.value = false
 }
 
 function handlePaperChange(label: string): void {
@@ -953,6 +1014,22 @@ defineExpose({
           {{ p.label }}
         </option>
       </select>
+      <button
+        v-if="showCustomPaper"
+        type="button"
+        class="hiprint-toolbar-btn"
+        aria-label="Custom paper size"
+        :aria-expanded="customPaperOpen"
+        @click="customPaperOpen = !customPaperOpen"
+      >⚙</button>
+      <CustomPaperPopover
+        v-if="showCustomPaper"
+        :open="customPaperOpen"
+        :initial-width="canvas.activePanel?.width"
+        :initial-height="canvas.activePanel?.height"
+        @submit="onCustomPaperSubmit"
+        @close="customPaperOpen = false"
+      />
     </label>
 
     <button
@@ -969,34 +1046,54 @@ defineExpose({
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <!-- Panel manager dropdown (showPanelManager) — multi-panel switcher -->
+    <!-- TB-003: Panel manager chip list (replaces the V3 P21 <select>) — each
+         chip is a button with aria-pressed reflecting active state for AT
+         users. Renders only when at least one panel exists. -->
     <span
       v-if="showPanelManager && canvas.panels.length > 0"
-      class="hiprint-toolbar-panel-manager"
+      class="hiprint-toolbar-panel-chips"
+      role="group"
+      aria-label="Active panel"
     >
       <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
         {{ panelManagerLabel }}
       </span>
-      <select
-        class="hiprint-toolbar-select"
-        aria-label="Active panel"
-        :value="canvas.activePanelId ?? ''"
-        @change="
-          handleSwitchPanel(
-            canvas.panels.findIndex(
-              (p) => p.id === ($event.target as HTMLSelectElement).value
-            )
-          )
-        "
+      <button
+        v-for="(p, i) in canvas.panels"
+        :key="p.id"
+        type="button"
+        class="hiprint-toolbar-chip"
+        :class="{ 'is-active': p.id === canvas.activePanelId }"
+        :aria-pressed="p.id === canvas.activePanelId"
+        @click="handleSwitchPanel(i)"
       >
-        <option
-          v-for="(p, i) in canvas.panels"
-          :key="p.id"
-          :value="p.id"
-        >
-          {{ p.name ?? '第 ' + (i + 1) + ' 页' }}
-        </option>
-      </select>
+        {{ p.name || (i + 1) }}
+      </button>
+    </span>
+
+    <!-- TB-006: Pagination indicator + prev/next. Hidden when ≤1 panel even
+         if `showPagination=true` (no value in showing "1 / 1"). -->
+    <span
+      v-if="showPagination && canvas.panels.length > 1"
+      class="hiprint-toolbar-pagination"
+    >
+      <button
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="currentPanelIdx <= 0"
+        aria-label="Previous panel"
+        @click="gotoPanelDelta(-1)"
+      >‹</button>
+      <span class="hiprint-toolbar-label">
+        {{ currentPanelIdx + 1 }} / {{ canvas.panels.length }}
+      </span>
+      <button
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="currentPanelIdx >= canvas.panels.length - 1"
+        aria-label="Next panel"
+        @click="gotoPanelDelta(1)"
+      >›</button>
     </span>
 
     <button
@@ -1233,6 +1330,53 @@ defineExpose({
 
 .hiprint-toolbar-paper,
 .hiprint-toolbar-panel-manager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Paper label is the anchor for the absolutely-positioned custom paper
+ * popover (TB-004) — position:relative is required so the popover stays
+ * aligned to the paper select dropdown. */
+.hiprint-toolbar-paper {
+  position: relative;
+}
+
+/* TB-003: Panel chip list — rounded-pill buttons with active highlight. */
+.hiprint-toolbar-panel-chips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.hiprint-toolbar-chip {
+  padding: 2px 10px;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  cursor: pointer;
+  border-radius: 12px;
+  font: inherit;
+  color: #333;
+  line-height: 1.6;
+}
+
+.hiprint-toolbar-chip:hover {
+  background: #f0f0f0;
+}
+
+.hiprint-toolbar-chip:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 1px;
+}
+
+.hiprint-toolbar-chip.is-active {
+  background: #1677ff;
+  color: #fff;
+  border-color: #1677ff;
+}
+
+/* TB-006: Pagination indicator wrapper. */
+.hiprint-toolbar-pagination {
   display: inline-flex;
   align-items: center;
   gap: 4px;

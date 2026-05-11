@@ -68,6 +68,81 @@ const canvasEl = ref<HTMLDivElement | null>(null)
 
 const activePanel = computed(() => canvas.activePanel)
 
+// ----- Ruler geometry (CV-004) -----
+//
+// SVG-based rulers replace the prior CSS-gradient stripes so we can render
+// real mm number labels. Layout uses pt internally (matches panel.width /
+// panel.height units) but displays mm in <text>.
+//
+// pt ↔ mm: 1 in = 72 pt = 25.4 mm  →  1 mm = 72/25.4 ≈ 2.835 pt.
+// Tick scheme: minor every 1 mm, major every 10 mm + numeric label.
+const MM_TO_PT = 72 / 25.4 // ≈ 2.8346
+const ptToMm = (pt: number) => Math.round((pt / 72) * 25.4)
+const RULER_THICKNESS = 14 // pt — matches CSS top/left offset (14pt).
+
+/**
+ * Ruler track lengths in pt. We base the top ruler width on the active panel
+ * width × scale (so labels stay aligned to the paper), and similarly for the
+ * left ruler height. Falls back to the canvas client size when no panel is
+ * active so the bars still render their tick scale (mounted before a panel
+ * exists is unusual but possible during transitions).
+ */
+const canvasClientWidth = ref<number>(0)
+const canvasClientHeight = ref<number>(0)
+
+const rulerWidthPt = computed<number>(() => {
+  const p = canvas.activePanel
+  if (p) return p.width * canvas.scale
+  // Fallback: convert client px → pt approx (px ≈ pt at 96dpi factor 0.75).
+  // We just want a non-zero length so the SVG paints something.
+  return Math.max(0, canvasClientWidth.value * 0.75)
+})
+
+const rulerHeightPt = computed<number>(() => {
+  const p = canvas.activePanel
+  if (p) return p.height * canvas.scale
+  return Math.max(0, canvasClientHeight.value * 0.75)
+})
+
+/**
+ * Build tick descriptors for one axis. Walks 1 mm at a time up to the
+ * ruler length, emitting minor ticks each step and major+label every 10 mm.
+ * Pure derivation — no DOM access; safe to compute under SSR/jsdom.
+ */
+interface Tick {
+  pos: number // position in pt along the axis
+  mm: number // mm label value (only present for major ticks)
+  major: boolean
+}
+
+function buildTicks(lengthPt: number): Tick[] {
+  const ticks: Tick[] = []
+  if (!Number.isFinite(lengthPt) || lengthPt <= 0) return ticks
+  const totalMm = Math.floor(lengthPt / MM_TO_PT)
+  for (let mm = 0; mm <= totalMm; mm++) {
+    ticks.push({
+      pos: mm * MM_TO_PT,
+      mm,
+      major: mm % 10 === 0,
+    })
+  }
+  return ticks
+}
+
+const topTicks = computed<Tick[]>(() => buildTicks(rulerWidthPt.value))
+const leftTicks = computed<Tick[]>(() => buildTicks(rulerHeightPt.value))
+
+// ResizeObserver keeps fallback dims fresh when the canvas viewport changes
+// (window resize, splitter drag, etc.). Bound after mount; disposed on unmount.
+let resizeObs: ResizeObserver | null = null
+
+function syncCanvasSize(): void {
+  const el = canvasEl.value
+  if (!el) return
+  canvasClientWidth.value = el.clientWidth
+  canvasClientHeight.value = el.clientHeight
+}
+
 /**
  * Map etype.type → Vue component for v-for `:is` dispatch.
  * Unknown types return TextElement (defensive fallback to keep canvas alive
@@ -134,6 +209,14 @@ function attachLassoToActivePanel(): void {
 }
 
 onMounted(() => {
+  // Always sync canvas size + observe resize so ruler tracks track viewport
+  // dimensions even in readonly mode (preview surfaces still show rulers
+  // if rulerVisible is true).
+  syncCanvasSize()
+  if (typeof ResizeObserver !== 'undefined' && canvasEl.value) {
+    resizeObs = new ResizeObserver(() => syncCanvasSize())
+    resizeObs.observe(canvasEl.value)
+  }
   if (props.readonly) return
   cleanupKeyboard = enableDesignerKeyboard()
   cleanupShortcuts = enableSelectionShortcuts()
@@ -186,6 +269,12 @@ onBeforeUnmount(() => {
   cleanupKeyboard = null
   cleanupShortcuts = null
   try {
+    resizeObs?.disconnect()
+  } catch {
+    /* ignore */
+  }
+  resizeObs = null
+  try {
     activeMenu?.close()
   } catch {
     /* ignore */
@@ -204,18 +293,74 @@ onBeforeUnmount(() => {
     }"
     @contextmenu="onContextMenu"
   >
-    <!-- Ruler tracks (CSS gradient pattern — major mark every 10pt + minor
-         every 5pt). Toolbar gridToggle button flips canvas.rulerVisible. -->
-    <div
+    <!-- Ruler tracks (CV-004: SVG with real mm number labels).
+         Minor tick every 1 mm, major tick + numeric label every 10 mm.
+         viewBox uses pt as the underlying unit so it aligns 1:1 with the
+         panel paper (panel.width/height are pt). pointer-events: none keeps
+         lasso/click selection on the paper underneath unaffected. -->
+    <svg
       v-if="canvas.rulerVisible && !readonly"
       class="hiprint-canvas__ruler hiprint-canvas__ruler--top"
+      :viewBox="`0 0 ${rulerWidthPt} ${RULER_THICKNESS}`"
+      :width="rulerWidthPt"
+      :height="RULER_THICKNESS"
+      preserveAspectRatio="xMinYMin meet"
       aria-hidden="true"
-    />
-    <div
+    >
+      <line
+        v-for="t in topTicks"
+        :key="`tt-${t.pos}`"
+        :x1="t.pos"
+        :x2="t.pos"
+        :y1="t.major ? 0 : RULER_THICKNESS / 2"
+        :y2="RULER_THICKNESS"
+        :stroke="t.major ? '#888' : '#bbb'"
+        stroke-width="0.5"
+      />
+      <text
+        v-for="t in topTicks.filter((x) => x.major && x.mm > 0)"
+        :key="`tl-${t.pos}`"
+        :x="t.pos + 1"
+        :y="RULER_THICKNESS / 2 - 0.5"
+        font-size="4"
+        fill="#555"
+        font-family="sans-serif"
+      >
+        {{ t.mm }}
+      </text>
+    </svg>
+    <svg
       v-if="canvas.rulerVisible && !readonly"
       class="hiprint-canvas__ruler hiprint-canvas__ruler--left"
+      :viewBox="`0 0 ${RULER_THICKNESS} ${rulerHeightPt}`"
+      :width="RULER_THICKNESS"
+      :height="rulerHeightPt"
+      preserveAspectRatio="xMinYMin meet"
       aria-hidden="true"
-    />
+    >
+      <line
+        v-for="t in leftTicks"
+        :key="`lt-${t.pos}`"
+        :y1="t.pos"
+        :y2="t.pos"
+        :x1="t.major ? 0 : RULER_THICKNESS / 2"
+        :x2="RULER_THICKNESS"
+        :stroke="t.major ? '#888' : '#bbb'"
+        stroke-width="0.5"
+      />
+      <!-- Left ruler labels rotated -90° so digits read along the y axis. -->
+      <text
+        v-for="t in leftTicks.filter((x) => x.major && x.mm > 0)"
+        :key="`ll-${t.pos}`"
+        :transform="`translate(${RULER_THICKNESS / 2 - 0.5} ${t.pos + 1}) rotate(-90)`"
+        font-size="4"
+        fill="#555"
+        font-family="sans-serif"
+        text-anchor="end"
+      >
+        {{ t.mm }}
+      </text>
+    </svg>
     <template v-if="activePanel">
       <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">
         <component
@@ -263,38 +408,24 @@ onBeforeUnmount(() => {
   color: #999;
   font-size: 14pt;
 }
-/* Top + left ruler tracks. Major tick every 10pt + minor every 5pt via
-   stacked linear-gradients. Pure CSS — no extra DOM nodes per tick. */
+/* SVG ruler tracks (CV-004). Width/height are driven by :width/:height
+   attrs on the <svg> element (computed from active panel × scale). Ticks
+   and mm labels are rendered as real SVG <line>/<text> nodes inside. */
 .hiprint-canvas__ruler {
   position: absolute;
   background: #fafafa;
   border: 1px solid #ccc;
   pointer-events: none;
-  font-size: 8pt;
-  color: #666;
+  display: block;
 }
 .hiprint-canvas__ruler--top {
   top: 0;
   left: 14pt;
-  right: 0;
   height: 14pt;
-  background-image:
-    linear-gradient(to right, #888 1px, transparent 1px), /* major */
-    linear-gradient(to right, #bbb 1px, transparent 1px); /* minor */
-  background-size: 10pt 14pt, 5pt 7pt;
-  background-position: 0 0, 0 100%;
-  background-repeat: repeat-x;
 }
 .hiprint-canvas__ruler--left {
   top: 14pt;
   left: 0;
-  bottom: 0;
   width: 14pt;
-  background-image:
-    linear-gradient(to bottom, #888 1px, transparent 1px),
-    linear-gradient(to bottom, #bbb 1px, transparent 1px);
-  background-size: 14pt 10pt, 7pt 5pt;
-  background-position: 0 0, 100% 0;
-  background-repeat: repeat-y;
 }
 </style>

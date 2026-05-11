@@ -332,12 +332,236 @@ describe('HiprintToolbar — V1 showXxx reactive props', () => {
     w.unmount()
   })
 
-  it('showPanelManager=true renders the panel switcher', () => {
+  it('showPanelManager=true renders the panel switcher (chip list)', () => {
     const canvas = useCanvasStore()
     canvas.addPanel({ id: 'p1', width: 200, height: 200, name: 'first' })
     canvas.addPanel({ id: 'p2', width: 200, height: 200, name: 'second' })
     const w = mount(HiprintToolbar, { props: { showPanelManager: true } })
-    expect(w.find('select[aria-label="Active panel"]').exists()).toBe(true)
+    // TB-003: panel manager is now a horizontal chip list (was <select> in P21).
+    const group = w.find('[role="group"][aria-label="Active panel"]')
+    expect(group.exists()).toBe(true)
+    expect(group.findAll('button.hiprint-toolbar-chip').length).toBe(2)
+    w.unmount()
+  })
+})
+
+// ============================================================================
+// Sprint 22a Stream B — TB-003 chip list + TB-006 pagination + TB-004 popover.
+// ============================================================================
+
+describe('HiprintToolbar — TB-003 panel chip list', () => {
+  it('renders one chip per panel with active highlight', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200, name: 'A' })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200, name: 'B' })
+    const w = mount(HiprintToolbar, { props: { showPanelManager: true } })
+    const chips = w.findAll('button.hiprint-toolbar-chip')
+    expect(chips.length).toBe(2)
+    expect(chips[0]!.text()).toBe('A')
+    expect(chips[1]!.text()).toBe('B')
+    // p1 is auto-active (first addPanel sets activePanelId)
+    expect(chips[0]!.attributes('aria-pressed')).toBe('true')
+    expect(chips[0]!.classes()).toContain('is-active')
+    expect(chips[1]!.attributes('aria-pressed')).toBe('false')
+    expect(chips[1]!.classes()).not.toContain('is-active')
+    w.unmount()
+  })
+
+  it('falls back to index+1 when panel.name is empty', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    const w = mount(HiprintToolbar, { props: { showPanelManager: true } })
+    const chips = w.findAll('button.hiprint-toolbar-chip')
+    expect(chips[0]!.text()).toBe('1')
+    expect(chips[1]!.text()).toBe('2')
+    w.unmount()
+  })
+
+  it('clicking a chip switches activePanelId and emits switchPanel', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200, name: 'A' })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200, name: 'B' })
+    expect(canvas.activePanelId).toBe('p1')
+    const w = mount(HiprintToolbar, { props: { showPanelManager: true } })
+    const chips = w.findAll('button.hiprint-toolbar-chip')
+    await chips[1]!.trigger('click')
+    expect(canvas.activePanelId).toBe('p2')
+    expect(w.emitted('switchPanel')).toBeTruthy()
+    // Active class shifted
+    await w.vm.$nextTick()
+    const chipsAfter = w.findAll('button.hiprint-toolbar-chip')
+    expect(chipsAfter[0]!.classes()).not.toContain('is-active')
+    expect(chipsAfter[1]!.classes()).toContain('is-active')
+    w.unmount()
+  })
+
+  it('chip list hidden when showPanelManager=false', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    const w = mount(HiprintToolbar, { props: { showPanelManager: false } })
+    expect(w.find('.hiprint-toolbar-panel-chips').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+describe('HiprintToolbar — TB-006 pagination bar', () => {
+  it('hidden when only 1 panel exists', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    const w = mount(HiprintToolbar)
+    expect(w.find('.hiprint-toolbar-pagination').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('shows X / Y indicator when 2+ panels', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p3', width: 200, height: 200 })
+    const w = mount(HiprintToolbar)
+    const pag = w.find('.hiprint-toolbar-pagination')
+    expect(pag.exists()).toBe(true)
+    // p1 is active → "1 / 3"
+    expect(pag.text().replace(/\s+/g, ' ')).toContain('1 / 3')
+    w.unmount()
+  })
+
+  it('prev disabled on first panel; next enabled', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    const w = mount(HiprintToolbar)
+    const prev = w.find('button[aria-label="Previous panel"]')
+    const next = w.find('button[aria-label="Next panel"]')
+    expect((prev.element as HTMLButtonElement).disabled).toBe(true)
+    expect((next.element as HTMLButtonElement).disabled).toBe(false)
+    w.unmount()
+  })
+
+  it('next disabled on last panel', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    canvas.setActivePanel('p2')
+    const w = mount(HiprintToolbar)
+    await w.vm.$nextTick()
+    const prev = w.find('button[aria-label="Previous panel"]')
+    const next = w.find('button[aria-label="Next panel"]')
+    expect((prev.element as HTMLButtonElement).disabled).toBe(false)
+    expect((next.element as HTMLButtonElement).disabled).toBe(true)
+    w.unmount()
+  })
+
+  it('next button advances activePanelId', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p3', width: 200, height: 200 })
+    const w = mount(HiprintToolbar)
+    await w.find('button[aria-label="Next panel"]').trigger('click')
+    expect(canvas.activePanelId).toBe('p2')
+    await w.find('button[aria-label="Next panel"]').trigger('click')
+    expect(canvas.activePanelId).toBe('p3')
+    w.unmount()
+  })
+
+  it('prev button rewinds activePanelId', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    canvas.setActivePanel('p2')
+    const w = mount(HiprintToolbar)
+    await w.vm.$nextTick()
+    await w.find('button[aria-label="Previous panel"]').trigger('click')
+    expect(canvas.activePanelId).toBe('p1')
+    w.unmount()
+  })
+
+  it('showPagination=false hides indicator even with 2+ panels', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
+    const w = mount(HiprintToolbar, { props: { showPagination: false } })
+    expect(w.find('.hiprint-toolbar-pagination').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+describe('HiprintToolbar — TB-004 custom paper popover trigger', () => {
+  it('renders ⚙ button when showCustomPaper=true (default)', () => {
+    const w = mount(HiprintToolbar)
+    expect(w.find('button[aria-label="Custom paper size"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('hides ⚙ button when showCustomPaper=false', () => {
+    const w = mount(HiprintToolbar, { props: { showCustomPaper: false } })
+    expect(w.find('button[aria-label="Custom paper size"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('clicking ⚙ opens the popover; popover not rendered initially', async () => {
+    const w = mount(HiprintToolbar)
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(false)
+    await w.find('button[aria-label="Custom paper size"]').trigger('click')
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('popover submit patches active panel via canvas.updatePanel with mm→pt math', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 100, height: 100 })
+    const spy = vi.spyOn(canvas, 'updatePanel')
+    const w = mount(HiprintToolbar)
+    await w.find('button[aria-label="Custom paper size"]').trigger('click')
+    // Enter 100mm x 50mm
+    const inputs = w.findAll('[role="dialog"] input[type="number"]')
+    expect(inputs.length).toBe(2)
+    await inputs[0]!.setValue(100)
+    await inputs[1]!.setValue(50)
+    await w.find('[role="dialog"] button.primary').trigger('click')
+    expect(spy).toHaveBeenCalledTimes(1)
+    const call = spy.mock.calls[0]!
+    expect(call[0]).toBe('p1')
+    // 100mm → (100/25.4)*72 ≈ 283.46; 50mm → ≈ 141.73
+    const patch = call[1] as { width: number; height: number; paperType: string }
+    expect(patch.paperType).toBe('custom')
+    expect(patch.width).toBeCloseTo((100 / 25.4) * 72, 3)
+    expect(patch.height).toBeCloseTo((50 / 25.4) * 72, 3)
+    // Popover closes after submit
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('popover Cancel closes without calling updatePanel', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 100, height: 100 })
+    const spy = vi.spyOn(canvas, 'updatePanel')
+    const w = mount(HiprintToolbar)
+    await w.find('button[aria-label="Custom paper size"]').trigger('click')
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(true)
+    // Cancel button is the non-primary button inside the dialog
+    const buttons = w.findAll('[role="dialog"] .actions button')
+    expect(buttons.length).toBe(2)
+    await buttons[0]!.trigger('click')
+    expect(spy).not.toHaveBeenCalled()
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('submit when no active panel is a no-op + still closes popover', async () => {
+    // No panels at all → activePanelId === null
+    const canvas = useCanvasStore()
+    const spy = vi.spyOn(canvas, 'updatePanel')
+    const w = mount(HiprintToolbar)
+    await w.find('button[aria-label="Custom paper size"]').trigger('click')
+    const inputs = w.findAll('[role="dialog"] input[type="number"]')
+    await inputs[0]!.setValue(120)
+    await inputs[1]!.setValue(80)
+    await w.find('[role="dialog"] button.primary').trigger('click')
+    expect(spy).not.toHaveBeenCalled()
+    expect(w.find('[role="dialog"][aria-label="Custom paper size"]').exists()).toBe(false)
     w.unmount()
   })
 })

@@ -154,6 +154,17 @@ export class PrintTemplate {
       } catch (err) {
         console.error('[hiprint] PrintTemplate constructor loadFromJson failed:', err)
       }
+    } else {
+      // ST-001: bare `new PrintTemplate({})` (or no options) → seed a default
+      // A4 portrait panel so the designer surface always has an editable paper.
+      // V1 parity: V1's PrintTemplate ctor would auto-build one paper via
+      // `init.panels` when template was missing. A4 in pt: 210mm/25.4*72 ≈ 595.28,
+      // 297mm/25.4*72 ≈ 841.89. addPanel auto-assigns activePanelId when first.
+      try {
+        useCanvasStore().addPanel({ width: 595.28, height: 841.89, name: '1' })
+      } catch (err) {
+        console.error('[hiprint] PrintTemplate constructor default-panel failed:', err)
+      }
     }
   }
 
