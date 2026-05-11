@@ -71,7 +71,7 @@
         opt.callback()
       }
     } catch (error) {
-      console.log(error);
+      console.error('[hiprint] hiwprint callback failed:', error);
     }
   }
 

@@ -4,6 +4,43 @@
 
 本指南已按当前仓库代码状态整理，以下为你本轮改造后需要重点关注的变化：
 
+## ⚠️ 安全注意事项（业务方必读, v1.0.2+）
+
+hiprint 内部已修 12+ 处 XSS、补 47+ 处 lifecycle 守卫、80 处日志带 `[hiprint]` 前缀。但以下 **by-design HTML 渲染路径** 由业务方负责安全：
+
+### 1. `html` 元素类型 — 渲染业务方提供的 HTML 字符串（同 React `dangerouslySetInnerHTML`）
+- 业务方 formatter 输出的 HTML 直接 `.html()` 进入 DOM。
+- 若 formatter 内含用户数据 → **必须** 业务方自行转义 / 用 DOMPurify 过滤。
+
+### 2. 表格 column `renderFormatter` — `r.html(rf(...))`
+- 业务方在模板设计器写的 renderFormatter 字符串 `new Function`化后调用，返回值通过 `.html()` 渲染。
+- 设计时合约：业务方知道在写 HTML，自行负责安全。
+
+### 3. 表格 `gridColumnsFooterFormatter` — 同上
+- 业务方 formatter 输出渲染为 footer HTML。
+
+### 4. `setButtonText(key, html, useHtml=true)` / `extraButtons[].html`
+- 主动用 `html` 字段或 `useHtml=true` 时业务方接受 HTML 渲染。
+- 默认 `text/label` 字段走 `.text()` safe path。
+
+### 5. socket token 配置
+- 默认 `hiwebSocket.token = 'vue-plugin-hiprint'` 是公开值。生产环境**必须**调用 `hiwebSocket.setHost(host, token, cb)` 显式设置强 token。
+- 启动时检测到 default 会 `console.warn` 警告。
+
+### 6. CSP 配置（业务方应用层）
+- 业务方 `index.html` 应配 strict CSP。本库内部用 `new Function()` 渲染 formatter，要求 `script-src 'unsafe-eval'` 或 wrapped 策略。
+- 参考 demo CSP: 见仓库 `index.html`。
+- 移除 `'unsafe-eval'` 方案: 不使用 formatter / styler 功能 (设计时不输入 fn 字符串)。
+
+### 7. `window.__hiprintDesignerControls` (demo)
+- 仅 demo shell 暴露,生产业务方**不应**暴露任何 window 全局给页面其他脚本调用。
+
+### 8. 模板 JSON 来源
+- hiprint 内部限制 formatter / styler 字符串 ≤ 5000 字符 (security M3 cap)。
+- 业务方接收外部模板 JSON 时应 **schema 验证 + length cap** 防 DoS。
+
+
+
 1. 启动入口已不再依赖 `src/demo`（且 `src/demo` 已物理移除）。
 2. 当前仓库开发态页面使用独立壳层：`src/standalone/designer-shell.vue`。
 3. 默认即加载空模板（`templateOptions.template = {}`），不再依赖演示开关。

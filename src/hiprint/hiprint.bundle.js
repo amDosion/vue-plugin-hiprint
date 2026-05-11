@@ -1496,8 +1496,9 @@ var hiprint = function (t) {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(json).then(function () {
               console.warn('[hiprint] copyJson success (clipboard API)');
-            }).catch(function () {
-              console.warn('[hiprint] copyJson clipboard API failed, fallback to execCommand');
+            }).catch(function (err) {
+              // 不丢 err — NotAllowedError vs SecurityError vs 其他诊断有别
+              console.warn('[hiprint] copyJson clipboard API failed, fallback to execCommand:', err);
             });
             flag = true;
           } else {
@@ -1811,6 +1812,8 @@ var hiprint = function (t) {
         var t = this.editor.getValue();
         // [XSS] editor.getValue() 是 user input; .text() 写回 cell 阻止脚本执行
         this.editor.destroy(), this.target.text(t == null ? "" : t);
+        // [state-modeler] 必须清 editingCell 引用,否则跨 cell beginEdit 拿到 stale 完成 cell
+        if (this.tableOptions && this.tableOptions.editingCell === this) this.tableOptions.editingCell = null;
       }, t.prototype.getTarget = function () {
         return this.target;
       }, t.prototype.getValue = function () {
@@ -3780,6 +3783,10 @@ var hiprint = function (t) {
             i.setValue(ev.target.result);
             i.target.find("input[type=text]").trigger("change");
           };
+          // [silent-failure] FileReader 错时 user 无反馈,加 onerror 让 dev 看到
+          reader.onerror = function (ev) {
+            console.error('[hiprint] FileReader failed:', ev && ev.target && ev.target.error);
+          };
           reader.readAsDataURL(file);
           this.value = '';
         });
@@ -3794,6 +3801,12 @@ var hiprint = function (t) {
         this.setValue(t), this.target.find("input[type=text]").change();
         if (this.el && opt) {
           var img = new Image();
+          // [silent-failure] 必须先绑 onerror, 再赋 src; 否则 broken URL 让 cb 永不调用,
+          // 上游 (updateEl + 整个 image-option-refresh chain) 静默挂起。
+          img.onerror = function () {
+            console.warn('[hiprint] image refresh: failed to load', t);
+            if (typeof cb === 'function') cb();
+          };
           img.src = t;
           if (img.complete) {
             that.updateEl(img.width, img.height, opt, cb)
@@ -8376,6 +8389,8 @@ var hiprint = function (t) {
     opened: !1,
     name: "webSockets",
     host: "http://localhost:17521",
+    // [security M4] 默认 token 是公开包名,任何 hiprint 部署用默认会共享同一 token.
+    // 业务方应在 start() 前显式 setHost(host, token, cb) 设置专属 token.
     token: 'vue-plugin-hiprint',
     reconnectTimeout: 6e4,
     reconnectWindowSetTimeout: null,
@@ -8508,6 +8523,10 @@ var hiprint = function (t) {
         console.error('[hiprint] WebSocket start failed (window.WebSocket missing)');
         cb && cb(false);
         return;
+      }
+      // [security M4] 检测仍是 default token 时警告 (生产环境必须显式 setHost)
+      if (this.token === 'vue-plugin-hiprint') {
+        console.warn('[hiprint] hiwebSocket using default token "vue-plugin-hiprint"; production should call hiwebSocket.setHost(host, token, cb) with a strong unique token');
       }
       if (this.socket) {
         cb && cb(!!this.opened);
@@ -11729,8 +11748,9 @@ var hiprint = function (t) {
           if (!isDragging) return;
           isDragging = false;
           $("body").removeClass("hiprint-el-list-dragging");
-          $(document).off(".hiprintElListDrag");
-          $(window).off(".hiprintElListDrag");
+          // [R3 INFO] per-instance namespace 防止多 designer 实例互相 .off 干扰
+          $(document).off(".hiprintElListDrag_" + panel.templateId);
+          $(window).off(".hiprintElListDrag_" + panel.templateId);
         }
 
         // 列表面板在 panel.target 内部，阻止冒泡到画布容器点击事件（否则会触发画布属性面板）
@@ -11780,15 +11800,16 @@ var hiprint = function (t) {
           e.preventDefault();
           e.stopPropagation();
           $("body").addClass("hiprint-el-list-dragging");
-          $(document).off(".hiprintElListDrag");
-          $(window).off(".hiprintElListDrag");
-          $(document).on("mousemove.hiprintElListDrag", function (evt) {
+          // [R3 INFO] per-instance namespace 防止多 designer 实例互相 .off 干扰
+          $(document).off(".hiprintElListDrag_" + panel.templateId);
+          $(window).off(".hiprintElListDrag_" + panel.templateId);
+          $(document).on("mousemove.hiprintElListDrag_" + panel.templateId, function (evt) {
             if (!isDragging) return;
             var moveParentOffset = mountTarget.offset() || { left: 0, top: 0 };
             applyPanelPosition(evt.pageX - moveParentOffset.left - dragOffsetX, evt.pageY - moveParentOffset.top - dragOffsetY);
           });
-          $(document).on("mouseup.hiprintElListDrag", stopDragging);
-          $(window).on("mouseup.hiprintElListDrag blur.hiprintElListDrag", stopDragging);
+          $(document).on("mouseup.hiprintElListDrag_" + panel.templateId, stopDragging);
+          $(window).on("mouseup.hiprintElListDrag_" + panel.templateId + " blur.hiprintElListDrag_" + panel.templateId, stopDragging);
         });
         // 切换显示/隐藏
         toggleBtn.on("click", function (e) {
@@ -12847,7 +12868,12 @@ var hiprint = function (t) {
         if (this._assertNotDestroyed('getPanel')) return undefined;
         return null == t && (t = 0), this.printPanels[t];
       }, t.prototype.loadAllImages = function (t, e, n) {
-        if (this._assertNotDestroyed('loadAllImages')) return;
+        // [state-modeler] destroy 后必须仍调 e() callback, 否则 caller (toPdf / 打印) 永远挂起
+        if (this._destroyed) {
+          console.warn('[hiprint] loadAllImages aborted: template destroyed, invoking callback anyway');
+          if (typeof e === 'function') e();
+          return;
+        }
         var i = this;
         null == n && (n = 0);
 
@@ -12856,9 +12882,10 @@ var hiprint = function (t) {
           p.src && p.src !== window.location.href && -1 == p.src.indexOf("base64") && (p && void 0 !== p.naturalWidth && 0 !== p.naturalWidth && p.complete || (r = !1));
         }
 
+        // [silent-failure] 重试 10 轮 (~5s) 仍未加载完时也调 e(), 但记录警告让 dev 看到
         n++ , !r && n < 10 ? setTimeout(function () {
           i.loadAllImages(t, e, n);
-        }, 500) : e();
+        }, 500) : (!r && console.warn('[hiprint] loadAllImages: gave up after 10 retries, some images still pending'), e());
       }, t.prototype.setFontList = function (t) {
         if (this._assertNotDestroyed('setFontList')) return;
         this.fontList = t;
@@ -13208,6 +13235,18 @@ var hiprint = function (t) {
     if (typeof fn !== 'function') return undefined;
     try { return fn.apply(null, args || []); }
     catch (err) { console.error('[hiprint] ' + name + ' threw:', err); }
+  }
+
+  // [security M3] 设计时 formatter / styler 字符串 → Function. 防御过大输入 (DoS / 内存炸):
+  // 5000 字符上限. 业务方在设计器写的 formatter/styler 远低于此; 模板 JSON 被篡改时退化为 undefined.
+  function _evalCap(src, name) {
+    if (typeof src !== 'string' || !src) return undefined;
+    if (src.length > 5000) {
+      console.warn('[hiprint] ' + name + ' refused: formatter source > 5000 chars (security cap)');
+      return undefined;
+    }
+    try { return new Function('return ' + src)(); }
+    catch (err) { console.error('[hiprint] ' + name + ' eval failed:', err); return undefined; }
   }
 
   function setDynamicFields(moduleName, fieldGroups) {
@@ -13923,6 +13962,9 @@ var hiprint = function (t) {
       };
       confirmTemplateDelete(item).then(function (allow) {
         if (allow !== false) executeDelete();
+      }).catch(function (err) {
+        // [silent-failure] confirmTemplateDelete 内部 .catch 已转 false, 这里只兜底极端情况
+        console.error('[hiprint] handleTemplateDelete: confirm chain failed:', err);
       });
     }
 

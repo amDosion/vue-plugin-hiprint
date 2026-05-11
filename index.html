@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <!-- [security L1] Demo CSP - hiprint 内部使用 new Function() 渲染 formatter / styler,
+         必须放行 'unsafe-eval'. 业务方应按需自行收紧 (CSP nonce + 移除 unsafe-eval 见
+         docs/integration-guide.md). data: 给 image element base64. blob: 给 jsPDF preview. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; frame-src 'self' blob:; object-src 'none'; base-uri 'self';" />
     <link rel="icon" href="/favicon.ico" />
     <title>vue-plugin-hiprint</title>
     <!-- hiprint 拖拽图标需要 -->
