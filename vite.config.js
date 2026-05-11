@@ -45,6 +45,8 @@ export default defineConfig(({ mode }) => {
         // V2 拆分 (refactor/hiprint-v2 branch): ES module 版本与 v1 bundle.js 并存。
         // 见 docs/adr/0010-hiprint-bundle-refactor-strangler-fig.md
         '@hiprint-v2': path.resolve(__dirname, 'src/hiprint-v2'),
+        // V3 现代化重写 (ADR-0011): Vue 3 + Pinia + Zod + interact.js, jQuery-free.
+        '@hiprint-v3': path.resolve(__dirname, 'src/hiprint-v3'),
         // hiprint.bundle.js 中写死了 `import Nzh from "nzh/dist/nzh.min.js"`，
         // 但新版 nzh 包的 exports 字段没暴露该深路径。重定向到包入口。
         'nzh/dist/nzh.min.js': 'nzh',
@@ -73,13 +75,15 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: true,
         sourcemap: true,
         lib: {
-          // V1 main entry + V2 alpha entry (P13 Strangler Fig). Vite 5 supports
-          // lib.entry as Record<name, path> for multi-entry builds.
+          // V1 main entry + V2 alpha entry (P13 Strangler Fig) + V3 entry
+          // (P19, ADR-0011 modern rewrite). Vite 5 supports lib.entry as
+          // Record<name, path> for multi-entry builds.
           // Note: UMD format incompatible with multi-entry — drop to cjs+es only.
           // Business consumers needing UMD continue using v1.0.2 (1 entry).
           entry: {
             'vue-plugin-hiprint': path.resolve(__dirname, 'src/index.js'),
             'vue-plugin-hiprint.v2': path.resolve(__dirname, 'src/index-v2.js'),
+            'vue-plugin-hiprint.v3': path.resolve(__dirname, 'src/index-v3.ts'),
           },
           name: 'vue-plugin-hiprint',
           formats: ['cjs', 'es'],
@@ -100,6 +104,13 @@ export default defineConfig(({ mode }) => {
             'bwip-js',
             'nzh',
             'dom-to-image-more',
+            // V3 (ADR-0011) modern stack — externalised so business consumers
+            // share their own copies (Vue 3 ecosystem).
+            'pinia',
+            '@vueuse/core',
+            'interactjs',
+            '@floating-ui/vue',
+            'zod',
           ],
           output: {
             globals: {
