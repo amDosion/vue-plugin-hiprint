@@ -109,3 +109,52 @@ test('appendElementTypeGroups tid 去重 — 重复注册不堆积 + XSS title �
   expect(result.ok).toBe(true);
   expect(result.xssMarkerSet).toBe(false); // <script> in title 没执行
 });
+
+test('B7: text 元素含 <script> 的业务数据渲染不执行脚本', async ({ page }) => {
+  // Reviewer B7: line 9987 text 元素默认 .html(p) — p 可能含 user data
+  const fired = await page.evaluate(() => {
+    (window as any).__b7_xss = false;
+    const h = (window as any).hiprint;
+    const tpl = new h.PrintTemplate({
+      template: { panels: [{
+        index: 0, name: '1', height: 100, width: 100, paperHeader: 0, paperFooter: 300,
+        printElements: [{
+          options: { left: 0, top: 0, height: 16, width: 200, field: 'name', title: 't' },
+          printElementType: { type: 'text', tid: 'defaultModule.text' }
+        }]
+      }] }
+    });
+    const html = tpl.getHtml({ name: '<img src=x onerror="window.__b7_xss=true">' });
+    // 把渲染结果挂到 DOM 触发 img onerror (如果 .html() 没修)
+    if (html && html[0]) document.body.appendChild(html[0]);
+    tpl.destroy();
+    return (window as any).__b7_xss;
+  });
+  expect(fired).toBe(false);
+});
+
+test('B8: 表格 column header 含 <script> 不渲染为标签', async ({ page }) => {
+  // Reviewer B8: line 1927 表格 column header .html(t.title) - t.title 是 user input
+  const result = await page.evaluate(() => {
+    const h = (window as any).hiprint;
+    const tpl = new h.PrintTemplate({
+      template: { panels: [{
+        index: 0, name: '1', height: 100, width: 100, paperHeader: 0, paperFooter: 300,
+        printElements: [{
+          options: {
+            left: 0, top: 0, height: 50, width: 200, field: 'items', tableHeaderRepeat: 'first',
+            columns: [[{ title: '<img src=x onerror="window.__b8_xss=true">', field: 'a', width: 50, checked: true }]]
+          },
+          printElementType: { type: 'table', tid: 'defaultModule.table' }
+        }]
+      }] }
+    });
+    (window as any).__b8_xss = false;
+    const html = tpl.getHtml({ items: [{ a: 'ok' }] });
+    if (html && html[0]) document.body.appendChild(html[0]);
+    tpl.destroy();
+    // header 渲染后 <img> 应被转义,onerror 不触发
+    return { fired: (window as any).__b8_xss };
+  });
+  expect(result.fired).toBe(false);
+});

@@ -1776,7 +1776,8 @@ var hiprint = function (t) {
             hinnn.event.trigger("hiprintTemplateDataChanged_" + this.tableOptions.options.templateId, "调整表格列字段");
           } else t.title = this.title = e;
         } else this.tableOptions.options.isEnableEditField ? (t.title = this.title = "", t.field = this.field = "") : t.title = this.title = "";
-        this.editor.destroy(), t.getTarget().html(this.title);
+        // [XSS] title 来自 user keystroke (line 1774); 用 .text() 阻止 <script> 注入到 <td>
+        this.editor.destroy(), t.getTarget().text(this.title == null ? "" : this.title);
       }, t;
     }(),
     u = function () {
@@ -1800,16 +1801,19 @@ var hiprint = function (t) {
       }, t.prototype.beginEdit = function () {
         if (!this.isEditing && this.tableOptions.isEnableEdit && this.tableOptions.onBeforEdit(this)) {
           var t = this.getValue();
-          this.editor = r.Instance.createEditor("text"), this.isEditing = !0, this.tableOptions.editingCell = this, this.target.html(""), this.editor.init(this), this.editor.setValue(t);
+          // [XSS] cell DOM 清空用 .empty() (相当于 .html("") 无注入风险,语义更清晰)
+          this.editor = r.Instance.createEditor("text"), this.isEditing = !0, this.tableOptions.editingCell = this, this.target.empty(), this.editor.init(this), this.editor.setValue(t);
         }
       }, t.prototype.endEdit = function () {
         this.isEditing = !1;
         var t = this.editor.getValue();
-        this.editor.destroy(), this.target.html(t);
+        // [XSS] editor.getValue() 是 user input; .text() 写回 cell 阻止脚本执行
+        this.editor.destroy(), this.target.text(t == null ? "" : t);
       }, t.prototype.getTarget = function () {
         return this.target;
       }, t.prototype.getValue = function () {
-        return this.target.html();
+        // 与 beginEdit/endEdit 的 .text() 写入对齐,读 textContent 而非 innerHTML
+        return this.target.text();
       }, t.prototype.setValue = function (t) {
       }, t.prototype.initInnerEelement = function () {
         this.innerElement = new l(), this.innerElement.init(this, this.tableOptions);
@@ -1924,7 +1928,9 @@ var hiprint = function (t) {
             return t.checked;
           }).forEach(function (t) {
             var n = $("<td></td>");
-            t.id && n.attr("id", t.id), t.columnId && n.attr("column-id", t.columnId), (t.align || t.halign) && n.css("text-align", t.halign || t.align), t.vAlign && n.css("vertical-align", t.vAlign), t.colspan > 1 && n.attr("colspan", t.colspan), t.rowspan > 1 && n.attr("rowspan", t.rowspan), n.html(t.title), o[t.id] ? (t.hasWidth = !0, t.targetWidth = o[t.id], n.attr("haswidth", "haswidth"), n.css("width", o[t.id] + "pt")) : t.hasWidth = !1;
+            // [XSS] t.title 由设计器内联编辑写入 (line 1774 user keystroke split('#')),
+            // 渲染表格 header 必须 .text() 转义。
+            t.id && n.attr("id", t.id), t.columnId && n.attr("column-id", t.columnId), (t.align || t.halign) && n.css("text-align", t.halign || t.align), t.vAlign && n.css("vertical-align", t.vAlign), t.colspan > 1 && n.attr("colspan", t.colspan), t.rowspan > 1 && n.attr("rowspan", t.rowspan), n.text(t.title == null ? "" : t.title), o[t.id] ? (t.hasWidth = !0, t.targetWidth = o[t.id], n.attr("haswidth", "haswidth"), n.css("width", o[t.id] + "pt")) : t.hasWidth = !1;
             var s = TableExcelHelper.getHeaderStyler(t);
             if (s) {
               var l = s(t);
@@ -9984,7 +9990,12 @@ var hiprint = function (t) {
           p = "";
         p = this.getField() ? (this.options.getHideTitle() ? "" : e ? e + "：" : "") + hinnn.toUpperCase(this.options.upperCase, (r ? r(e, n, this.options, this._currenttemplateData, t) : n)) : n = hinnn.toUpperCase(this.options.upperCase,(r ? r(e, e, this.options, this._currenttemplateData, t) : e));
         var s = this.options.getTextType();
-        if ("text" == s) a.html(p); else {
+        if ("text" == s) {
+          // [XSS] text 元素默认走 .text() 阻止 user data 中的 <script>/<img onerror>.
+          // formatter (r) 通常做 numFormat/dateFormat,输出仍是 plain text,因此走 text-safe 路径。
+          // 业务方需要 HTML 渲染 → 用 'html' 元素类型 (line 10119 by-design path)。
+          a.text(p == null ? "" : p);
+        } else {
           if ("barcode" == s) {
             a.css({
               "display": "flex",
