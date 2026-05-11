@@ -12,8 +12,11 @@
       @cancel="handlePreviewCancel"
     >
       <div class="hiprint-preview-modal-body">
-        <div v-if="!previewHtml" class="hiprint-preview-empty">暂无可预览内容</div>
-        <div v-else class="hiprint-preview-content" v-html="previewHtml"></div>
+        <!-- [XSS C2] 用 ref + DOM append 替代 v-html, 避免 outerHTML 字符串经 Vue
+             v-html 重新解析时, 业务方的 formatter / html-element 的 HTML 输出 (by-design HTML 路径)
+             在 modal 上下文意外执行. hiprint 内部已 .text() 转义所有 plain user data. -->
+        <div v-if="!hasPreviewContent" class="hiprint-preview-empty">暂无可预览内容</div>
+        <div v-else ref="previewContainer" class="hiprint-preview-content"></div>
       </div>
       <div class="hiprint-preview-footer">
         <a-button @click="handlePreviewCancel">关闭</a-button>
@@ -34,7 +37,8 @@ export default {
       template: null,
       toolbarCtrl: null,
       previewVisible: false,
-      previewHtml: "",
+      previewNode: null, // jQuery wrapper of getHtml() — DOM 节点, 不是字符串
+      hasPreviewContent: false,
       printData: {},
       printMode: "browser",
       clientPrintOptions: {},
@@ -249,18 +253,27 @@ export default {
     getPrintData() {
       return this.printData && typeof this.printData === "object" ? this.printData : {};
     },
-    buildPreviewHtml(tpl) {
-      if (!tpl || !tpl.getHtml) return "";
+    buildPreviewNode(tpl) {
+      if (!tpl || !tpl.getHtml) return null;
       var $html = tpl.getHtml(this.getPrintData());
-      if ($html && $html.length) return $html[0].outerHTML;
-      return "";
+      return ($html && $html.length) ? $html : null;
     },
     handlePreview(tpl) {
       try {
-        this.previewHtml = this.buildPreviewHtml(tpl);
+        this.previewNode = this.buildPreviewNode(tpl);
+        this.hasPreviewContent = !!(this.previewNode && this.previewNode.length);
         this.previewVisible = true;
+        // 等 modal DOM 挂载后用 jQuery 把 DOM 节点 append 进 previewContainer (避免 v-html 字符串 round-trip)
+        this.$nextTick(() => {
+          var c = this.$refs.previewContainer;
+          if (c && this.previewNode) {
+            c.replaceChildren();
+            c.appendChild(this.previewNode[0]);
+          }
+        });
       } catch (e) {
-        this.previewHtml = "";
+        this.previewNode = null;
+        this.hasPreviewContent = false;
         this.previewVisible = false;
         this.$message.error("生成预览失败");
       }

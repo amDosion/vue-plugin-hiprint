@@ -6965,7 +6965,8 @@ var hiprint = function (t) {
               var nextIdxL = maxIdxL + 1;
               u.title = i18n.__('列') + ' ' + nextIdxL;
               u.field = u.columnId = 'col' + nextIdxL;
-              u.getTarget().html(u.title).attr('column-id', u.columnId);
+              // [XSS H3] u.title 由模板 JSON 提供 (设计器写入,user keystroke),必须 .text() 防注入
+              u.getTarget().text(u.title == null ? '' : u.title).attr('column-id', u.columnId);
             }
             n && u.getTarget().addClass(n), null != i && (u.width = i), s.length ? l.insertToTargetCellLeft(s[0].cell, u) : l.insertCellToLast(u), r.a.event.trigger("newCell" + o.id, u);
           } else if ("row" == p.linkType) {
@@ -6994,7 +6995,8 @@ var hiprint = function (t) {
               var nextIdxR = maxIdxR + 1;
               u.title = i18n.__('列') + ' ' + nextIdxR;
               u.field = u.columnId = 'col' + nextIdxR;
-              u.getTarget().html(u.title).attr('column-id', u.columnId);
+              // [XSS H3] u.title 由模板 JSON 提供 (设计器写入,user keystroke),必须 .text() 防注入
+              u.getTarget().text(u.title == null ? '' : u.title).attr('column-id', u.columnId);
             }
             n && u.getTarget().addClass(n), null != i && (u.width = i), s.length ? l.insertToTargetCellRight(s[s.length - 1].cell, u) : l.insertCellToFirst(u), r.a.event.trigger("newCell" + o.id, u);
           } else {
@@ -9757,7 +9759,11 @@ var hiprint = function (t) {
         var e = this.getPaperHtmlResult(new T("", "", void 0, 1e3, 1e3, 0, 25e3, 0, 0, !0, !0, void 0, 0, void 0), {}, t);
         return this.removeTempContainer(), e[0].referenceElement.bottomInLastPaper - e[0].referenceElement.printTopInPaper;
       }, e.prototype.getLongTextIndent = function () {
-        return this.options.longTextIndent ? '<span class="long-text-indent" style="margin-left:' + this.options.longTextIndent + 'pt"></span>' : '<span class="long-text-indent"></span>';
+        // [XSS C1] longTextIndent 来自模板 JSON (业务 / 设计器数据), 不能直接拼接 HTML.
+        // 强制 parseInt 把任何 user 字符串约束成数字 (>= 0), 防止注入 style attribute 闭合 + script 标签.
+        var indent = parseInt(this.options.longTextIndent, 10);
+        if (!isFinite(indent) || indent < 0) indent = 0;
+        return indent > 0 ? '<span class="long-text-indent" style="margin-left:' + indent + 'pt"></span>' : '<span class="long-text-indent"></span>';
       }, e.prototype.getPaperHtmlResult = function (t, e, n) {
         var i = this,
           o = [],
@@ -9834,8 +9840,10 @@ var hiprint = function (t) {
         var a = this.IsPaginationIndex(t, r, i, o);
         return a.IsPagination ? a : "l" == a.move ? this.BinarySearch(t, e, r - 1, i, o) : this.BinarySearch(t, r + 1, n, i, o);
       }, e.prototype.IsPaginationIndex = function (t, e, n, i) {
+        // [XSS C3] t 是 user 字段值 split 出的字符数组, .join("") 后含 user text.
+        // BinarySearch 仅为测量高度,用 .text() 写 textContent 等价高度且不解析为 HTML.
         if (-1 == n) {
-          i.find(".hiprint-printElement-longText-content").html(t.slice(0, e).join(""));
+          i.find(".hiprint-printElement-longText-content").text(t.slice(0, e).join(""));
           var a = i.height();
           return {
             IsPagination: !0,
@@ -9844,9 +9852,9 @@ var hiprint = function (t) {
             target: i.clone()
           }
         }
-        i.find(".hiprint-printElement-longText-content").html(t.slice(0, e + 2).join(""));
+        i.find(".hiprint-printElement-longText-content").text(t.slice(0, e + 2).join(""));
         var r = i.height();
-        i.find(".hiprint-printElement-longText-content").html(t.slice(0, e + 1).join(""));
+        i.find(".hiprint-printElement-longText-content").text(t.slice(0, e + 1).join(""));
         var a = i.height();
         return e >= t.length - 1 && a < n ? {
           IsPagination: !0,
