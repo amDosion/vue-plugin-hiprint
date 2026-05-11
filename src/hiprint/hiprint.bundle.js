@@ -12389,12 +12389,14 @@ var hiprint = function (t) {
         // 分解生成HTML任务，留下空隙发送socket信息，避免断开连接
         return t || (t = {}), this.getSimpleHtmlAsync(t, e);
       }, t.prototype.getJointHtml = function (t, e, n) {
+        if (this._assertNotDestroyed('getJointHtml')) return $('<div class="hiprint-printTemplate"></div>');
         var i = $('<div class="hiprint-printTemplate"></div>'),
           o = [];
         return this.printPanels.forEach(function (r, a) {
           i.append(r.getHtml(t, e, o, void 0, n));
         }), i;
       }, t.prototype.setPaper = function (t, e) {
+        if (this._assertNotDestroyed('setPaper')) return;
         if (/^(([1-9][0-9]*)|(([0]\.\d{1,2}|[1-9][0-9]*\.\d{1,2})))$/.test(t)) this.editingPanel.resize(void 0, parseFloat(t), parseFloat(e), !1); else {
           var n = s.a.instance[t];
           if (!n) throw new Error("not found pagetype:" + (t || ""));
@@ -12596,6 +12598,7 @@ var hiprint = function (t) {
           });
         } else alert(`${i18n.__('连接客户端失败')}`);
       }, t.prototype.imageToBase64 = function (t) {
+        if (this._assertNotDestroyed('imageToBase64')) return;
         var e = $(t).attr("src");
         if (-1 == e.indexOf("base64")) try {
           if (!this.tempimageBase64[e]) {
@@ -12613,7 +12616,9 @@ var hiprint = function (t) {
           }
         }
       }, t.prototype.xhrLoadImage = function (t) {
+        if (this._assertNotDestroyed('xhrLoadImage')) return;
       }, t.prototype.sentToClient = function (t, e, n) {
+        if (this._assertNotDestroyed('sentToClient')) return;
         e || (e = {});
         var i = $.extend({}, n || {});
         i.imgToBase64 = i.imgToBase64 ?? false;
@@ -12630,8 +12635,10 @@ var hiprint = function (t) {
           i.id = s.a.instance.guid(), i.html = o, i.templateId = this.id, hiwebSocket.send(i);
         }
       }, t.prototype.printByHtml = function (t) {
+        if (this._assertNotDestroyed('printByHtml')) return;
         $(t).hiwprint();
       }, t.prototype.printByHtml2 = function (t, e) {
+        if (this._assertNotDestroyed('printByHtml2')) return;
         if (e || (e = {}), this.clientIsOpened()) {
           var n = this,
             i = 0,
@@ -12657,15 +12664,18 @@ var hiprint = function (t) {
           });
         } else alert(`${i18n.__('连接客户端失败')}`);
       }, t.prototype.deletePrintElement = function (t) {
+        if (this._assertNotDestroyed('deletePrintElement')) return;
         this.printPanels.forEach(function (e) {
           e.deletePrintElement(t);
         });
       }, t.prototype.transformImg = function (t) {
+        if (this._assertNotDestroyed('transformImg')) return;
         var e = this;
         t.map(function (t, n) {
           e.imageToBase64($(n));
         });
       }, t.prototype.toPdf = function (t, e, options) {
+        if (this._assertNotDestroyed('toPdf')) return $.Deferred().reject(new Error('template destroyed')).promise();
         var i = this;
         var dtd = $.Deferred();
         var isDownload = true;
@@ -12736,20 +12746,26 @@ var hiprint = function (t) {
           return {width: o.a.pt.toPx(parseFloat(t.style.width)), height: o.a.pt.toPx(parseFloat(t.style.height))}
         }
       }, t.prototype.on = function (t, e) {
+        if (this._assertNotDestroyed('on')) return;
         o.a.event.clear(t + "_" + this.id);
         o.a.event.on(t + "_" + this.id, e);
       }, t.prototype.clientIsOpened = function () {
         return hiwebSocket.opened;
       }, t.prototype.getPrinterList = function () {
+        if (this._assertNotDestroyed('getPrinterList')) return [];
         var t = hiwebSocket.getPrinterList();
         return t || [];
       }, t.prototype.getElementByTid = function (t, e) {
-        return null == e && (e = 0), this.printPanels[e].getElementByTid(t);
+        if (this._assertNotDestroyed('getElementByTid')) return undefined;
+        return null == e && (e = 0), this.printPanels[e] && this.printPanels[e].getElementByTid(t);
       }, t.prototype.getElementByName = function (t, e) {
-        return null == e && (e = 0), this.printPanels[e].getElementByName(t);
+        if (this._assertNotDestroyed('getElementByName')) return undefined;
+        return null == e && (e = 0), this.printPanels[e] && this.printPanels[e].getElementByName(t);
       }, t.prototype.getPanel = function (t) {
+        if (this._assertNotDestroyed('getPanel')) return undefined;
         return null == t && (t = 0), this.printPanels[t];
       }, t.prototype.loadAllImages = function (t, e, n) {
+        if (this._assertNotDestroyed('loadAllImages')) return;
         var i = this;
         null == n && (n = 0);
 
@@ -12762,23 +12778,31 @@ var hiprint = function (t) {
           i.loadAllImages(t, e, n);
         }, 500) : e();
       }, t.prototype.setFontList = function (t) {
+        if (this._assertNotDestroyed('setFontList')) return;
         this.fontList = t;
       }, t.prototype.getFontList = function () {
+        if (this._assertNotDestroyed('getFontList')) return [];
         return this.fontList;
       }, t.prototype.setFields = function (t) {
+        if (this._assertNotDestroyed('setFields')) return;
         this.fields = t;
       }, t.prototype.getFields = function () {
+        if (this._assertNotDestroyed('getFields')) return [];
         return this.fields;
       }, t.prototype.setOnImageChooseClick = function (t) {
+        if (this._assertNotDestroyed('setOnImageChooseClick')) return;
         this.onImageChooseClick = t;
       }, t.prototype.getOnImageChooseClick = function () {
+        if (this._assertNotDestroyed('getOnImageChooseClick')) return undefined;
         return this.onImageChooseClick;
       }, t.prototype.getFieldsInPanel = function () {
+        if (this._assertNotDestroyed('getFieldsInPanel')) return [];
         var t = [];
         return this.printPanels.forEach(function (e) {
           t = t.concat(e.getFieldsInPanel());
         }), t;
       }, t.prototype.getTestData = function () {
+        if (this._assertNotDestroyed('getTestData')) return {};
         var t = {};
         return this.printPanels.forEach(function (e) {
           t = Object.assign(t, e.getTestData());
@@ -13772,10 +13796,19 @@ var hiprint = function (t) {
             return confirmTemplateDeleteDefault(item);
           }
         };
-        return Promise.resolve(opts.onTemplateDeleteConfirm(context)).then(function (result) {
+        // 同步 throw 不会被下方 .catch 接住 (Promise.resolve(throw) → 立即冒泡);
+        // 必须用 try 包外层调用,失败时返回 reject Promise 让 .catch 兜底。
+        var syncResult;
+        try {
+          syncResult = opts.onTemplateDeleteConfirm(context);
+        } catch (err) {
+          console.error('[hiprint] onTemplateDeleteConfirm threw (sync):', err);
+          return Promise.resolve(false);
+        }
+        return Promise.resolve(syncResult).then(function (result) {
           return result !== false;
         }).catch(function (err) {
-          console.error('[hiprint] onTemplateDeleteConfirm rejected:', err);
+          console.error('[hiprint] onTemplateDeleteConfirm rejected (async):', err);
           return false;
         });
       }
@@ -13786,10 +13819,18 @@ var hiprint = function (t) {
       if (!item) return;
       var executeDelete = function () {
         if (typeof opts.onTemplateDelete === 'function') {
-          Promise.resolve(opts.onTemplateDelete(item, template, toolbarApi)).then(function (result) {
+          // 同步 throw 兜底 (同 confirmTemplateDelete pattern)
+          var syncResult;
+          try {
+            syncResult = opts.onTemplateDelete(item, template, toolbarApi);
+          } catch (err) {
+            console.error('[hiprint] onTemplateDelete threw (sync):', err);
+            return;
+          }
+          Promise.resolve(syncResult).then(function (result) {
             if (result !== false) refreshTemplateList();
           }).catch(function (err) {
-            console.error('[hiprint] onTemplateDelete rejected:', err);
+            console.error('[hiprint] onTemplateDelete rejected (async):', err);
           });
           return;
         }
