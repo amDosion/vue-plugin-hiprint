@@ -134,6 +134,18 @@ export interface HiprintFacade {
   appendElementTypeGroups(moduleName: string, groups: ElementTypeGroupDef[]): void
   /** Rename an element type by tid (V1 quirk). */
   renameElementType(tid: string, newTitle: string): void
+  /**
+   * V1 setConfig (bundle.js line 15179) — replaces / patches design-time
+   * toolbar tabs + property panel tabs + optionItems. In V3 these are
+   * reactive components (P17/P18) so toolbar/panel configuration happens
+   * via component props, not a global mutator. Legacy V1 callers that
+   * pass a config object get a console.warn; calls with no args (the
+   * V1 demo-default) are a silent no-op.
+   *
+   * For optionItems registration use `getRegistryInstance().registerItems(...)`
+   * directly in V3 native code.
+   */
+  setConfig(config?: Record<string, unknown>): void
   /** Auto-connect to local print client socket. */
   autoConnect(host?: string, token?: string, cb?: (opened: boolean) => void): void
   /** Disconnect / cancel auto-connect. */
@@ -194,6 +206,19 @@ function createHiprint(): HiprintFacade {
         }
       }
       return { moduleNames: registry.getModuleNames() }
+    },
+
+    setConfig(config): void {
+      // Bare call (V1 demo idiom `hiprint.setConfig()`) is a no-op in V3.
+      if (config === undefined) return
+      // Legacy patch shape — log + ignore. In V3, toolbar/panel tabs are
+      // SFC props (HiprintToolbar / HiprintPropertyPanel) so a global
+      // mutator no longer applies. Business code should pass these via
+      // props on <HiprintDesigner>.
+      console.warn(
+        '[hiprint] setConfig(config) is a no-op in V3. Pass toolbar / property panel ' +
+          'configuration via <HiprintDesigner> SFC props instead. See docs/upgrade-to-v3.md.'
+      )
     },
 
     setDynamicFields(moduleName, fields): void {
