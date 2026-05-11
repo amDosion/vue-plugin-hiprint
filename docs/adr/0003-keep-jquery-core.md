@@ -1,8 +1,10 @@
 # ADR-0003: 保留 jQuery 内核 (不重写为纯 Vue)
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0011](0011-v3-modern-ui-architecture.md) (2026-05-11)
 - **Date:** 2026-04-22
 - **Deciders:** amDosion
+
+> ⚠️ **Superseded note** (2026-05-11): 当时"保留 jQuery"的决策基于"重写工期不可接受 + 业务方风险高"。2026-05-11 业务方 vue-admin-main 现代化压力 + V2 P0-P13 完成证明渐进迁移可行,启动 V3 全量重写 (Vue 3 + TypeScript + interact.js + Pinia + Zod) 一次性发布 v2.0.0,jQuery 主依赖在 P21 完全移除。详见 [ADR-0011](0011-v3-modern-ui-architecture.md)。
 
 ## Context
 

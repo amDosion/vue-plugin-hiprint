@@ -1,9 +1,11 @@
 # ADR-0010: hiprint.bundle.js 拆分到 V2 (Strangler Fig)
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0011](0011-v3-modern-ui-architecture.md) (2026-05-11 PM)
 - **Date:** 2026-05-11
 - **Deciders:** amDosion
 - **Supersedes:** ADR-0004 (单 bundle.js 内修源码而非拆模块)
+
+> ⚠️ **Superseded note** (2026-05-11 PM): V2 ES module 拆分路径 (P0-P13) 已完成 52 modules + 474 unit tests,但用户决定转向 V3 全量重写 (Vue 3 + TS + 去 jQuery),不再以"保留 jQuery 的 ES module split"为终态。V2 codebase 仍保留在 worktree 作为 V3 数据层迁移基础。详见 [ADR-0011](0011-v3-modern-ui-architecture.md)。
 
 ## Context
 

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node", "vitest/globals", "@vue/runtime-core"]
+  },
+  "include": [
+    "src/hiprint-v3/**/*.ts",
+    "src/hiprint-v3/**/*.tsx",
+    "src/hiprint-v3/**/*.vue",
+    "src/hiprint-v3/**/*.d.ts",
+    "src/hiprint-v3/**/*.spec.ts",
+    "src/hiprint-v3/**/*.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "demo"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@hiprint-v3/*": ["./src/hiprint-v3/*"]
+    },
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": false,
+
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "useDefineForClassFields": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "src/hiprint-v3/**/*.ts",
+    "src/hiprint-v3/**/*.tsx",
+    "src/hiprint-v3/**/*.vue",
+    "src/hiprint-v3/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "demo",
+    "src/hiprint/**",
+    "src/hiprint-v2/**",
+    "src/standalone/**",
+    "e2e/**",
+    "scripts/**",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
+}

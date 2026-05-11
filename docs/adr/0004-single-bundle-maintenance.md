@@ -1,6 +1,6 @@
 # ADR-0004: 单 bundle.js 内修源码而非拆模块
 
-- **Status:** superseded by [ADR-0010](0010-hiprint-bundle-refactor-strangler-fig.md) (2026-05-11)
+- **Status:** superseded by [ADR-0010](0010-hiprint-bundle-refactor-strangler-fig.md) (2026-05-11), further superseded by [ADR-0011](0011-v3-modern-ui-architecture.md) (2026-05-11 PM)
 - **Date:** 2026-04-22
 - **Deciders:** amDosion
 
