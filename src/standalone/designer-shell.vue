@@ -27,7 +27,11 @@
 </template>
 
 <script>
-import { hiprint, defaultElementTypeProvider } from "@/index";
+// P21.1 V3 self-validation: switch demo entry to V3 compat layer.
+// Same V1-shaped surface (hiprint global + defaultElementTypeProvider) backed
+// by V3 (Vue 3 + Pinia + interact.js + Zod). If V3 compat handles the demo's
+// API surface, vue-admin-main's drop-in path is validated end-to-end.
+import { hiprint, defaultElementTypeProvider } from "@/index-v3";
 
 export default {
   name: "DesignerShell",
