@@ -9778,7 +9778,9 @@ var hiprint = function (t) {
       }, e.prototype.getData = function (t) {
         var f = this.getField();
         var e = f ? f.split('.').reduce((a, c) => (a != null ? a[c] : undefined), t) ?? "" : "";
-        return t ? e || "" : this.options.testData || this.printElementType.getData() || "";
+        // [PM-002 Round 3] reduce 已经 ?? "" 处理 null-safe + 保留 0/false/"".
+        // 不要再 `e || ""` 把 0/false 当 falsy 转空 (PM-002 第三层 fallthrough,e2e nested-field 暴露)
+        return t ? e : this.options.testData || this.printElementType.getData() || "";
       }, e.prototype.updateTargetText = function (t, e, n) {
         var i = t.find(".hiprint-printElement-longText-content"),
           o = this.getText(e, n);
