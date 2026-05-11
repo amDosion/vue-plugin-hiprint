@@ -5,6 +5,39 @@
 ### 💐  感谢各位贡献者的支持。 🔥
 ### 💐  希望各位多看看文档、文章、更新日志;  📢 本页面支持 Ctrl/Command + F 搜索
 
+## 1.0.2 (2026-05-11) — Round 2 audit: remaining XSS + lifecycle full coverage
+
+> 内部版本号 1.0.2; tgz 文件名仍固定为 `vue-plugin-hiprint.tgz` (见 ADR-0006)。
+> **完全向后兼容** (公开 API 签名不变)。
+
+<details open>
+  <summary>🔴 安全 (CRITICAL): 3 处新 XSS 根治 (commit ddcb0d3)</summary>
+  <ul>
+    <li><strong>B7 text 元素默认 render</strong>: line 9987 <code>a.html(p)</code> → <code>a.text(p)</code>。p 来自 getData() 是 user-controlled, text 元素语义就是 plain text, 业务方要 HTML 用 'html' 元素类型 (10119)。</li>
+    <li><strong>B8 表格 column header</strong>: line 1927 <code>n.html(t.title)</code> → <code>n.text()</code>。t.title 由设计器 inline 编辑写入 (user keystroke)。</li>
+    <li><strong>B9 表格 cell editor</strong>: line 1779/1808 endEdit + 1812 getValue 全部 <code>.html()</code> → <code>.text()</code>; 1803 beginEdit 用 <code>.empty()</code>。读写对齐避免 .html-write → .text-read 不一致。</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>🟡 健壮性 (HIGH): W4 同步 throw 兜底 + W5 lifecycle 全覆盖 (commit fef3593)</summary>
+  <ul>
+    <li><strong>W4 Promise.resolve 同步 throw</strong>: 2 处 (onTemplateDeleteConfirm + onTemplateDelete) 改为 try 包外层 → Promise.resolve(syncResult)。<code>.catch</code> 不接同步 throw, 需 try 兜底; confirmTemplate sync throw 时返回 <code>Promise.resolve(false)</code> 取消 delete (安全 default)。</li>
+    <li><strong>W5 _assertNotDestroyed 全覆盖</strong>: 25 → 47 处。所有 PrintTemplate 公开方法 (getJointHtml/setPaper/imageToBase64/xhrLoadImage/sentToClient/printByHtml*/deletePrintElement/transformImg/toPdf/on/getPrinterList/getElementByTid/getElementByName/getPanel/loadAllImages/setFontList/getFontList/setFields/getFields/setOnImageChooseClick/getOnImageChooseClick/getFieldsInPanel/getTestData) 加守卫。Vue 路由切换后 stale 实例调用安全 fallback。</li>
+  </ul>
+</details>
+
+<details>
+  <summary>🧪 e2e 扩展 (commit 576b7eb + ddcb0d3)</summary>
+  <ul>
+    <li>新加 print-element-type-registry.spec.ts (5 cases, 锁住新 export)</li>
+    <li>xss.spec.ts +2 cases (B7 text element + B8 table header)</li>
+    <li>e2e 28 → 35 cases, 全 PASS</li>
+  </ul>
+</details>
+
+---
+
 ## 1.0.1 (2026-05-11) — Zero-Tolerance Security & Robustness Hardening
 
 > 内部版本号 1.0.1; tgz 文件名仍固定为 `vue-plugin-hiprint.tgz` (见 ADR-0006)。
