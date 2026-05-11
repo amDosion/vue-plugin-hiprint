@@ -5,6 +5,83 @@
 ### 💐  感谢各位贡献者的支持。 🔥
 ### 💐  希望各位多看看文档、文章、更新日志;  📢 本页面支持 Ctrl/Command + F 搜索
 
+## 1.0.1 (2026-05-11) — Zero-Tolerance Security & Robustness Hardening
+
+> 内部版本号 1.0.1; tgz 文件名仍固定为 `vue-plugin-hiprint.tgz` (见 ADR-0006)。
+> **完全向后兼容**: 公开 API 签名不变, 新增 1 个 export (`PrintElementTypeRegistry`)。
+
+<details open>
+  <summary>🔴 安全 (CRITICAL): 6 处 XSS 根治 (commit 84181bf)</summary>
+  <ul>
+    <li>image 元素 src 字符串拼接 → jQuery 链 + .attr() 转义 (line 9226)</li>
+    <li>table cell text-type .html() → .text() (line 2114-2116)</li>
+    <li>paperNumber template .html(t) + 字符串拼接 → .text() + jQuery 链 (line 9326)</li>
+    <li>longText updateDesignView .html() round-trip → contents().clone() DOM 拷贝 (line 9714)</li>
+    <li>longText updateTargetText 默认 .text(), formatter 时才 .html() (line 9727)</li>
+    <li>html-element / toolbar btn html 加 by-design 注释 + null-safe (B5/B6)</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>🟡 健壮性 (HIGH): _assertNotDestroyed + _safeCall + namespace 全覆盖 (commit cc4b3ba)</summary>
+  <ul>
+    <li><strong>destroy 守卫</strong>: 9 处新加 _assertNotDestroyed (rotatePaper/addPrintPanel/selectPanel/deletePanel/getPaneltotal/createDefaultPanel/createContainer/clear/getPrintElementSelectEventKey 等)。从 16 处扩到 25+ 处。</li>
+    <li><strong>业务回调隔离</strong>: 18 处 opts.onXxx 改用 _safeCall (业务方 throw 不再冒泡冻结 UI). _safeCall 提到 module scope,共享 buildToolbar/buildDesigner。</li>
+    <li><strong>全局事件 namespace</strong>: 3 处 $(document).on/one 加 namespace (ctx-menu / left&right resize handle),避免多实例污染。</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>🟢 数据正确性 (HIGH): PM-002 嵌套字段 reduce 真根因修透 (commit 8f6c452)</summary>
+  <ul>
+    <li>7 处 <code>reduce(...) || ""</code> → <code>reduce(...) ?? ""</code></li>
+    <li>之前 Round 1 只修了 reduce 内部回调 <code>(a != null ? a[c] : undefined)</code>, 但外层 <code>|| ""</code> 仍把 0/false 当 falsy 回退. e2e 暴露后用 nullish coalescing 修透。</li>
+    <li>影响: text/longText/image/barcode/qrcode/html/table 7 种元素的 <code>data.a.b === 0/false</code> 现在正确渲染为 "0"/"false" 而非空。</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>✨ API 扩展 (兼容): 新增 PrintElementTypeRegistry export (commit 8f6c452)</summary>
+  <ul>
+    <li>暴露内部 data 单例 class (含 .instance / addPrintElementTypes / allElementTypes)</li>
+    <li>解决 PrintElementTypeManager 命名混乱: PrintElementTypeManager 是 UI builder utility (build/buildByHtml 静态方法), PrintElementTypeRegistry 是 data registry (实例方法)</li>
+    <li>业务方/e2e 测试需要操作 element type 注册表时使用 <code>new PrintElementTypeRegistry()</code></li>
+  </ul>
+</details>
+
+<details>
+  <summary>🟢 代码一致性 (LOW): helper refactor + 日志统一 (commit c0fd3a1 + 21aa195)</summary>
+  <ul>
+    <li>引入 <code>PrintTemplate.prototype._assertNotDestroyed(name)</code> helper 替换 16 处 destroyed 守卫样板</li>
+    <li>引入 module-level <code>_safeCall(fn, args, name)</code> helper 共享 buildToolbar + buildDesigner</li>
+    <li>80 处 console.warn/error 统一加 <code>[hiprint]</code> 前缀; catch 路径升级 .warn → .error</li>
+    <li>36 处 console.log → console.warn (上游遗留 debug log)</li>
+  </ul>
+</details>
+
+<details>
+  <summary>🧪 e2e 测试修复 (6 处 pre-existing test bug)</summary>
+  <ul>
+    <li>dedup.spec.ts × 4: 改用 PrintElementTypeRegistry 拿独立实例</li>
+    <li>multi-instance.spec.ts × 1 + xss.spec.ts × 1: 改用 appendElementTypeGroups 公开 API</li>
+    <li>nested-field.spec.ts × 2: jQuery 对象 vs string 类型混用,改 $html[0].outerHTML</li>
+    <li>nested-field.spec.ts × 2: 0/false 断言模式放宽 (实际渲染含 title 前缀)</li>
+    <li>结果: e2e 28/28 全 PASS (从 6 fail → 0 fail)</li>
+  </ul>
+</details>
+
+<details>
+  <summary>📋 项目级 Claude 规则 + 文档 (commit 1b3e3b5 + ddb2abe + 40bbb72)</summary>
+  <ul>
+    <li>新增 <code>CLAUDE.md</code> + <code>.claude/rules/*</code> (6 项目专属规则,含 fix-discipline 最高优先级)</li>
+    <li>新增 <code>.claude/agents/*</code> (hiprint-bundle-reviewer / smoke-runner / codemap-syncer)</li>
+    <li>新增 <code>docs/ONBOARDING.md</code> + <code>docs/adr/*</code> (6 ADR) + <code>.claude/postmortem/*</code> (8 PM)</li>
+    <li>codemap-syncer agent 同步 docs/CODE-BLUEPRINT.md + docs/CODEMAPS/* 行号</li>
+  </ul>
+</details>
+
+---
+
 ## 1.0.0 (2026-05-09)
 
 > ⚠️ **Breaking change**: 仅支持 Vue 3。Vue 2 用户请继续使用 0.0.61 及更早版本。
