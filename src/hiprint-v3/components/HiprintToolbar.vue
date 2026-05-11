@@ -467,24 +467,26 @@ function handleRedo(): void {
 }
 
 function handleSave(): void {
-  if (props.onSave) {
-    // Emit takes care of invoking the onSave prop (Vue 3 auto-listener bridge).
-    const json = tpl.getJson()
-    emit('save', props.tpl, json, null, undefined, {})
-  } else if (props.saveHandler) {
+  // V3 fix: Vue 3 auto-listener bridge sets props.onSave whenever the parent
+  // binds @save (HiprintDesigner does), so checking `if (props.onSave)` would
+  // ALWAYS short-circuit the default download. We treat the listener as an
+  // observer (emit fires for it anyway) and only treat `saveHandler` as a
+  // true override.
+  let json: TemplateJson
+  if (props.saveHandler) {
     safeCall(
       props.saveHandler as unknown as (...args: unknown[]) => void,
       [],
       'toolbar.saveHandler'
     )
-    emit('save', props.tpl, tpl.getJson(), null, undefined, {})
+    json = tpl.getJson()
   } else {
-    // V1 default behavior: mark dirty=false + download template JSON as a
-    // file. Business code overrides via onSave / saveHandler prop.
-    const json = tpl.save()
+    // Default V1 behavior: mark dirty=false + download template JSON file
+    // so the user sees a real "save happened" effect.
+    json = tpl.save()
     downloadJson(json, 'template.json')
-    emit('save', props.tpl, json, null, undefined, {})
   }
+  emit('save', props.tpl, json, null, undefined, {})
 }
 
 /**
@@ -511,19 +513,19 @@ function downloadJson(data: unknown, filename: string): void {
 }
 
 function handlePreview(): void {
-  if (!props.onPreview && props.previewHandler) {
+  // Same Vue 3 listener-bridge gotcha as handleSave — props.onPreview is
+  // truthy when parent binds @preview, so it cannot gate the default. Only
+  // `previewHandler` (explicit prop) overrides the default behavior.
+  if (props.previewHandler) {
     safeCall(
       props.previewHandler as unknown as (...args: unknown[]) => void,
       [],
       'toolbar.previewHandler'
     )
-  } else if (!props.onPreview && !props.previewHandler) {
-    // V1 default behavior: open a print-preview window via window.print on a
-    // new tab populated with renderTemplate output. Business code overrides
-    // via onPreview / previewHandler.
+  } else {
+    // V1 default: open a print preview window so user sees real feedback.
     runDefaultPreview()
   }
-  // Emit invokes onPreview prop (auto-listener bridge) with V1 signature.
   emit('preview', props.tpl)
 }
 
@@ -558,16 +560,16 @@ function runDefaultPreview(): void {
 }
 
 function handlePrint(): void {
-  if (!props.onPrint) {
-    if (props.printHandler) {
-      safeCall(
-        props.printHandler as unknown as (...args: unknown[]) => void,
-        [],
-        'toolbar.printHandler'
-      )
-    } else {
-      runBrowserPrint()
-    }
+  // Same Vue 3 listener-bridge gotcha. printHandler (explicit prop) is the
+  // only true override; @print listener is observer only.
+  if (props.printHandler) {
+    safeCall(
+      props.printHandler as unknown as (...args: unknown[]) => void,
+      [],
+      'toolbar.printHandler'
+    )
+  } else {
+    runBrowserPrint()
   }
   emit('print', props.tpl)
 }
@@ -587,9 +589,9 @@ function handlePdf(): void {
 }
 
 function handleClear(): void {
-  if (!props.onClear) {
-    tpl.clear()
-  }
+  // Default: clear the current template. @clear listener is observer-only;
+  // business code that needs confirmation prompts wraps via onClear emit.
+  tpl.clear()
   emit('clear', props.tpl)
 }
 

@@ -379,7 +379,13 @@ describe('HiprintToolbar — V1 onXxx handlers receive tpl as first arg', () => 
     w.unmount()
   })
 
-  it('onClear fires with tpl when set (default tpl.clear is skipped)', async () => {
+  it('onClear fires with tpl AND default tpl.clear still runs (listener is observer, not override)', async () => {
+    // V3 fix: Vue 3 auto-listener-bridge makes props.onClear truthy whenever
+    // parent binds @clear, so we cannot let `if (props.onClear)` short-circuit
+    // the default tpl.clear() — that would silently break clear-button UX in
+    // the typical case where business code listens for observability only.
+    // Default always runs; business code that needs confirmation overrides
+    // via a dedicated clearHandler prop (not added — listener parity is fine).
     const tplStore = useTemplateStore()
     const clearSpy = vi.spyOn(tplStore, 'clear')
     const onClear = vi.fn()
@@ -389,7 +395,7 @@ describe('HiprintToolbar — V1 onXxx handlers receive tpl as first arg', () => 
     await w.find('button[aria-label="Clear template"]').trigger('click')
     expect(onClear).toHaveBeenCalledTimes(1)
     expect(onClear.mock.calls[0]?.[0]).toBe(fakeTpl)
-    expect(clearSpy).not.toHaveBeenCalled()
+    expect(clearSpy).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 

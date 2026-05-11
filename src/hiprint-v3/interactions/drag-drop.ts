@@ -262,16 +262,59 @@ export function enableElementListSource(
     _factoryByEl.set(el, opts.createElement)
   }
 
+  // Cursor-following clone helper. Without this, interact.js does not move
+  // the source element with the pointer — it stays in the sidebar, so the
+  // panel dropzone never sees ANY overlap (overlap: 'pointer' below uses
+  // pointer position, which IS the cursor). The clone is the V1/V2 jQuery UI
+  // `helper: 'clone'` equivalent — gives user a draggable visual to follow
+  // the cursor; we destroy it at drag end.
+  let cloneEl: HTMLElement | null = null
+
   const interactable = interact(el).draggable({
     inertia: false,
-    // Visually float a clone or rely on caller's helper. We keep this minimal
-    // — the actual element stays in place; the dropzone handles creation.
     listeners: {
-      start: () => {
+      start: (event: { clientX0?: number; clientY0?: number }) => {
         el.classList.add('hiprint-dragging')
+        try {
+          const startX = typeof event.clientX0 === 'number' ? event.clientX0 : 0
+          const startY = typeof event.clientY0 === 'number' ? event.clientY0 : 0
+          cloneEl = el.cloneNode(true) as HTMLElement
+          cloneEl.classList.add('hiprint-drag-clone')
+          // Inline styles so we don't depend on host CSS theming.
+          Object.assign(cloneEl.style, {
+            position: 'fixed',
+            pointerEvents: 'none',
+            zIndex: '9999',
+            opacity: '0.85',
+            left: startX + 'px',
+            top: startY + 'px',
+            transform: 'translate(-50%, -50%)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+          } as Partial<CSSStyleDeclaration>)
+          document.body.appendChild(cloneEl)
+        } catch (err) {
+          console.warn('[hiprint] enableElementListSource: clone start failed:', err)
+        }
+      },
+      move: (event: { clientX: number; clientY: number }) => {
+        if (!cloneEl) return
+        try {
+          cloneEl.style.left = event.clientX + 'px'
+          cloneEl.style.top = event.clientY + 'px'
+        } catch {
+          /* ignore */
+        }
       },
       end: () => {
         el.classList.remove('hiprint-dragging')
+        try {
+          if (cloneEl && cloneEl.parentNode) {
+            cloneEl.parentNode.removeChild(cloneEl)
+          }
+        } catch {
+          /* ignore */
+        }
+        cloneEl = null
       },
     },
   })
@@ -314,7 +357,11 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
 
   const interactable = interact(el).dropzone({
     accept: '.hiprint-element, .hiprint-list-source',
-    overlap: 0.25,
+    // 'pointer' overlap = drop when CURSOR is inside the zone, not when the
+    // draggable element's bbox overlaps. Required for list-source drags
+    // because the source button stays in the sidebar (we render a clone
+    // following the cursor) — element-bbox overlap would never fire.
+    overlap: 'pointer',
     ondrop: (event: { relatedTarget: HTMLElement }) => {
       try {
         const dragged = event.relatedTarget
