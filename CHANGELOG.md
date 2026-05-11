@@ -5,6 +5,82 @@
 ### 💐  感谢各位贡献者的支持。 🔥
 ### 💐  希望各位多看看文档、文章、更新日志;  📢 本页面支持 Ctrl/Command + F 搜索
 
+## 1.0.3 (2026-05-11) — Round 3 multi-agent audit closure
+
+> 内部版本号 1.0.3; tgz 文件名仍固定为 `vue-plugin-hiprint.tgz` (见 ADR-0006)。
+> **完全向后兼容** (公开 API 签名不变)。
+
+R3 启动 **4 个 agent 并行审查** (hiprint-bundle-reviewer / security-reviewer / silent-failure-hunter / state-modeler), 累计发现 **30+ 项** 跨 CRITICAL/HIGH/MEDIUM/LOW, 按 Zero-Tolerance 全清。
+
+<details open>
+  <summary>🔴 安全 (CRITICAL × 4): R3 patch 4 处新 XSS (commit f1885d1)</summary>
+  <ul>
+    <li><strong>C1 longTextIndent</strong>: 模板 JSON option 拼接进 style 属性 → parseInt 强制数字化</li>
+    <li><strong>C3 longText BinarySearch</strong>: user text 字符 join 后 .html() → .text() (3 处)</li>
+    <li><strong>C2 designer-shell.vue v-html</strong>: outerHTML 字符串 v-html 重新解析业务 by-design HTML → 改 ref + DOM appendChild</li>
+    <li><strong>H3 表格 column.title insertColumn</strong>: line 6968/6997 .html() → .text() (2 处)</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>🟡 silent-failure CRITICAL/HIGH (commit 3d9a69f)</summary>
+  <ul>
+    <li>line 996/6589 hidraggable empty catch → console.warn 带 context (CRITICAL × 2)</li>
+    <li>line 2093 rowsColumnsMerge() call try-catch (forEach 中断 → 空表格)</li>
+    <li>line 12713 toPdf domtoimage Promise .catch (失败时 hang + tempContainer 泄漏)</li>
+    <li>line 12636 sentToClient getHtmlAsync .catch (印字静默丢失)</li>
+    <li>line 12596 + 12660 XHR onerror/ontimeout (网络错全部静默)</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>🟡 state-modeler HIGH (commit 3d9a69f)</summary>
+  <ul>
+    <li>deletePanel 删 editingPanel 后必须 selectPanel (避免 stale DOM 引用)</li>
+    <li>design() 加 _designed 守卫 + 二次调用 cleanup (HMR 不再累积 jQuery 订阅)</li>
+    <li>toPdf .then 检查 _destroyed → dtd.reject('template destroyed')</li>
+    <li>sendByFragments setTimeout 内 socket null 守卫</li>
+    <li>getHtmlAsync destroy 中断改 reject (不再 resolve empty)</li>
+  </ul>
+</details>
+
+<details>
+  <summary>🟢 MEDIUM/LOW closure (commit e09414c)</summary>
+  <ul>
+    <li>FileReader.onerror + Image.onerror (callback 链不挂)</li>
+    <li>loadAllImages destroy 时调 callback + 10 retry 用尽 warn</li>
+    <li>copyJson .catch 不丢 err object</li>
+    <li>jquery.hiwprint.js console.log → console.error 带前缀</li>
+    <li>endEdit 清 editingCell 引用</li>
+    <li>_evalCap helper (formatter eval 5000 字符上限, security M3)</li>
+    <li>hiwebSocket default token 检测警告 (security M4)</li>
+    <li>element-list drag namespace per-instance (R3 INFO)</li>
+    <li>index.html demo CSP meta (security L1)</li>
+    <li>docs/integration-guide.md "⚠️ 安全注意事项" 8 条 by-design HTML 路径警告</li>
+  </ul>
+</details>
+
+<details open>
+  <summary>📦 依赖升级 (commit 3c439d9)</summary>
+  <ul>
+    <li>jspdf ^2.5 → ^4.2.1: 连带升级 dompurify, 清 7 个 CVE
+      (XSS / prototype pollution / FORBID_TAGS bypass / mutation-XSS)</li>
+    <li>已尝试 vite@8 但 rolldown 与 vite-plugin-commonjs 不兼容, 回滚至 vite@5.4.21
+      (esbuild 2 moderate CVE 为 dev-server-only 风险, 不影响生产 bundle, 立 issue 跟踪)</li>
+  </ul>
+</details>
+
+<details>
+  <summary>🧪 e2e 35/35 全 PASS</summary>
+  <ul>
+    <li>destroy / multi-instance / nested-field / dedup / xss / toolbar-panel-manager /
+        a11y / print-element-type-registry 全部覆盖</li>
+    <li>新增 XSS regression: B7 text 元素 + B8 table header (commit ddcb0d3)</li>
+  </ul>
+</details>
+
+---
+
 ## 1.0.2 (2026-05-11) — Round 2 audit: remaining XSS + lifecycle full coverage
 
 > 内部版本号 1.0.2; tgz 文件名仍固定为 `vue-plugin-hiprint.tgz` (见 ADR-0006)。
