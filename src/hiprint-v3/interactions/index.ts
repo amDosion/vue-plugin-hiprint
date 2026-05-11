@@ -1,0 +1,59 @@
+/**
+ * src/hiprint-v3/interactions/index.ts — interaction module barrel.
+ *
+ * Public API for V3 interaction layer (jQuery-free). Consumed by designer
+ * components and (later) V3 native composables.
+ *
+ * Sub-modules:
+ *  - drag-drop.ts    (P16.1) — element drag, sidebar source, panel dropzone
+ *  - resize.ts       (P16.2) — element resize (interact.js Resizable)
+ *  - panel-reflow.ts (P16.2) — ResizeObserver-based panel size watcher
+ *  - context-menu.ts (P16.3) — right-click menu (@floating-ui/vue)
+ *  - selection.ts    (P16.4) — click selection + lasso + Ctrl+A/Escape
+ *  - keyboard.ts     (P16.5) — designer-wide keyboard shortcuts
+ */
+
+// ---- P16.1 drag-drop ----
+export {
+  enableElementDrag,
+  enableElementListSource,
+  enablePanelDropZone,
+  disableInteractions,
+} from './drag-drop'
+
+export type {
+  Position,
+  DragHandle,
+  DropZone,
+  ElementDragOptions,
+  ElementListSourceOptions,
+  InteractionRegistration,
+} from './types'
+
+// ---- P16.2 resize ----
+export { enableElementResize, disableElementResize } from './resize'
+export type { ResizeRect, ElementResizeOptions } from './resize'
+
+// ---- P16.2 panel reflow ----
+export { watchPanelSize } from './panel-reflow'
+export type { PanelSize, WatchPanelSizeOptions } from './panel-reflow'
+
+// ---- P16.3 context menu ----
+export { openContextMenu, buildElementContextItems } from './context-menu'
+export type {
+  ContextMenuItem,
+  ContextMenuOptions,
+  ContextMenuController,
+} from './context-menu'
+
+// ---- P16.4 selection ----
+export {
+  enableElementSelection,
+  enableLasso,
+  enableSelectionShortcuts,
+} from './selection'
+export type { SelectionEvent } from './selection'
+
+// ---- P16.5 keyboard ----
+export { enableDesignerKeyboard } from './keyboard'
+export type { KeyboardOptions } from './keyboard'

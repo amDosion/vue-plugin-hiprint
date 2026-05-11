@@ -348,6 +348,49 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     panels.value = nextPanels
   }
 
+  /**
+   * Move an element from one panel to another. Used by cross-panel drag-drop
+   * (P16). Immutable: both source and destination panel arrays are replaced.
+   *
+   * No-op if either panel id is unknown or element id isn't in source panel.
+   * Returns the moved element (or null on failure) so callers can patch
+   * options.left/top to the drop position.
+   */
+  function moveElementBetweenPanels(
+    srcPanelId: string,
+    dstPanelId: string,
+    elementId: string
+  ): CanvasElement | null {
+    if (srcPanelId === dstPanelId) return null
+    const srcIdx = panels.value.findIndex((p) => p.id === srcPanelId)
+    const dstIdx = panels.value.findIndex((p) => p.id === dstPanelId)
+    if (srcIdx < 0 || dstIdx < 0) {
+      console.warn('[hiprint] moveElementBetweenPanels: unknown panel id', {
+        srcPanelId,
+        dstPanelId,
+      })
+      return null
+    }
+    const srcPanel = panels.value[srcIdx]
+    const dstPanel = panels.value[dstIdx]
+    if (!srcPanel || !dstPanel) return null
+
+    const eIdx = srcPanel.printElements.findIndex((el) => el.id === elementId)
+    if (eIdx < 0) return null
+    const moved = srcPanel.printElements[eIdx]
+    if (!moved) return null
+
+    const nextSrcEls = srcPanel.printElements.slice()
+    nextSrcEls.splice(eIdx, 1)
+    const nextDstEls = [...dstPanel.printElements, moved]
+
+    const nextPanels = panels.value.slice()
+    nextPanels[srcIdx] = { ...srcPanel, printElements: nextSrcEls }
+    nextPanels[dstIdx] = { ...dstPanel, printElements: nextDstEls }
+    panels.value = nextPanels
+    return moved
+  }
+
   /** Set zoom scale. Clamp to a sane range (V2 PrintPanel.scale uses 0.1..5). */
   function setScale(s: number): void {
     if (!Number.isFinite(s)) {
@@ -402,6 +445,7 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     selectElement,
     selectMultiple,
     moveSelection,
+    moveElementBetweenPanels,
     setScale,
     setGridSize,
     $reset,

@@ -10,6 +10,8 @@
  */
 
 export { useCanvasStore } from './canvas'
+export type { CanvasElement, Panel, SelectionMode } from './canvas'
 export { useHistoryStore } from './history'
+export type { TemplateSnapshot } from './history'
 export { useTemplateStore } from './template'
 export { useSocketStore } from './socket'

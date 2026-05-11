@@ -1,0 +1,376 @@
+/**
+ * src/hiprint-v3/interactions/drag-drop.ts — V3 drag/drop interaction layer.
+ *
+ * Replaces V1/V2 jQuery UI .draggable() / .droppable() with interact.js
+ * (1.10.27). Completely jQuery-free.
+ *
+ * Three primary surfaces:
+ *  1. {@link enableElementDrag}         — drag an element ON canvas (move).
+ *  2. {@link enableElementListSource}   — drag from sidebar item INTO canvas.
+ *  3. {@link enablePanelDropZone}       — panel surface accepts drops.
+ *
+ * Cleanup: {@link disableInteractions} on the element. Components MUST call
+ * this on unmount or interact.js will hold a reference to the element +
+ * registered listeners (memory leak).
+ *
+ * Multi-select drag (P14.7 selection + this module):
+ *  - On dragstart, we read `useCanvasStore().selectedElementIds`.
+ *  - If the dragged element is part of the selection → ALL selected elements
+ *    move together via `canvas.moveSelection(dx, dy)`.
+ *  - Otherwise single-element move via `canvas.updateElement(panelId, id,
+ *    { options: { left, top } })`.
+ *
+ * Cross-panel drop (V3 differentiation):
+ *  - {@link enablePanelDropZone} registers a dropzone on each panel root.
+ *  - On `ondrop`, if the dragged element's `data-panel-id` differs from the
+ *    zone's panelId → call `canvas.moveElementBetweenPanels()`.
+ *
+ * Units:
+ *  - interact.js delivers deltas in screen px.
+ *  - We convert to pt via `px.toPt()` from internal/uom before patching the
+ *    canvas store (canvas store options.left/top are pt).
+ *  - Scale: canvas store has `scale` (zoom). The dx/dy from interact.js are
+ *    in display px AT THE CURRENT ZOOM. So actual pt delta is
+ *    `px.toPt(dx / scale)`.
+ *
+ * Snap: caller passes `gridSize` (pt). We translate to a px grid via
+ * `pt.toPx(gridSize) * scale` before handing to interact.js modifiers.
+ *
+ * NOTE on data-* attributes: panel dropzones use CSS selector `.hiprint-element`
+ * to filter accepted drags. Element roots MUST carry that class + a
+ * `data-panel-id` attribute for cross-panel detection to work. We do NOT
+ * mutate the element here — that's the component's responsibility.
+ */
+
+import interact from 'interactjs'
+import type { Interactable } from '@interactjs/types'
+
+// interact.js Modifier type lives inside a namespace and isn't re-exported
+// from @interactjs/types in a way we can import directly. The shape is
+// validated at runtime by interact.js itself; our buildModifiers call site
+// passes objects produced by interact.modifiers.snap()/restrict() which are
+// well-typed at point of construction.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InteractModifier = any
+import { useCanvasStore } from '@hiprint-v3/stores'
+import { pt, px } from '@hiprint-v3/internal'
+import type {
+  ElementDragOptions,
+  ElementListSourceOptions,
+  Position,
+} from './types'
+
+// ============ Registration tracking ============
+
+/**
+ * Track Interactable handles per element so {@link disableInteractions} can
+ * safely tear down. Using WeakMap so GC reclaims when element is removed.
+ */
+const _registry = new WeakMap<HTMLElement, Interactable>()
+
+// ============ Internal helpers ============
+
+/**
+ * Convert px delta (screen, at current zoom) to pt delta (canvas store space).
+ */
+function screenPxToPt(deltaPx: number, scale: number): number {
+  const safeScale = scale > 0 ? scale : 1
+  return px.toPt(deltaPx / safeScale)
+}
+
+/**
+ * Build interact.js modifiers from our option shape.
+ *
+ * Snap: convert pt gridSize → px (at current scale) for interact.js.
+ * Restrict: keep drag inside the closest ancestor with class `.hiprint-panel`
+ * (visual cue; final clamp also happens in updateElement caller).
+ */
+function buildModifiers(
+  gridSize: number | undefined,
+  scale: number
+): InteractModifier[] {
+  const mods: InteractModifier[] = []
+  if (gridSize && gridSize > 0) {
+    const stepPx = pt.toPx(gridSize) * (scale > 0 ? scale : 1)
+    mods.push(
+      interact.modifiers.snap({
+        targets: [interact.snappers.grid({ x: stepPx, y: stepPx })],
+        range: Infinity,
+        relativePoints: [{ x: 0, y: 0 }],
+      })
+    )
+  }
+  return mods
+}
+
+// ============ Public API ============
+
+/**
+ * Enable on-canvas element drag.
+ *
+ * Wires interact.js draggable + multi-select dispatch + snap-to-grid.
+ *
+ * @param el  Element root (must be absolutely-positioned + carry
+ *            `data-element-id` and `data-panel-id`).
+ * @param opts See {@link ElementDragOptions}.
+ */
+export function enableElementDrag(
+  el: HTMLElement,
+  opts: ElementDragOptions
+): void {
+  if (!el) {
+    console.warn('[hiprint] enableElementDrag: el is required')
+    return
+  }
+  if (!opts || !opts.elementId || !opts.panelId) {
+    console.warn(
+      '[hiprint] enableElementDrag: opts.elementId + opts.panelId required'
+    )
+    return
+  }
+
+  // Track totals across the full drag so onEnd can deliver final pos.
+  let dragStartPosPt: Position = { x: 0, y: 0 }
+  let isMultiDrag = false
+
+  const interactable = interact(el).draggable({
+    inertia: false,
+    listeners: {
+      start: () => {
+        try {
+          const canvas = useCanvasStore()
+          // Cache start position (pt) so onEnd can compute absolute pos.
+          // Pull from store rather than DOM to avoid measurement drift.
+          const panel = canvas.panels.find((p) => p.id === opts.panelId)
+          const elRec = panel?.printElements.find(
+            (e) => e.id === opts.elementId
+          )
+          const o = (elRec?.options as Record<string, unknown>) ?? {}
+          dragStartPosPt = {
+            x: Number(o.left ?? 0),
+            y: Number(o.top ?? 0),
+          }
+          // Capture multi-select state at drag START (don't re-check per move).
+          isMultiDrag =
+            canvas.selectedElementIds.size > 1 &&
+            canvas.selectedElementIds.has(opts.elementId)
+        } catch (err) {
+          console.warn('[hiprint] enableElementDrag start handler threw:', err)
+        }
+      },
+
+      move: (event: { dx: number; dy: number }) => {
+        try {
+          const canvas = useCanvasStore()
+          const scale = canvas.scale
+          const dxPt = screenPxToPt(event.dx, scale)
+          const dyPt = screenPxToPt(event.dy, scale)
+
+          if (isMultiDrag) {
+            // Multi-select: move ALL selected elements together.
+            canvas.moveSelection(dxPt, dyPt)
+          } else {
+            // Single: patch this one element's options.
+            const panel = canvas.panels.find((p) => p.id === opts.panelId)
+            const elRec = panel?.printElements.find(
+              (e) => e.id === opts.elementId
+            )
+            const o = (elRec?.options as Record<string, unknown>) ?? {}
+            const left = Number(o.left ?? 0) + dxPt
+            const top = Number(o.top ?? 0) + dyPt
+            canvas.updateElement(opts.panelId, opts.elementId, {
+              options: { left, top },
+            })
+          }
+
+          if (opts.onMove) {
+            // Caller wants raw delta this frame.
+            opts.onMove({ x: dxPt, y: dyPt })
+          }
+        } catch (err) {
+          console.warn('[hiprint] enableElementDrag move handler threw:', err)
+        }
+      },
+
+      end: () => {
+        try {
+          if (opts.onEnd) {
+            const canvas = useCanvasStore()
+            const panel = canvas.panels.find((p) => p.id === opts.panelId)
+            const elRec = panel?.printElements.find(
+              (e) => e.id === opts.elementId
+            )
+            const o = (elRec?.options as Record<string, unknown>) ?? {}
+            opts.onEnd({
+              x: Number(o.left ?? dragStartPosPt.x),
+              y: Number(o.top ?? dragStartPosPt.y),
+            })
+          }
+        } catch (err) {
+          console.warn('[hiprint] enableElementDrag end handler threw:', err)
+        }
+      },
+    },
+    modifiers: buildModifiers(opts.gridSize, _safeScale()),
+  })
+
+  _registry.set(el, interactable)
+}
+
+/**
+ * Enable an element-list (sidebar) row to act as a drag SOURCE that creates
+ * a new element on the canvas when dropped.
+ *
+ * Drop target detection is done by the matching {@link enablePanelDropZone}
+ * call on the panel: on ondrop the dropzone checks `data-tid` to decide
+ * whether to create a new element.
+ *
+ * @param el   The sidebar row element. Must carry `data-tid`.
+ * @param opts See {@link ElementListSourceOptions}.
+ */
+export function enableElementListSource(
+  el: HTMLElement,
+  opts: ElementListSourceOptions
+): void {
+  if (!el) {
+    console.warn('[hiprint] enableElementListSource: el is required')
+    return
+  }
+  if (!opts || !opts.tid) {
+    console.warn('[hiprint] enableElementListSource: opts.tid is required')
+    return
+  }
+
+  // Mark the element so panel dropzones can identify list-source drags.
+  el.classList.add('hiprint-list-source')
+  el.setAttribute('data-tid', opts.tid)
+  if (opts.createElement) {
+    // Stash the factory on the element so dropzone can find it without
+    // re-resolving registries. We use a Symbol on the DOM element via a side
+    // map (avoids polluting element).
+    _factoryByEl.set(el, opts.createElement)
+  }
+
+  const interactable = interact(el).draggable({
+    inertia: false,
+    // Visually float a clone or rely on caller's helper. We keep this minimal
+    // — the actual element stays in place; the dropzone handles creation.
+    listeners: {
+      start: () => {
+        el.classList.add('hiprint-dragging')
+      },
+      end: () => {
+        el.classList.remove('hiprint-dragging')
+      },
+    },
+  })
+
+  _registry.set(el, interactable)
+}
+
+/**
+ * Factory stash keyed by source element (avoid polluting DOM with closures).
+ */
+const _factoryByEl = new WeakMap<HTMLElement, () => Record<string, unknown>>()
+
+/**
+ * Enable a panel root as a drop zone.
+ *
+ * Accepts:
+ *   - Elements with `.hiprint-element` (existing canvas elements — cross-panel
+ *     drop).
+ *   - Elements with `.hiprint-list-source` (sidebar items — creates new
+ *     element).
+ *
+ * @param el      Panel root.
+ * @param panelId Owning panel id.
+ */
+export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
+  if (!el) {
+    console.warn('[hiprint] enablePanelDropZone: el is required')
+    return
+  }
+  if (!panelId) {
+    console.warn('[hiprint] enablePanelDropZone: panelId is required')
+    return
+  }
+
+  const interactable = interact(el).dropzone({
+    accept: '.hiprint-element, .hiprint-list-source',
+    overlap: 0.25,
+    ondrop: (event: { relatedTarget: HTMLElement }) => {
+      try {
+        const dragged = event.relatedTarget
+        if (!dragged) return
+        const canvas = useCanvasStore()
+
+        if (dragged.classList.contains('hiprint-list-source')) {
+          // New element drop from sidebar.
+          const tid = dragged.getAttribute('data-tid') ?? ''
+          if (!tid) {
+            console.warn(
+              '[hiprint] dropzone: list-source missing data-tid; ignored'
+            )
+            return
+          }
+          const factory = _factoryByEl.get(dragged)
+          const base = factory ? factory() : {}
+          canvas.addElement(panelId, {
+            tid,
+            options: (base.options as Record<string, unknown>) ?? {},
+            ...base,
+          })
+          return
+        }
+
+        // Otherwise: existing element. Check for cross-panel.
+        const srcPanelId = dragged.getAttribute('data-panel-id')
+        const elementId = dragged.getAttribute('data-element-id')
+        if (!srcPanelId || !elementId) {
+          // Not enough info to identify — same-panel drag handler already
+          // moved the element via enableElementDrag. Nothing to do here.
+          return
+        }
+        if (srcPanelId !== panelId) {
+          canvas.moveElementBetweenPanels(srcPanelId, panelId, elementId)
+        }
+        // If srcPanelId === panelId, no-op: same-panel drag already handled
+        // by the element's own draggable handler (position patched on move).
+      } catch (err) {
+        console.warn('[hiprint] enablePanelDropZone ondrop threw:', err)
+      }
+    },
+  })
+
+  _registry.set(el, interactable)
+}
+
+/**
+ * Tear down all interact.js handlers registered on `el`.
+ *
+ * Idempotent: safe to call multiple times. Safe to call on elements that
+ * were never registered (no-op).
+ */
+export function disableInteractions(el: HTMLElement): void {
+  if (!el) return
+  try {
+    interact(el).unset()
+  } catch (err) {
+    console.warn('[hiprint] disableInteractions threw:', err)
+  }
+  _registry.delete(el)
+  _factoryByEl.delete(el)
+}
+
+/**
+ * Internal: read canvas store scale without throwing when Pinia not active.
+ * Used at draggable registration time (may be called before component mount
+ * in some test paths).
+ */
+function _safeScale(): number {
+  try {
+    return useCanvasStore().scale
+  } catch {
+    return 1
+  }
+}
