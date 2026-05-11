@@ -14,6 +14,7 @@ import {
   VLinePrintElement,
   RectPrintElement,
   OvalPrintElement,
+  TablePrintElement,
 } from '../index.js'
 
 describe('createPrintElementByType', () => {
@@ -28,6 +29,7 @@ describe('createPrintElementByType', () => {
     ['vline', VLinePrintElement],
     ['rect', RectPrintElement],
     ['oval', OvalPrintElement],
+    ['table', TablePrintElement],
   ]
 
   eachType.forEach(([type, Cls]) => {
@@ -43,10 +45,9 @@ describe('createPrintElementByType', () => {
     )
   })
 
-  it('throws on table (P7 pending)', () => {
-    expect(() => createPrintElementByType({ type: 'table' }, {})).toThrow(
-      /table element not yet implemented/
-    )
+  it('creates table → TablePrintElement (P7 done)', () => {
+    const el = createPrintElementByType({ tid: 'm.table', title: 'T', type: 'table' }, {})
+    expect(el).toBeInstanceOf(TablePrintElement)
   })
 })
 

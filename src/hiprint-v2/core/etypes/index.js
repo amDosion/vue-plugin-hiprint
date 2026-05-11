@@ -20,6 +20,7 @@ export {
   RectPrintElement,
   OvalPrintElement,
 } from './shape-lines.js'
+export { TablePrintElement } from './table/index.js'
 
 import { TextPrintElement } from './text.js'
 import { LongTextPrintElement } from './long-text.js'
@@ -33,6 +34,7 @@ import {
   RectPrintElement,
   OvalPrintElement,
 } from './shape-lines.js'
+import { TablePrintElement } from './table/index.js'
 
 /**
  * Factory: instantiate the correct subclass for a given type string.
@@ -68,7 +70,7 @@ export function createPrintElementByType(printElementType, options) {
     case 'oval':
       return new OvalPrintElement(printElementType, options)
     case 'table':
-      throw new Error('[hiprint] table element not yet implemented in V2 (P7 pending)')
+      return new TablePrintElement(printElementType, options)
     default:
       throw new Error('[hiprint] unsupported element type: ' + type)
   }

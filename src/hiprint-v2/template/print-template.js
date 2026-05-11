@@ -19,6 +19,13 @@
 
 import { PrintPanel } from '../core/panel.js'
 import { assertNotDestroyed, safeCall } from '@hiprint-v2/internal'
+import { designMixin } from './design.js'
+import { getHtmlMixin } from './get-html.js'
+import { printMixin } from './print.js'
+import { pdfMixin } from './pdf.js'
+import { updateMixin } from './update.js'
+import { historyMixin } from './history.js'
+import { zoomMixin } from './zoom.js'
 
 const GLOBAL_TEMPLATE_MAP = '__HIPRINT_V2_TEMPLATE_MAP__'
 
@@ -46,6 +53,10 @@ export class PrintTemplate {
     this._destroyed = false
     /** @type {boolean}  Design state — true after first design() call (state-modeler R3) */
     this._designed = false
+    /** @type {jQuery|HTMLElement|undefined}  Set by design() */
+    this.container = undefined
+    /** @type {object}  History feature toggle (V1 default true) */
+    this.history = options.history !== false
 
     /** @type {object|null}  Original template JSON snapshot */
     this.template = options.template || null
@@ -136,7 +147,44 @@ export class PrintTemplate {
     if (this._destroyed) return
     this._destroyed = true
 
-    // Step 1: destroy panels (clears DOM + event listeners)
+    // Step 0: Reset any in-progress global drag state (V1 line 12585-12588)
+    safeCall(
+      () => {
+        if (typeof window !== 'undefined' && window.HiPrintlib && window.HiPrintlib.instance) {
+          window.HiPrintlib.instance.draging = false
+        }
+        if (typeof window !== 'undefined' && window.$) {
+          window
+            .$('body')
+            .removeClass('hiprint-guide-dragging hiprint-el-list-dragging')
+        }
+      },
+      [],
+      'PrintTemplate.destroy: drag state reset'
+    )
+
+    // Step 1 (was Step 6): Unbind event-bus subscriptions for this template id
+    // (V1 line 12594-12601). Must be BEFORE panel teardown so cleanup events
+    // don't fire stale handlers.
+    safeCall(
+      () => {
+        const bus =
+          typeof window !== 'undefined' && window.hinnn && window.hinnn.event
+            ? window.hinnn.event
+            : null
+        if (bus && typeof bus.off === 'function') {
+          bus.off('hiprintTemplateDataChanged_' + this.id)
+          bus.off('hiprintTemplateDataShortcutKey_' + this.id)
+          bus.off('PrintElementSelectEventKey_' + this.id)
+          bus.off('BuildCustomOptionSettingEventKey_' + this.id)
+          bus.off('hiprintTemplateDeleteElement_' + this.id)
+        }
+      },
+      [],
+      'PrintTemplate.destroy: event-bus off'
+    )
+
+    // Step 2: destroy panels (clears DOM + event listeners)
     safeCall(
       () => {
         this.printPanels.forEach((p) => {
@@ -147,28 +195,35 @@ export class PrintTemplate {
       'PrintTemplate.destroy: panel teardown'
     )
 
-    // Step 2: clear panels array
+    // Step 3: clear panels array
     this.printPanels = []
 
-    // Step 3: unregister from global map (only if identity matches)
+    // Step 4: empty container DOM (preserve host structure)
+    safeCall(
+      () => {
+        if (this.container && typeof this.container.empty === 'function') {
+          this.container.empty()
+        }
+      },
+      [],
+      'PrintTemplate.destroy: container empty'
+    )
+
+    // Step 5: unregister from global map (only if identity matches)
     this._unregisterFromMap()
 
-    // Step 4: clear template + history refs
+    // Step 6: clear template + history + back-refs
     this.template = null
     this.lastJson = null
     this.historyList = []
     this.historyPos = 0
-
-    // Step 5: clear back-refs
     this.editingPanel = undefined
     this.settingContainer = undefined
     this.paginationContainer = undefined
+    this.container = undefined
     this.fontList = []
     this.fields = []
     this.onImageChooseClick = undefined
-
-    // Step 6 (TODO P10b): unbind document-level keyboard / clicked handlers
-    // (V1 calls hinnn.event.off('hiprintTemplateDataShortcutKey_' + this.id))
   }
 
   // ============ Panels API ============
@@ -367,24 +422,37 @@ export class PrintTemplate {
     return this.onImageChooseClick
   }
 
-  // ============ TODO P10b (UI / drag / print / pdf) ============
+  // ============ P10b/P10c mixed-in methods (see below Object.assign) ============
   //
-  // Pending V1 method migration:
-  //
-  // - design(container, opts) — Build full design DOM, mount to container.
-  //   V1 line 12335-12347 + state-modeler R3 _designed idempotency guard.
-  // - getHtml(data) / getSimpleHtml(data) — Print-time HTML render.
-  // - getHtmlAsync / getSimpleHtmlAsync — Batched async render with destroy abort.
-  // - print(data) / print2(data) — Local browser print + socket print.
-  // - printByHtml / printByHtml2 — Print arbitrary HTML.
-  // - toPdf(data, filename, opts) — jspdf integration with destroy race check (R3 state-modeler).
-  // - alignElements / zoom / rotatePaper — Editing operations.
-  // - getPaperType / getOrient / getPrintStyle — Page metadata.
-  // - update(json) — Replace template.
-  // - undo / redo — History.
-  //
-  // These will be ported in P10b/P10c with full V1 line-by-line migration.
+  // Wired via Object.assign(PrintTemplate.prototype, mixin) at module bottom:
+  //  - designMixin    → design, _createContainer
+  //  - getHtmlMixin   → getSimpleHtml, getSimpleHtmlAsync, getHtml, getHtmlAsync
+  //  - printMixin     → print, print2, printByHtml, printByHtml2, clientIsOpened,
+  //                     getPrinterList, _sentToClient, _clientIsOpened, _guid, ...
+  //  - pdfMixin       → toPdf, _createTempContainer, _removeTempContainer, _getTempContainer
+  //  - updateMixin    → update
+  //  - historyMixin   → undo, redo, addHistoryEntry, getHistoryState
+  //  - zoomMixin      → setPaper, rotatePaper, alignElements, zoom,
+  //                     getPaperType, getOrient, getPrintStyle
 }
+
+// ============ Mixin assembly (P10b) ============
+//
+// Each mixin is a plain object of method-name → function pairs. Object.assign
+// copies them to the prototype so `instanceof PrintTemplate` + `tpl.design()`
+// still work. This keeps each concern (design/render/print/pdf/update/history/
+// zoom) in its own file while keeping the public API on a single class.
+
+Object.assign(
+  PrintTemplate.prototype,
+  designMixin,
+  getHtmlMixin,
+  printMixin,
+  pdfMixin,
+  updateMixin,
+  historyMixin,
+  zoomMixin
+)
 
 /**
  * Lookup template by id from global map.

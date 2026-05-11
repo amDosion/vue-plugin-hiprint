@@ -93,6 +93,31 @@ export {
   createPrintElementByType,
 } from './core/etypes/index.js'
 
+// =========== P7: table element ===========
+export {
+  TablePrintElement,
+  TableExcelHelper,
+  TableCell,
+  TableHeaderCell,
+  TableColumnEntity,
+  TextInlineEditor,
+  SelectInlineEditor,
+  TableColumnInlineEditor,
+  createEditor,
+  createSelect,
+  applyRowsColumnsMerge,
+  resolveRowsColumnsMerge,
+  createTableHead,
+  createTableRow,
+  createTableFooter,
+  createRowTarget,
+  createEmptyRowTarget,
+  resizeTableCellWidth,
+  reconsitutionTableColumnTree,
+  getColumnsWidth,
+  getOrderdColumns,
+} from './core/etypes/table/index.js'
+
 // =========== P8: PrintPanel (skeleton + serialize) ===========
 export { PrintPanel } from './core/panel.js'
 
@@ -108,6 +133,25 @@ export {
   sendByFragments,
   getInstance as getHiWebSocket,
 } from './socket/index.js'
+
+// =========== P11: UI factories (adapter mode — delegates to V1 bundle) ===========
+// P11 adapter mode: V2 surface declarations delegate to V1 `window.hiprint` for the
+// heavy jQuery DOM construction (buildToolbar ~1550 lines, buildDesigner ~300 lines,
+// createElementListPanel ~260 lines). Adapters add R3 invariant guards at the
+// V1 boundary (safeCall on opts.onXxx, namespace verification, destroy idempotency).
+// Full V2-native rewrite deferred to P14 (after V1 deletion) and depends on
+// P7/P8b/P9b/P10b completion.
+export {
+  buildToolbar,
+  buildDesigner,
+  createElementListPanel,
+  refreshElementList,
+  destroyElementListPanel,
+  createPropertyPanel,
+  bindPropertyPanel,
+  _generateToolbarUid,
+  _generateDesignerUid,
+} from './ui/index.js'
 
 // =========== P6-P11: pending — re-export from V1 bundle ===========
 // Until P6-P11 are migrated, the following symbols still come from the
@@ -136,11 +180,11 @@ export function getV2PhaseStatus() {
     P4_renderers: 'done',
     P5_core_registry: 'done',
     P6_etypes: 'done', // 10 subclasses + factory
-    P7_table: 'pending', // 2500 行 V1 table complex (cell/excel-helper/inline-editor)
+    P7_table: 'done', // cell + excel-helper + inline-editor + row-merge + print-element
     P8_panel: 'skeleton', // data layer + serialize; design/drag/shortcuts TODO P8b
-    P9_base_print_element: 'skeleton', // core API + abstract; drag/copy/keyboard P9b TODO
-    P10_template: 'skeleton', // core API + serialize; getHtml/print/pdf/design P10b TODO
-    P11_ui_toolbar_designer: 'pending',
+    P9_base_print_element: 'extended', // P9b done: drag/copy/keyboard/clone/selectFromList/inRect/multiSelect
+    P10_template: 'extended', // P10b done: design/getHtml/print/print2/printByHtml*/toPdf/update/undo/redo/zoom/setPaper
+    P11_ui_toolbar_designer: 'adapter', // V2 surface declared, delegates to V1 bundle internally
     P12_socket: 'partial', // socket done; full entry wiring pending P6-P11
     P13_switch: 'pending',
     P14_cleanup: 'pending',
