@@ -19,6 +19,9 @@
 | [0004](0004-single-bundle-maintenance.md) | 单 bundle.js 内修源码而非拆模块 | accepted |
 | [0005](0005-print-template-destroy-lifecycle.md) | 引入 PrintTemplate.destroy 生命周期 | accepted |
 | [0006](0006-fixed-tgz-filename.md) | tgz 固定文件名 + 内部 version | accepted |
+| [0007](0007-print-element-type-registry-export.md) | 暴露 PrintElementTypeRegistry export 分离 data 与 UI builder | accepted |
+| [0008](0008-jspdf-upgrade-dompurify-cve.md) | jspdf 2.5 → 4.2.1 升级清 dompurify CVE | accepted |
+| [0009](0009-fix-discipline-highest-priority.md) | 引入 fix-discipline 规则 (最高优先级) | accepted |
 
 ## When to write a new ADR
 

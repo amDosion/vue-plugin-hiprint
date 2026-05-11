@@ -1,6 +1,6 @@
 # hiprint.bundle.js 代码导航 + 实现 Blueprint
 
-> 给"接管者"用：从零理解 15147 行单文件 bundle.js 的代码地图。
+> 给"接管者"用：从零理解 15344 行单文件 bundle.js 的代码地图。
 > 假设读者：懂 Vue 3 + jQuery，但不熟 hiprint。
 >
 > 配套：[`CODEMAPS/`](./CODEMAPS/) 各模块详细 codemap、[`TOOLBAR-ARCHITECTURE.md`](./TOOLBAR-ARCHITECTURE.md) 工具栏专用、[`API-REFERENCE.md`](./API-REFERENCE.md) 公开 API 速查。
@@ -20,21 +20,22 @@
 | 1653-1893 | 表格内编辑器 | 单元格行内 `text editor`/`select editor` + `HiTableColumn` 表头列名编辑 |
 | 1894-2398 | `TableExcelHelper` | 静态工具：`<thead>/<tbody>/<tfoot>` 生成 / 列宽分配 / 多层表头展平 / 行分组汇总 / barcode/qrcode/image 内嵌 |
 | 2399-2540 | `PrintReferenceElement` + 属性选项 Item Manager | 翻页计算位置 + 单例管理所有属性控件 |
-| 2540-6170 | 属性面板选项控件集 | `lineHeight/fontSize/fontWeight/textAlign/borderStyle/tableBorder/widthHeight/formatter` 等数十个控件，每个 4 方法：`createTarget/getValue/setValue/css` |
-| 6171-8876 | `TablePrintElement` + `HiTable` | 表格元素子类（覆盖 `createTarget/getHtml/getDesignTarget`）+ 设计时右键菜单（插行/删列/合并）|
-| 8877-9182 | `PrintElementTypeManager` + `PrintElementType` | 单例管理可拖拽元素类型注册/查询；`PrintElementType` 类 `h`（普通）和 `ctable`（表格）；`createPrintElementTypeHtml` 渲染左侧组件面板 |
-| 9183-9265 | `ImagePrintElement` (`v`) | 图片渲染 + base64 转换 |
-| 9266-9935 | `LongTextPrintElement` (`w`) | 长文本，含分页计算（逐行分割至剩余高度）|
-| 9936-10103 | `TextPrintElement` (`D`) | 普通文本 + `updateTargetText` + barcode/qrcode 文本类型内联渲染 |
-| 10103-10600 | `HtmlPrintElement` / `VLine` / `HLine` / `Rect` / `Oval` / `Barcode` / `QRCode` | 各辅助图形 + 码类元素 |
-| 10600-10712 | `PrintElementTypeGroup` + `PrintPanelEntity` | 分组注册 + 面板序列化 Value Object |
-| 10712-11100 | `PrintPanel` 上半 | 构造/`design`/`droppablePaper`(drop)/`initPrintElements`/键盘快捷键/多选框选 |
-| 11100-12103 | `PrintPanel` 下半 | `getPanelEntity`(序列化)/`getHtml`(打印)/`alignElements`/`update`(undo-redo)/`deletePrintElement` |
-| 12103-12243 | `PrintPaginationCreator` + `OptionSettingPanel` | 底部分页栏 + 右侧属性面板 |
-| 12244-13107 | **`PrintTemplate` (`ct`) 主类** | 多 `PrintPanel` 管理 + `design/print/getJson/update/undo/redo/destroy` + `_assertNotDestroyed` 守卫 helper + 历史栈 + 自动保存 |
-| 13108-14657 | **`buildToolbar` 函数** | 工具栏构造：`_toolbarUid` + `_safeCall` helper + 纸张/缩放/旋转/对齐/预览/打印/保存/分页管理；返回 `toolbarCtrl` |
-| 14658-14952 | **`buildDesigner` 函数** | 设计器工厂：`_designerUid` + 三栏布局 + 初始化 `PrintTemplate` + 调 `buildToolbar`；返回 `designerCtrl` |
-| 14953-15147 | 入口 `mt` (hiprint.init) + 公开导出 | `hiprint.init`、`PrintTemplate`、`buildToolbar`、`buildDesigner`、`print`、`getHtml` 等对外挂载 |
+| 2540-6200 | 属性面板选项控件集 | `lineHeight/fontSize/fontWeight/textAlign/borderStyle/tableBorder/widthHeight/formatter` 等数十个控件，每个 4 方法：`createTarget/getValue/setValue/css` |
+| 6201-8960 | `TablePrintElement` + `HiTable` | 表格元素子类（覆盖 `createTarget/getHtml/getDesignTarget`）+ 设计时右键菜单（插行/删列/合并）|
+| 8961-9230 | `PrintElementTypeManager` + `PrintElementType` | 单例管理可拖拽元素类型注册/查询；`PrintElementType` 类 `h`（普通）和 `ctable`（表格）；`createPrintElementTypeHtml` 渲染左侧组件面板 |
+| 9231-9320 | `ImagePrintElement` (`v`) | 图片渲染 + base64 转换 |
+| 9321-9990 | `LongTextPrintElement` (`w`) | 长文本，含分页计算（逐行分割至剩余高度）|
+| 9991-10160 | `TextPrintElement` (`D`) | 普通文本 + `updateTargetText` + barcode/qrcode 文本类型内联渲染 |
+| 10161-10660 | `HtmlPrintElement` / `VLine` / `HLine` / `Rect` / `Oval` / `Barcode` / `QRCode` | 各辅助图形 + 码类元素 |
+| 10661-10780 | `PrintElementTypeGroup` + `PrintPanelEntity` | 分组注册 + 面板序列化 Value Object |
+| 10781-11170 | `PrintPanel` 上半 | 构造/`design`/`droppablePaper`(drop)/`initPrintElements`/键盘快捷键/多选框选 |
+| 11171-12170 | `PrintPanel` 下半 | `getPanelEntity`(序列化)/`getHtml`(打印)/`alignElements`/`update`(undo-redo)/`deletePrintElement` |
+| 12171-12243 | `PrintPaginationCreator` + `OptionSettingPanel` | 底部分页栏 + 右侧属性面板 |
+| 12244-13230 | **`PrintTemplate` (`ct`) 主类** | 多 `PrintPanel` 管理 + `design/print/getJson/update/undo/redo/destroy` + `_assertNotDestroyed` 守卫 helper + `isDestroyed()` 公开 getter + `design()` _designed 幂等守卫 + `deletePanel()` editingPanel re-select + 历史栈 + 自动保存 |
+| 13231-13295 | **Module-level helpers (R3)** | `_safeCall(fn, args, name)` (13234) 业务回调 try-catch 隔离;`_evalCap(src, name)` (13242) 安全 M3 — formatter/styler 字符串 5000 字符上限保护 |
+| 13296-14849 | **`buildToolbar` 函数** | 工具栏构造：`_toolbarUid` + `_toolbarClickNs` namespace + 纸张/缩放/旋转/对齐/预览/打印/保存/分页管理；返回 `toolbarCtrl` |
+| 14850-15150 | **`buildDesigner` 函数** | 设计器工厂：`_designerUid` + `_designerEventNs` (`.hiprintDesigner_<uid>`) 全局事件 namespace + 三栏布局 + 初始化 `PrintTemplate` + 调 `buildToolbar`；返回 `designerCtrl` |
+| 15151-15344 | 入口 `mt` (hiprint.init) + 公开导出 | `hiprint.init`、`PrintTemplate`、`buildToolbar`、`buildDesigner`、`print`、`getHtml` 等对外挂载 |
 
 ---
 
@@ -42,20 +43,23 @@
 
 ```
 BasePrintElement (655)
-├── ImagePrintElement       v  (9203)  — 图片
-├── LongTextPrintElement    w  (9697)  — 长文本，覆盖 getHtml 做行级分页
-├── TextPrintElement        D  (9937)  — 普通文本/barcode/qrcode 文本模式
-├── HtmlPrintElement        S  (10103) — 富文本
-├── VLinePrintElement       F  (10159) — 竖线
-├── HLinePrintElement       A  (10200) — 横线
-├── RectPrintElement        k  (10240) — 矩形
-├── OvalPrintElement        V  (10280) — 椭圆
-├── BarcodePrintElement   barcode (10299) — JsBarcode
-├── QRCodePrintElement   qrcode (10367) — bwip-js
-└── TablePrintElement      (6206) — 覆盖 getDesignTarget/createTarget/getHtml
+├── ImagePrintElement       v  (~9230)  — 图片
+├── LongTextPrintElement    w  (~9720)  — 长文本，覆盖 getHtml 做行级分页
+├── TextPrintElement        D  (~9990)  — 普通文本/barcode/qrcode 文本模式
+├── HtmlPrintElement        S  (~10160) — 富文本
+├── VLinePrintElement       F  (~10220) — 竖线
+├── HLinePrintElement       A  (~10260) — 横线
+├── RectPrintElement        k  (~10300) — 矩形
+├── OvalPrintElement        V  (~10340) — 椭圆
+├── BarcodePrintElement   barcode (~10360) — JsBarcode
+├── QRCodePrintElement   qrcode (~10430) — bwip-js
+└── TablePrintElement      (~6270) — 覆盖 getDesignTarget/createTarget/getHtml
 
 PrintElementOption (553)
 └── TablePrintElementOption — 扩展 columns 字段
+
+> 注: 上述子类行号自 R3 后整体下移 ~30-60 行,标注"~"为近似值,
+> 精确行号请用 `Grep` 'BasePrintElement.prototype.<methodName>' 现场确认。
 ```
 
 ---
@@ -108,7 +112,10 @@ Ctrl+Z → $(document).keydown
 ### 4. destroy
 
 ```
-ct.destroy() (12458)
+ct.destroy() (12567)
+  0. 中断全局拖拽 - s.a.instance.draging=false +
+     $("body").removeClass("hiprint-guide-dragging hiprint-el-list-dragging")
+     (R3 新加: 防 destroy 后 mouseup 还想操作已清空 DOM)
   1. _destroyed = true
   2. hinnn.event.off("hiprintTemplateDataChanged_"+id) 等 4 个事件
   3. printPanels.forEach → panel.clear() → el.designTarget.remove()
@@ -116,15 +123,16 @@ ct.destroy() (12458)
   5. container.empty()
   6. 解引用 printPanels/historyList
 
-注：destroy 后,所有公开方法通过 `_assertNotDestroyed(name)` (12439)
+注：destroy 后,所有公开方法通过 `_assertNotDestroyed(name)` (12545)
 统一返回安全 fallback (undefined / 空 PrintTemplateEntity / 空 jQuery),
 不再各处重复 `if (this._destroyed) return ...`。
+业务代码用 `tpl.isDestroyed()` (12542) 替代直接读私有 `_destroyed`。
 ```
 
 ### 5. 模板序列化 getJson
 
 ```
-ct.getJson() (12423)
+ct.getJson() (12528)
   → printPanels.forEach → panel.getPanelEntity(withType=true) (11125)
       → printElements.forEach → el.getPrintElementEntity(true)
           → { tid?: string, options: PrintElementOptionEntity, printElementType: {type, title} }
@@ -143,26 +151,32 @@ ct.getJson() (12423)
 ### 1. `BasePrintElement.prototype.getDesignTarget` (735)
 绑定 click 选中、dblclick 行内编辑 — 元素进入设计画布的唯一入口。读懂它才能理解"选中"和"属性面板联动"的事件链。
 
-### 2. `BasePrintElement.prototype.getData` (1263)
+### 2. `BasePrintElement.prototype.getData` (1265)
 `field.split('.').reduce(...)` 一行决定字段取值规则（支持嵌套路径）。是"数据绑定"的最小核心。
 
-### 3. `PrintPanel.prototype.droppablePaper` (11164)
+### 3. `PrintPanel.prototype.droppablePaper` (11237)
 drop 事件完整处理：坐标换算（px→pt→缩放补偿）、元素挂载、触发历史记录。理解它 = 理解拖放全流程。
 
-### 4. `PrintPanel.prototype.getHtml` (11004)
+### 4. `PrintPanel.prototype.getHtml` (11077)
 打印渲染主流程：按 top 排序 → 计算翻页 → 调每个元素的 `getHtml`。是"设计 → 打印"转化枢纽。
 
-### 5. `PrintTemplate.prototype.destroy` (12458)
-4 步 teardown 顺序（事件→DOM→注册表→引用）展示整个对象图的生命周期。读懂它能快速定位所有资源持有点，对 Vue 路由复用场景尤为关键。
+### 5. `PrintTemplate.prototype.destroy` (12567)
+5 步 teardown 顺序（拖拽中断→事件→DOM→注册表→引用）展示整个对象图的生命周期。读懂它能快速定位所有资源持有点，对 Vue 路由复用场景尤为关键。Step 0 (R3 新加) 中断进行中的全局拖拽,防 mouseup 操作已清空 DOM。
 
-### Bonus: 两个新加的 helper
+### Bonus: 四个 helper (R3)
 
-- **`PrintTemplate.prototype._assertNotDestroyed(name)` (12439)** —
+- **`PrintTemplate.prototype._assertNotDestroyed(name)` (12545)** —
   统一 destroy 守卫：`if (this._assertNotDestroyed('getJson')) return new st({panels:[]})`。
-  替代分散在每个公开方法的 `if (this._destroyed) return ...` 逻辑，所有方法行为一致。
-- **`_safeCall(fn, args, name)` (13118, buildToolbar 内部)** —
+  替代分散在 16+ 公开方法的 `if (this._destroyed) return ...` 逻辑。
+- **`PrintTemplate.prototype.isDestroyed()` (12542)** — 公开 getter, 业务代码替代直接读 `_destroyed`。
+- **`_safeCall(fn, args, name)` (13234, module-level)** —
   统一业务回调隔离：`_safeCall(opts.onPreview, [template], 'onPreview')`。
-  catch 业务方异常 + console.error 带 `[hiprint]` 前缀，避免单个回调抛错炸掉整个工具栏点击链。
+  R3 从 buildToolbar 内部提升到 module-level, buildToolbar + buildDesigner 共享。
+  catch 业务方异常 + console.error 带 `[hiprint]` 前缀。
+- **`_evalCap(src, name)` (13242, module-level, security M3)** —
+  formatter / styler 字符串 `new Function` 前的 5000 字符上限保护。
+  防止模板 JSON 被篡改注入巨大字符串导致 DoS / 内存炸。
+  超长直接 `console.warn` 退化为 `undefined`。
 
 ---
 

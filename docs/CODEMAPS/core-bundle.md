@@ -1,7 +1,7 @@
 # Core Bundle Codemap
 
-**Last Updated:** 2026-05-10
-**Source:** `src/hiprint/hiprint.bundle.js` (15147 lines)
+**Last Updated:** 2026-05-11
+**Source:** `src/hiprint/hiprint.bundle.js` (15344 lines)
 
 ## Architecture
 
@@ -73,22 +73,32 @@ toPdf(args, filename)                  // → Promise<void>
 
 ### Lifecycle (NEW)
 ```js
-destroy()                              // (line 12458) idempotent cleanup:
+destroy()                              // (line 12567) idempotent cleanup:
+                                       // • abort in-flight global drag (draging=false + remove body class)
                                        // • remove event subscriptions
                                        // • clear canvas elements
                                        // • remove panel manager UI
                                        // • deregister from singleton map
                                        // • mark _destroyed = true
 
-_assertNotDestroyed(name)              // (line 12439) shared guard helper.
-                                       // Used by all public methods:
+_assertNotDestroyed(name)              // (line 12545) shared guard helper.
+                                       // Used by 16+ public methods:
                                        //   if (this._assertNotDestroyed('getJson'))
                                        //     return <safe fallback>;
-                                       // Logs `[hiprint] <name>: instance destroyed`
+                                       // Logs `[hiprint] <name> called on destroyed template`
                                        // once per call. Replaces ad-hoc
                                        // `if (this._destroyed) return ...` checks.
 
-isDestroyed                            // boolean, true after destroy()
+isDestroyed()                          // (line 12542) public getter, returns
+                                       // !!this._destroyed for business code
+                                       // (replaces direct read of private _destroyed).
+
+design(selector, opts)                 // (line 12366) idempotent. Twice-call
+                                       // (HMR / KeepAlive re-mount) detects
+                                       // `this._designed` and runs cleanup:
+                                       // container.find('*').off('.hiprint') +
+                                       // container.empty() before re-binding.
+                                       // Prevents accumulated jQuery handler leaks.
 ```
 
 ### Pagination (NEW)
@@ -145,30 +155,47 @@ new PrintTemplate({
 - Silent failure guards: methods after destroy() return undefined + warn
 - Field override: nested paths support (customer.name, address.0.line1)
 - Refactor (c0fd3a1): introduced `PrintTemplate.prototype._assertNotDestroyed`
-  (line 12439) for unified destroy guards, and `_safeCall(fn, args, name)`
-  (line 13118, inside `buildToolbar`) for unified business-callback isolation.
+  for unified destroy guards, and `_safeCall(fn, args, name)` for unified
+  business-callback isolation.
+- R3 round: `_safeCall` promoted to **module-level** (shared by buildToolbar +
+  buildDesigner). New module-level helper `_evalCap(src, name)` (security M3)
+  caps formatter / styler string length at 5000 chars before `new Function`,
+  defending against malicious template JSON. `design()` got `_designed`
+  idempotency guard. `deletePanel()` got editingPanel re-select semantics.
+  `destroy()` got step 0 drag-state abort. `isDestroyed()` exposed as public
+  getter. All `$(document)` handlers in buildDesigner now use
+  `_designerEventNs` namespace.
 
-## Key Function Line Numbers (post-c0fd3a1, bundle = 15147 lines)
+## Key Function Line Numbers (R3, bundle = 15344 lines)
 
 | Function | Line |
 |----------|------|
 | `BasePrintElement.prototype.getDesignTarget` | 735 |
-| `BasePrintElement.prototype.getData` | 1263 |
-| `t.prototype.addPrintElementTypes` (PrintElementTypeManager) | 8910 |
-| `t.prototype.removePrintElementTypes` | 8960 |
-| `PrintPanel.prototype.getHtml` | 11004 |
-| `PrintPanel.prototype.droppablePaper` | 11164 |
-| `PrintPanel.prototype.clear` | 11220 |
-| `PrintTemplate` (`ct = function () { ... }`) class start | 12244 |
-| `PrintTemplate.prototype.getHtml` | 12361 |
-| `PrintTemplate.prototype.getJson` | 12423 |
-| `PrintTemplate.prototype._assertNotDestroyed` (NEW) | 12439 |
-| `PrintTemplate.prototype.destroy` | 12458 |
-| `function buildToolbar` | 13108 |
-| `_toolbarUid` declaration | 13113 |
-| `_safeCall(fn, args, name)` (NEW, buildToolbar-scoped) | 13118 |
-| `function buildDesigner` | 14658 |
-| `_designerUid` declaration | 14689 |
+| `BasePrintElement.prototype.getData` | 1265 |
+| `t.prototype.addPrintElementTypes` (PrintElementTypeManager) | 8961 |
+| `t.prototype.removePrintElementTypes` | 9011 |
+| `PrintPanel.prototype.getHtml` | 11077 |
+| `PrintPanel.prototype.droppablePaper` | 11237 |
+| `PrintPanel.prototype.clear` | 11293 |
+| `PrintTemplate` (`ct = function () { ... }`) class start | ~12244 |
+| `PrintTemplate.prototype.design` (idempotency guard) | 12366 |
+| `PrintTemplate.prototype.getHtml` | 12451 |
+| `PrintTemplate.prototype.selectPanel` | 12484 |
+| `PrintTemplate.prototype.deletePanel` (editingPanel re-select) | 12491 |
+| `PrintTemplate.prototype.getJson` | 12528 |
+| `PrintTemplate.prototype.isDestroyed` (NEW public getter) | 12542 |
+| `PrintTemplate.prototype._assertNotDestroyed` | 12545 |
+| `PrintTemplate.prototype.clear` | 12559 |
+| `PrintTemplate.prototype.destroy` | 12567 |
+| `PrintTemplate.prototype.toPdf` | 12767 |
+| `_safeCall(fn, args, name)` (module-level, R3) | 13234 |
+| `_evalCap(src, name)` (module-level, R3 security M3) | 13242 |
+| `function buildToolbar` | 13296 |
+| `_toolbarUid` declaration | 13301 |
+| `_toolbarClickNs` | 13302 |
+| `function buildDesigner` | 14850 |
+| `_designerUid` declaration | 14881 |
+| `_designerEventNs` declaration | 14882 |
 
 ## Related
 

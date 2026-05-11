@@ -20,6 +20,11 @@
 | [PM-006 业务回调未隔离](006-business-callback-throw.md) | 健壮性 | MEDIUM | ✅ rules/hiprint-bundle.md |
 | [PM-007 addPrintElementTypes tid 冲突](007-tid-dedup.md) | API 契约 | MEDIUM | ✅ Bucket-level dedup + warn |
 | [PM-008 removePrintElementTypes prefix 误删](008-remove-prefix-mismatch.md) | API 契约 | HIGH | ✅ exact match + dotted prefix |
+| [PM-009 Promise.resolve(syncThrow) 绕 .catch](009-promise-sync-throw.md) | 异步 | HIGH | ✅ try 包外层 + Promise.resolve |
+| [PM-010 destroy 后 async stale resolve](010-async-stale-resolve.md) | 异步竞态 | HIGH | ✅ _destroyed 入口检查 + .catch + abort reject |
+| [PM-011 XHR 网络错静默](011-xhr-silent-network-failure.md) | silent failure | HIGH | ✅ onerror/ontimeout + status 分类 |
+| [PM-012 design() 非幂等](012-design-idempotency.md) | 资源管理 | HIGH | ✅ _designed flag + cleanup |
+| [PM-013 数字 option 拼接 XSS](013-numeric-option-injection.md) | 安全 | CRITICAL | ✅ parseInt + isFinite + clamp |
 
 ## 写新 Postmortem 时的模板
 
