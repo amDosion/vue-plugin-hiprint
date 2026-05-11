@@ -311,8 +311,17 @@ const tpl = useTemplateStore()
 
 const toolbarRootEl = ref<HTMLElement | null>(null)
 const selectedPaperLabel = ref<string>(props.defaultPaper)
-const gridVisible = ref<boolean>(true)
-const rulerVisible = ref<boolean>(true)
+// gridVisible / rulerVisible now live in canvas store so HiprintPanel /
+// HiprintCanvas can subscribe + render the actual grid background / ruler
+// overlay. Toolbar buttons toggle through the store (line 754 / 759).
+const gridVisible = computed<boolean>({
+  get: () => canvas.gridVisible,
+  set: (v) => { canvas.gridVisible = v },
+})
+const rulerVisible = computed<boolean>({
+  get: () => canvas.rulerVisible,
+  set: (v) => { canvas.rulerVisible = v },
+})
 
 // ============ Derived ============
 

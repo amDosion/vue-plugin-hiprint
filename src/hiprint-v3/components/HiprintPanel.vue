@@ -82,6 +82,16 @@ const paperStyle = computed(() => {
     boxShadow: '0 0 8px rgba(0,0,0,0.12)',
     transformOrigin: '0 0',
   }
+  // Grid background (toolbar gridToggle controls canvas.gridVisible).
+  // V1 parity: render a checkerboard/grid pattern over the paper so designers
+  // can align elements. Off when canvas.gridVisible=false or in readonly mode.
+  if (canvas.gridVisible && !props.readonly) {
+    const step = canvas.gridSize > 0 ? canvas.gridSize : 5
+    style.backgroundImage =
+      'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),' +
+      ' linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)'
+    style.backgroundSize = step + 'pt ' + step + 'pt'
+  }
   if (scale !== 1) {
     style.transform = `scale(${scale})`
   }

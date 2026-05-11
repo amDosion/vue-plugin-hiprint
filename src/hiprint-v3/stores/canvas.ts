@@ -120,6 +120,14 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
   /** Grid step in pt. Used by snap-to-grid in P16. */
   const gridSize = ref<number>(5)
 
+  /** Whether the panel grid background is visible. Toolbar toggles this;
+   *  HiprintPanel renders a CSS grid background when true. */
+  const gridVisible = ref<boolean>(true)
+
+  /** Whether ruler tracks (top + left) render in the designer canvas.
+   *  HiprintCanvas/Panel read this to show/hide ruler overlay. */
+  const rulerVisible = ref<boolean>(true)
+
   // -------- Getters --------
 
   const activePanel = computed<Panel | null>(() => {
@@ -429,6 +437,8 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     activePanelId,
     scale,
     gridSize,
+    gridVisible,
+    rulerVisible,
     // getters
     activePanel,
     selectedElements,
