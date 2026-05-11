@@ -111,6 +111,12 @@ export function enableElementSelection(
     return () => undefined
   }
 
+  // Capture canvas store at enable-time so callbacks (which fire async after
+  // enable returns) use the same Pinia instance the component was mounted
+  // with — not whichever pinia is active at click time. Multi-designer fix
+  // (2026-05-11): symptoms = drag/click no-op or wrong-store mutation.
+  const canvas = useCanvasStore()
+
   function handler(e: MouseEvent): void {
     try {
       // Only treat primary button. Right-click handled by context menu.
@@ -119,7 +125,6 @@ export function enableElementSelection(
       // editor inline-rendered into the element).
       if (isEditableTarget(e.target)) return
       const mode = modeFromEvent(e)
-      const canvas = useCanvasStore()
       canvas.selectElement(elementId, mode)
       // Also activate the panel — clicking elements in an inactive panel
       // should bring it forward (V1 parity).
@@ -175,6 +180,12 @@ export function enableLasso(panelEl: HTMLElement, panelId: string): () => void {
     console.warn('[hiprint-v3:selection] enableLasso: panelId required')
     return () => undefined
   }
+
+  // Capture canvas store at enable-time (multi-designer Pinia fix — see
+  // enableElementSelection comment). pointerup fires async; using a fresh
+  // useCanvasStore() inside the closure could resolve to the wrong instance
+  // once another designer mounted afterwards has set active pinia.
+  const canvas = useCanvasStore()
 
   let lasso: HTMLDivElement | null = null
   let startX = 0
@@ -244,7 +255,6 @@ export function enableLasso(panelEl: HTMLElement, panelId: string): () => void {
             if (id) hitIds.push(id)
           }
         })
-        const canvas = useCanvasStore()
         canvas.selectMultiple(hitIds)
         if (canvas.activePanelId !== panelId) {
           canvas.setActivePanel(panelId)
@@ -285,10 +295,15 @@ export function enableLasso(panelEl: HTMLElement, panelId: string): () => void {
  * Returns cleanup.
  */
 export function enableSelectionShortcuts(): () => void {
+  // Capture canvas store at enable-time (multi-designer Pinia fix — same
+  // rationale as enableElementSelection). Global keydown fires regardless of
+  // which designer is "active" in the Vue sense, but the captured store keeps
+  // each shortcut binding scoped to the designer that installed it.
+  const canvas = useCanvasStore()
+
   function handler(e: KeyboardEvent): void {
     try {
       if (isEditableTarget(e.target)) return
-      const canvas = useCanvasStore()
 
       // Ctrl/Cmd + A → select all in active panel.
       if (

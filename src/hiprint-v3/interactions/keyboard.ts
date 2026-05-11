@@ -41,6 +41,11 @@ import {
 } from '@hiprint-v3/stores'
 import { _getClipboard, _setClipboard } from './context-menu'
 
+// Captured store types — keep typed to ReturnType so action helpers stay
+// 1:1 with the store interface without exporting internal types.
+type CanvasStore = ReturnType<typeof useCanvasStore>
+type HistoryStore = ReturnType<typeof useHistoryStore>
+
 // -----------------------------------------------------------------------------
 // Public types
 // -----------------------------------------------------------------------------
@@ -85,11 +90,17 @@ function safeRun(fn: () => void): void {
 }
 
 // -----------------------------------------------------------------------------
-// Action helpers — each reads stores lazily so the listener stays single-fn.
+// Action helpers — each takes the captured stores from enableDesignerKeyboard.
+//
+// Multi-designer Pinia fix (2026-05-11): previously each helper called
+// useCanvasStore() / useHistoryStore() at invoke time, which resolved against
+// whichever pinia was active when the key was pressed. With multiple
+// <HiprintDesigner> components on a page, that meant shortcuts mutated the
+// wrong store (or no store at all). Capturing the stores at enable-time keeps
+// each keyboard binding scoped to the designer that installed it.
 // -----------------------------------------------------------------------------
 
-function deleteSelection(): void {
-  const canvas = useCanvasStore()
+function deleteSelection(canvas: CanvasStore): void {
   const ids = Array.from(canvas.selectedElementIds)
   if (ids.length === 0) return
   // Resolve each id to its panel + remove. Snapshot panels FIRST so the
@@ -107,14 +118,12 @@ function deleteSelection(): void {
   }
 }
 
-function moveSelectionByPt(dx: number, dy: number): void {
-  const canvas = useCanvasStore()
+function moveSelectionByPt(canvas: CanvasStore, dx: number, dy: number): void {
   if (canvas.selectedElementIds.size === 0) return
   canvas.moveSelection(dx, dy)
 }
 
-function copySelection(): void {
-  const canvas = useCanvasStore()
+function copySelection(canvas: CanvasStore): void {
   if (canvas.selectedElementIds.size === 0) return
   // Resolve selected elements (deep snapshot — store may patch later).
   const copies: CanvasElement[] = []
@@ -135,10 +144,9 @@ function copySelection(): void {
   if (copies.length > 0) _setClipboard(copies)
 }
 
-function pasteSelection(): void {
+function pasteSelection(canvas: CanvasStore): void {
   const items = _getClipboard()
   if (items.length === 0) return
-  const canvas = useCanvasStore()
   const target = canvas.activePanelId
   if (!target) return
 
@@ -163,18 +171,16 @@ function pasteSelection(): void {
   }
 }
 
-function cutSelection(): void {
-  copySelection()
-  deleteSelection()
+function cutSelection(canvas: CanvasStore): void {
+  copySelection(canvas)
+  deleteSelection(canvas)
 }
 
-function undoHistory(): void {
-  const history = useHistoryStore()
+function undoHistory(history: HistoryStore): void {
   history.undo()
 }
 
-function redoHistory(): void {
-  const history = useHistoryStore()
+function redoHistory(history: HistoryStore): void {
   history.redo()
 }
 
@@ -184,8 +190,7 @@ function redoHistory(): void {
  *  - direction = -1 → previous element (wraps).
  *  - If nothing selected → first / last element.
  */
-function cycleSelection(direction: 1 | -1): void {
-  const canvas = useCanvasStore()
+function cycleSelection(canvas: CanvasStore, direction: 1 | -1): void {
   const panel = canvas.activePanel
   if (!panel || panel.printElements.length === 0) return
   const ids = panel.printElements.map((e) => e.id)
@@ -218,6 +223,13 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
   const bigMoveStep = opts?.bigMoveStep ?? moveStep * 10
   const enableClipboard = opts?.enableClipboard !== false
 
+  // Capture stores at enable-time so callbacks (which fire async on every
+  // window keydown) target the SAME Pinia instance the component was mounted
+  // with — not whichever pinia happens to be active when the key is pressed.
+  // Multi-designer fix (2026-05-11) — see file header doc.
+  const canvas = useCanvasStore()
+  const history = useHistoryStore()
+
   function handler(e: KeyboardEvent): void {
     if (isEditableTarget(e.target)) return
 
@@ -225,15 +237,15 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
       // -- Undo / Redo (check FIRST so Ctrl+Z doesn't fall through to other) --
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         if (e.shiftKey) {
-          redoHistory()
+          redoHistory(history)
         } else {
-          undoHistory()
+          undoHistory(history)
         }
         e.preventDefault()
         return
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-        redoHistory()
+        redoHistory(history)
         e.preventDefault()
         return
       }
@@ -241,17 +253,17 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
       // -- Clipboard --
       if (enableClipboard && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === 'c' || e.key === 'C') {
-          copySelection()
+          copySelection(canvas)
           e.preventDefault()
           return
         }
         if (e.key === 'v' || e.key === 'V') {
-          pasteSelection()
+          pasteSelection(canvas)
           e.preventDefault()
           return
         }
         if (e.key === 'x' || e.key === 'X') {
-          cutSelection()
+          cutSelection(canvas)
           e.preventDefault()
           return
         }
@@ -259,7 +271,7 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
 
       // -- Delete --
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        deleteSelection()
+        deleteSelection(canvas)
         e.preventDefault()
         return
       }
@@ -267,29 +279,29 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
       // -- Arrow move --
       const step = e.shiftKey ? bigMoveStep : moveStep
       if (e.key === 'ArrowUp') {
-        moveSelectionByPt(0, -step)
+        moveSelectionByPt(canvas, 0, -step)
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowDown') {
-        moveSelectionByPt(0, step)
+        moveSelectionByPt(canvas, 0, step)
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowLeft') {
-        moveSelectionByPt(-step, 0)
+        moveSelectionByPt(canvas, -step, 0)
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowRight') {
-        moveSelectionByPt(step, 0)
+        moveSelectionByPt(canvas, step, 0)
         e.preventDefault()
         return
       }
 
       // -- Tab cycle --
       if (e.key === 'Tab') {
-        cycleSelection(e.shiftKey ? -1 : 1)
+        cycleSelection(canvas, e.shiftKey ? -1 : 1)
         e.preventDefault()
         return
       }

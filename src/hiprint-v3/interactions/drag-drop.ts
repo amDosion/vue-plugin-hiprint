@@ -129,6 +129,20 @@ export function enableElementDrag(
     return
   }
 
+  // Capture the canvas store at enable-time. interact.js callbacks fire
+  // asynchronously (after enable() returns), at which point the *active*
+  // Pinia instance may have changed (e.g. another <HiprintDesigner> mounted
+  // and replaced active pinia). Reusing the captured store reference is
+  // safe because Pinia stores are stable singletons per pinia instance —
+  // mutating actions still run inside the correct pinia, and reactive reads
+  // return the current value of THIS designer's state.
+  //
+  // BUG fixed (2026-05-11): previously each callback re-called useCanvasStore()
+  // which read whatever pinia was active AT CALLBACK TIME, causing multi-
+  // designer apps to mutate the wrong store (panels not found / moves silently
+  // dropped). Confirmed via dev-server manual test ("组件拖动到画布都不能正常").
+  const canvas = useCanvasStore()
+
   // Track totals across the full drag so onEnd can deliver final pos.
   let dragStartPosPt: Position = { x: 0, y: 0 }
   let isMultiDrag = false
@@ -138,7 +152,6 @@ export function enableElementDrag(
     listeners: {
       start: () => {
         try {
-          const canvas = useCanvasStore()
           // Cache start position (pt) so onEnd can compute absolute pos.
           // Pull from store rather than DOM to avoid measurement drift.
           const panel = canvas.panels.find((p) => p.id === opts.panelId)
@@ -161,7 +174,6 @@ export function enableElementDrag(
 
       move: (event: { dx: number; dy: number }) => {
         try {
-          const canvas = useCanvasStore()
           const scale = canvas.scale
           const dxPt = screenPxToPt(event.dx, scale)
           const dyPt = screenPxToPt(event.dy, scale)
@@ -195,7 +207,6 @@ export function enableElementDrag(
       end: () => {
         try {
           if (opts.onEnd) {
-            const canvas = useCanvasStore()
             const panel = canvas.panels.find((p) => p.id === opts.panelId)
             const elRec = panel?.printElements.find(
               (e) => e.id === opts.elementId
@@ -211,7 +222,7 @@ export function enableElementDrag(
         }
       },
     },
-    modifiers: buildModifiers(opts.gridSize, _safeScale()),
+    modifiers: buildModifiers(opts.gridSize, canvas.scale),
   })
 
   _registry.set(el, interactable)
@@ -295,6 +306,12 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
     return
   }
 
+  // Capture canvas store at enable-time (same multi-designer pinia-bug fix
+  // as enableElementDrag). interact.js ondrop fires async; reusing the
+  // captured store is safe because Pinia singletons stay stable per pinia
+  // instance.
+  const canvas = useCanvasStore()
+
   const interactable = interact(el).dropzone({
     accept: '.hiprint-element, .hiprint-list-source',
     overlap: 0.25,
@@ -302,7 +319,6 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
       try {
         const dragged = event.relatedTarget
         if (!dragged) return
-        const canvas = useCanvasStore()
 
         if (dragged.classList.contains('hiprint-list-source')) {
           // New element drop from sidebar.

@@ -340,42 +340,52 @@ export function openContextMenu(
 export function buildElementContextItems(
   elementId: string
 ): ContextMenuItem[] {
+  // Capture the canvas store ONCE here, at factory call time.
+  //
+  // Multi-designer Pinia fix (2026-05-11): buildElementContextItems is invoked
+  // from HiprintCanvas.vue's contextmenu handler, which runs inside the
+  // designer's Vue setup/event context — at that moment the active pinia is
+  // the correct one. The returned items[]'s onClick closures, however, fire
+  // later when the user picks a menu entry, by which point another designer
+  // may have called setActivePinia(). Capturing once here pins every handler
+  // to this designer's store.
+  const canvas = useCanvasStore()
   return [
     {
       id: 'copy',
       label: i18n.__('复制') || 'Copy',
       shortcut: 'Ctrl+C',
-      onClick: () => _copyElement(elementId),
+      onClick: () => _copyElement(canvas, elementId),
     },
     {
       id: 'cut',
       label: i18n.__('剪切') || 'Cut',
       shortcut: 'Ctrl+X',
-      onClick: () => _cutElement(elementId),
+      onClick: () => _cutElement(canvas, elementId),
     },
     {
       id: 'paste',
       label: i18n.__('粘贴') || 'Paste',
       shortcut: 'Ctrl+V',
-      onClick: () => _pasteElement(),
+      onClick: () => _pasteElement(canvas),
     },
     { id: 'sep-1', label: '', divider: true },
     {
       id: 'bring-to-front',
       label: i18n.__('置顶') || 'Bring to Front',
-      onClick: () => _bringToFront(elementId),
+      onClick: () => _bringToFront(canvas, elementId),
     },
     {
       id: 'send-to-back',
       label: i18n.__('置底') || 'Send to Back',
-      onClick: () => _sendToBack(elementId),
+      onClick: () => _sendToBack(canvas, elementId),
     },
     { id: 'sep-2', label: '', divider: true },
     {
       id: 'delete',
       label: i18n.__('删除') || 'Delete',
       shortcut: 'Delete',
-      onClick: () => _deleteElement(elementId),
+      onClick: () => _deleteElement(canvas, elementId),
     },
     { id: 'sep-3', label: '', divider: true },
     {
@@ -406,11 +416,16 @@ export function _getClipboard(): CanvasElement[] {
   return _clipboard.map((e) => ({ ...e, options: { ...e.options } }))
 }
 
-function _findElement(elementId: string): {
+// Captured store type alias — keep typed without leaking internal store types.
+type CanvasStore = ReturnType<typeof useCanvasStore>
+
+function _findElement(
+  canvas: CanvasStore,
+  elementId: string
+): {
   panelId: string
   el: CanvasElement
 } | null {
-  const canvas = useCanvasStore()
   for (const p of canvas.panels) {
     const el = p.printElements.find((x) => x.id === elementId)
     if (el) return { panelId: p.id, el }
@@ -418,23 +433,21 @@ function _findElement(elementId: string): {
   return null
 }
 
-function _copyElement(elementId: string): void {
-  const hit = _findElement(elementId)
+function _copyElement(canvas: CanvasStore, elementId: string): void {
+  const hit = _findElement(canvas, elementId)
   if (!hit) return
   _setClipboard([hit.el])
 }
 
-function _cutElement(elementId: string): void {
-  const hit = _findElement(elementId)
+function _cutElement(canvas: CanvasStore, elementId: string): void {
+  const hit = _findElement(canvas, elementId)
   if (!hit) return
   _setClipboard([hit.el])
-  const canvas = useCanvasStore()
   canvas.removeElement(hit.panelId, elementId)
 }
 
-function _pasteElement(): void {
+function _pasteElement(canvas: CanvasStore): void {
   if (_clipboard.length === 0) return
-  const canvas = useCanvasStore()
   const activeId = canvas.activePanelId
   if (!activeId) return
   for (const el of _clipboard) {
@@ -446,17 +459,15 @@ function _pasteElement(): void {
   }
 }
 
-function _deleteElement(elementId: string): void {
-  const hit = _findElement(elementId)
+function _deleteElement(canvas: CanvasStore, elementId: string): void {
+  const hit = _findElement(canvas, elementId)
   if (!hit) return
-  const canvas = useCanvasStore()
   canvas.removeElement(hit.panelId, elementId)
 }
 
-function _bringToFront(elementId: string): void {
-  const hit = _findElement(elementId)
+function _bringToFront(canvas: CanvasStore, elementId: string): void {
+  const hit = _findElement(canvas, elementId)
   if (!hit) return
-  const canvas = useCanvasStore()
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
   if (!panel) return
   // Reorder: move element to end of printElements array.
@@ -476,10 +487,9 @@ function _bringToFront(elementId: string): void {
   canvas.panels = nextPanels
 }
 
-function _sendToBack(elementId: string): void {
-  const hit = _findElement(elementId)
+function _sendToBack(canvas: CanvasStore, elementId: string): void {
+  const hit = _findElement(canvas, elementId)
   if (!hit) return
-  const canvas = useCanvasStore()
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
   if (!panel) return
   const idx = panel.printElements.findIndex((e) => e.id === elementId)
