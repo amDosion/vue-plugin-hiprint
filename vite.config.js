@@ -73,13 +73,19 @@ export default defineConfig(({ mode }) => {
         emptyOutDir: true,
         sourcemap: true,
         lib: {
-          entry: path.resolve(__dirname, 'src/index.js'),
+          // V1 main entry + V2 alpha entry (P13 Strangler Fig). Vite 5 supports
+          // lib.entry as Record<name, path> for multi-entry builds.
+          // Note: UMD format incompatible with multi-entry — drop to cjs+es only.
+          // Business consumers needing UMD continue using v1.0.2 (1 entry).
+          entry: {
+            'vue-plugin-hiprint': path.resolve(__dirname, 'src/index.js'),
+            'vue-plugin-hiprint.v2': path.resolve(__dirname, 'src/index-v2.js'),
+          },
           name: 'vue-plugin-hiprint',
-          formats: ['umd', 'cjs', 'es'],
-          fileName: (format) => {
-            if (format === 'umd') return 'vue-plugin-hiprint.js'
-            if (format === 'cjs') return 'vue-plugin-hiprint.cjs.js'
-            return 'vue-plugin-hiprint.esm.js'
+          formats: ['cjs', 'es'],
+          fileName: (format, entryName) => {
+            if (format === 'cjs') return entryName + '.cjs.js'
+            return entryName + '.esm.js'
           },
         },
         rollupOptions: {

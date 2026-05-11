@@ -14,6 +14,10 @@
       "import": "./dist/vue-plugin-hiprint.esm.js",
       "require": "./dist/vue-plugin-hiprint.cjs.js"
     },
+    "./v2": {
+      "import": "./dist/vue-plugin-hiprint.v2.esm.js",
+      "require": "./dist/vue-plugin-hiprint.v2.cjs.js"
+    },
     "./dist/vue-plugin-hiprint.css": "./dist/vue-plugin-hiprint.css",
     "./dist/print-lock.css": "./dist/print-lock.css",
     "./package.json": "./package.json"
