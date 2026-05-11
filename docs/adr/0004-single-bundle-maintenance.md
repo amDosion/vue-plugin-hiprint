@@ -1,8 +1,14 @@
 # ADR-0004: 单 bundle.js 内修源码而非拆模块
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0010](0010-hiprint-bundle-refactor-strangler-fig.md) (2026-05-11)
 - **Date:** 2026-04-22
 - **Deciders:** amDosion
+
+> ⚠️ **Superseded note** (2026-05-11): 当时拒绝拆分的理由 (上游对比 / 测试基础不足) 已不成立:
+> - ADR-0001 已 detach 上游 (2026-04-15)
+> - R1+R2+R3 audit 后 e2e 35/35 baseline + helper 模块化基础已建
+>
+> 拆分启动详见 ADR-0010。本 ADR 保留作历史记录。
 
 ## Context
 

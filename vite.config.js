@@ -42,6 +42,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
+        // V2 拆分 (refactor/hiprint-v2 branch): ES module 版本与 v1 bundle.js 并存。
+        // 见 docs/adr/0010-hiprint-bundle-refactor-strangler-fig.md
+        '@hiprint-v2': path.resolve(__dirname, 'src/hiprint-v2'),
         // hiprint.bundle.js 中写死了 `import Nzh from "nzh/dist/nzh.min.js"`，
         // 但新版 nzh 包的 exports 字段没暴露该深路径。重定向到包入口。
         'nzh/dist/nzh.min.js': 'nzh',
