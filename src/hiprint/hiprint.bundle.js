@@ -334,7 +334,7 @@ var hiprint = function (t) {
 
       return e;
     } catch (t) {
-      return console.warn(t), "";
+      return console.error('[hiprint] format failed:', t), "";
     }
     return "";
   }, hinnn.numFormat = function (t, e) {
@@ -346,7 +346,7 @@ var hiprint = function (t) {
       }
       return parseInt(o.toString());
     } catch (t) {
-      return console.warn(t), "";
+      return console.error('[hiprint] format failed:', t), "";
     }
     return "";
   }, hinnn.toUpperCase = function(type, val) {
@@ -510,7 +510,7 @@ var hiprint = function (t) {
         try {
           this.xhrLoadImage(t);
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
       }
     }, t.prototype.xhrLoadImage = function (t) {
@@ -1493,9 +1493,9 @@ var hiprint = function (t) {
           var flag = false;
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(json).then(function () {
-              console.warn('copyJson success (clipboard API)');
+              console.warn('[hiprint] copyJson success (clipboard API)');
             }).catch(function () {
-              console.warn('clipboard API failed, fallback to execCommand');
+              console.warn('[hiprint] copyJson clipboard API failed, fallback to execCommand');
             });
             flag = true;
           } else {
@@ -1508,10 +1508,10 @@ var hiprint = function (t) {
             copyArea.css('visibility', 'hidden');
           }
           n.designTarget.focus();
-          console.warn('copyJson success');
+          console.warn('[hiprint] copyJson success');
         } catch (e) {
           flag = false;
-          console.warn('copyJson error', e);
+          console.error('[hiprint] copyJson failed:', e);
         }
         return flag;
       }, BasePrintElement.prototype.clone = function (t) {
@@ -2083,7 +2083,7 @@ var hiprint = function (t) {
           if (!t.checked) return;
           var rowsColumnsMerge = ''
           if (n.rowsColumnsMerge) {
-            try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.warn(e); }
+            try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.error('[hiprint] rowsColumnsMerge eval failed:', e); }
             var rowsColumnsArr = rowsColumnsMerge(e, t, i, rowIndex, tableData, printData) || [1, 1]
             var r = $(`<td style = 'display:${!(rowsColumnsArr[0] && rowsColumnsArr[1]) ? "none" : ""}' rowspan = '${rowsColumnsArr[0]}' colspan = '${rowsColumnsArr[1]}'></td>`);
           } else {
@@ -2281,7 +2281,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFieldsFormatter && (groupFieldsFormatter = tablePrintElementType.groupFieldsFormatter), options.groupFieldsFormatter) try {
           groupFieldsFormatter = new Function('return ' + options.groupFieldsFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return groupFieldsFormatter;
       }, TableExcelHelper.getGroupFormatter = function (options, tablePrintElementType) {
@@ -2289,7 +2289,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFormatter && (groupFormatter = tablePrintElementType.groupFormatter), options.groupFormatter) try {
           groupFormatter = new Function('return ' + options.groupFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return groupFormatter;
       }, TableExcelHelper.getGroupFooterFormatter = function (options, tablePrintElementType) {
@@ -2297,7 +2297,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.groupFooterFormatter && (groupFooterFormatter = tablePrintElementType.groupFooterFormatter), options.groupFooterFormatter) try {
           groupFooterFormatter = new Function('return ' + options.groupFooterFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return groupFooterFormatter;
       }, TableExcelHelper.getFooterFormatter = function (options, tablePrintElementType) {
@@ -2305,7 +2305,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.footerFormatter && (footerFormatter = tablePrintElementType.footerFormatter), options.footerFormatter) try {
           footerFormatter = new Function('return ' + options.footerFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return footerFormatter;
       }, TableExcelHelper.getRowStyler = function (options, tablePrintElementType) {
@@ -2313,7 +2313,7 @@ var hiprint = function (t) {
         if (tablePrintElementType.rowStyler && (rowStyler = tablePrintElementType.rowStyler), options.rowStyler) try {
           rowStyler = new Function('return ' + options.rowStyler)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return rowStyler;
       }, TableExcelHelper.getColumnTableSummaryFormatter = function (column) {
@@ -2321,7 +2321,7 @@ var hiprint = function (t) {
         if (column.tableSummaryFormatter && (tableSummaryFormatter = column.tableSummaryFormatter), column.tableSummaryFormatter) try {
           tableSummaryFormatter = new Function('return ' + column.tableSummaryFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return tableSummaryFormatter;
       }, TableExcelHelper.getColumnStyler = function (column) {
@@ -2329,7 +2329,7 @@ var hiprint = function (t) {
         if (column.styler && (styler = column.styler), column.styler2) try {
           styler = new Function('return ' + column.styler2)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return styler;
       }, TableExcelHelper.getHeaderStyler = function (column) {
@@ -2337,7 +2337,7 @@ var hiprint = function (t) {
         if (column.stylerHeader && (stylerHeader = column.stylerHeader), column.stylerHeader) try {
           stylerHeader = new Function('return ' + column.stylerHeader)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return stylerHeader;
       }, TableExcelHelper.getColumnRenderFormatter = function (column) {
@@ -2345,7 +2345,7 @@ var hiprint = function (t) {
         if (column.renderFormatter && (renderFormatter = column.renderFormatter), column.renderFormatter) try {
           renderFormatter = new Function('return ' + column.renderFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return renderFormatter;
       }, TableExcelHelper.getColumnFormatter = function (column) {
@@ -2353,7 +2353,7 @@ var hiprint = function (t) {
         if (column.formatter && (formatter = column.formatter), column.formatter2) try {
           formatter = new Function('return ' + column.formatter2)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return formatter;
       }, TableExcelHelper.getOrderdColumns = function (t) {
@@ -6511,7 +6511,7 @@ var hiprint = function (t) {
             let testData = this.options.testData || '[{}]';
             return JSON.parse(testData);
           } catch (e) {
-            console.warn('table testData parse error', e);
+            console.error('[hiprint] table testData parse failed:', e);
             return [{}];
           }
         };
@@ -6655,7 +6655,7 @@ var hiprint = function (t) {
         if (this.printElementType.footerFormatter && (footerFormatter = this.printElementType.footerFormatter), this.options.footerFormatter) try {
           footerFormatter = new Function('return ' + this.options.footerFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return footerFormatter;
       }, TablePrintElement.prototype.getGridColumnsFooterFormatter = function () {
@@ -6663,7 +6663,7 @@ var hiprint = function (t) {
         if (this.printElementType.gridColumnsFooterFormatter && (gridColumnsFooterFormatter = this.printElementType.gridColumnsFooterFormatter), this.options.gridColumnsFooterFormatter) try {
           gridColumnsFooterFormatter = new Function('return ' + this.options.gridColumnsFooterFormatter)();
         } catch (t) {
-          console.warn(t);
+          console.error('[hiprint] formatter/eval caught:', t);
         }
         return gridColumnsFooterFormatter;
       }, TablePrintElement;
@@ -8369,7 +8369,7 @@ var hiprint = function (t) {
       try {
         this.socket.emit("news", t);
       } catch (e) {
-        console.warn("send data error:" + (t || "") + JSON.stringify(e));
+        console.error('[hiprint] socket send data failed (' + (t || '') + '):', e);
       }
     },
     sendByFragments: function(content) {
@@ -8403,7 +8403,7 @@ var hiprint = function (t) {
           }, sendInterval * index);
         })
       } catch (e) {
-        console.warn("send data fragment error:" + (content || "") + JSON.stringify(e));
+        console.error('[hiprint] socket send fragment failed (' + (content || '') + '):', e);
       }
     },
     getPrinterList: function getPrinterList() {
@@ -8413,50 +8413,50 @@ var hiprint = function (t) {
       try {
         this.socket.emit("refreshPrinterList");
       } catch (e) {
-        console.warn("refreshPrinterList error:" + JSON.stringify(e));
+        console.error('[hiprint] refreshPrinterList failed:', e);
       }
     },
     getPaperSizeInfo: function getPaperSizeInfo(printer) {
       try {
-        console.warn("getPaperSizeInfo 是一个测试功能，仅win客户端支持该api！")
+        console.warn('[hiprint] getPaperSizeInfo is experimental, win client only')
         this.socket.emit("getPaperSizeInfo", printer);
       } catch (e) {
-        console.warn("getPaperSizeInfo error:" + JSON.stringify(e))
+        console.error('[hiprint] getPaperSizeInfo failed:', e)
       }
     },
     getClients: function getClients() {
       try {
         this.socket.emit("getClients");
       } catch (e) {
-        console.warn("getClients error:" + JSON.stringify(e));
+        console.error('[hiprint] getClients failed:', e);
       }
     },
     getClientInfo: function getClientInfo() {
       try {
         this.socket.emit("getClientInfo");
       } catch (e) {
-        console.warn("getClientInfo error:" + JSON.stringify(e))
+        console.error('[hiprint] getClientInfo failed:', e)
       }
     },
     getAddress: function getAddress(type, ...args) {
       try {
         this.socket.emit("address", type, ...args);
       } catch (e) {
-        console.warn("getAddress error:" + JSON.stringify(e));
+        console.error('[hiprint] getAddress failed:', e);
       }
     },
     ippPrint: function ippPrint(options) {
       try {
         this.socket.emit("ippPrint", options);
       } catch (e) {
-        console.warn("ippPrint error:" + JSON.stringify(e));
+        console.error('[hiprint] ippPrint failed:', e);
       }
     },
     ippRequest: function ippRequest(options) {
       try {
         this.socket.emit("ippRequest", options);
       } catch (e) {
-        console.warn("ippRequest error:" + JSON.stringify(e));
+        console.error('[hiprint] ippRequest failed:', e);
       }
     },
     setHost: function (host, token, cb) {
@@ -8474,7 +8474,7 @@ var hiprint = function (t) {
 
       var t = this;
       if (!window.WebSocket) {
-        console.warn("WebSocket start fail");
+        console.error('[hiprint] WebSocket start failed (window.WebSocket missing)');
         cb && cb(false);
         return;
       }
@@ -8489,7 +8489,7 @@ var hiprint = function (t) {
           token: this.token
         }
       }), this.socket.on("connect", function (e) {
-        t.opened = !0, console.warn("Websocket opened."),
+        t.opened = !0, console.warn('[hiprint] Websocket opened.'),
         _this.socket.off("success").on("success", function (t) {
           hinnn.event.trigger("printSuccess_" + t.templateId, t);
         }), _this.socket.off("error").on("error", function (t) {
@@ -8518,7 +8518,7 @@ var hiprint = function (t) {
         cb && cb(true, e);
       }), this.socket.on("connect_error", function (e) {
         t.opened = !1;
-        console.error(e)
+        console.error('[hiprint] socket connect_error:', e);
         hinnn.event.trigger("connect_error", e)
         cb && cb(false, e);
       }), this.socket.on("disconnect", function () {
@@ -8527,10 +8527,10 @@ var hiprint = function (t) {
       });
     },
     reconnect: function reconnect() {
-      this.state !== n && this.state !== i || (this.stop(), this.ensureReconnectingState() && (console.warn("Websocket reconnecting."), this.start()));
+      this.state !== n && this.state !== i || (this.stop(), this.ensureReconnectingState() && (console.warn('[hiprint] Websocket reconnecting.'), this.start()));
     },
     stop: function stop() {
-      this.socket && (console.warn("Closing the Websocket."), this.socket.close(), this.socket = null, this.printerList = []);
+      this.socket && (console.warn('[hiprint] Closing the Websocket.'), this.socket.close(), this.socket = null, this.printerList = []);
     },
     ensureReconnectingState: function ensureReconnectingState() {
       return this.state = i, this.state === i;
@@ -10361,7 +10361,7 @@ var hiprint = function (t) {
           }
           content.html(barcode)
         } catch (error) {
-          console.error(error)
+          console.error('[hiprint] barcode render failed:', error)
           content.html($(`<div>${i18n.__('条形码生成失败')}</div>`))
         }
       },
@@ -10430,7 +10430,7 @@ var hiprint = function (t) {
             content.append($(`<div class="hiprint-printElement-qrcode-content-title" style="${ textStyle }">${ titleText }</div>`))
           }
         } catch (error) {
-          console.error(error)
+          console.error('[hiprint] qrcode render failed:', error)
           content.html($(`<div>${i18n.__('二维码生成失败')}</div>`))
         }
       },
@@ -10998,7 +10998,7 @@ var hiprint = function (t) {
               a.options.qid = template.qtDesignderFunction(a.options.field)
             }
             n.printElements.push(a), a.design(void 0, n.designPaper);
-            console.warn('pasteJson success');
+            console.warn('[hiprint] pasteJson success');
             o.a.event.trigger("hiprintTemplateDataChanged_" + n.templateId, "复制");
             // 点击克隆出来的元素
             ele.designTarget.trigger($.Event('blur'))
@@ -11006,7 +11006,7 @@ var hiprint = function (t) {
             a.designTarget.trigger($.Event('focus'))
           })
         } catch (e) {
-          console.error('pasteJson error', e);
+          console.error('[hiprint] pasteJson failed:', e);
         }
       }, t.prototype.css = function (t) {
         if (this.fontFamily) t.css("fontFamily", this.fontFamily);
@@ -12598,7 +12598,7 @@ var hiprint = function (t) {
           try {
             this.xhrLoadImage(t);
           } catch (t) {
-            console.warn(t);
+            console.error('[hiprint] xhrLoadImage caught:', t);
           }
         }
       }, t.prototype.xhrLoadImage = function (t) {
@@ -13440,7 +13440,7 @@ var hiprint = function (t) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch (e) {
-        console.error(e);
+        console.error('[hiprint] downloadJson failed:', e);
       }
     }
 
@@ -13550,7 +13550,7 @@ var hiprint = function (t) {
           closeBusinessDialog();
         }
       }).catch(function (err) {
-        console.error(err);
+        console.error('[hiprint] businessLoader rejected:', err);
       });
     }
 
@@ -13764,7 +13764,7 @@ var hiprint = function (t) {
         return Promise.resolve(opts.onTemplateDeleteConfirm(context)).then(function (result) {
           return result !== false;
         }).catch(function (err) {
-          console.error(err);
+          console.error('[hiprint] onTemplateDeleteConfirm rejected:', err);
           return false;
         });
       }
@@ -13778,7 +13778,7 @@ var hiprint = function (t) {
           Promise.resolve(opts.onTemplateDelete(item, template, toolbarApi)).then(function (result) {
             if (result !== false) refreshTemplateList();
           }).catch(function (err) {
-            console.error(err);
+            console.error('[hiprint] onTemplateDelete rejected:', err);
           });
           return;
         }
