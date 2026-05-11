@@ -29,6 +29,8 @@ import {
 import { getHiWebSocket } from '@hiprint-v3/print'
 import { safeCall } from '@hiprint-v3/internal'
 import { PrintTemplate } from './print-template'
+import { buildDesigner, type BuildDesignerOptions } from './build-designer'
+import { buildToolbar, type BuildToolbarOptions } from './build-toolbar'
 
 // ============ Public types ============
 
@@ -162,6 +164,24 @@ export interface HiprintFacade {
   print(template: unknown, data?: unknown): void
   print2(template: unknown, data?: unknown, options?: unknown): void
   getHtml(template: unknown, data?: unknown): string
+  /**
+   * Mount the V3 designer SFC into a container. V1 attaches buildDesigner
+   * to the hiprint global so demo / vue-admin-main can call
+   * `hiprint.buildDesigner(...)` directly. Forward to the standalone
+   * buildDesigner export.
+   */
+  buildDesigner(
+    container: string | HTMLElement,
+    options?: unknown
+  ): unknown
+  /**
+   * Mount the V3 toolbar SFC into a container.
+   */
+  buildToolbar(
+    container: string | HTMLElement,
+    template: unknown,
+    options?: unknown
+  ): unknown
 }
 
 /**
@@ -339,6 +359,20 @@ function createHiprint(): HiprintFacade {
       } finally {
         tpl.destroy()
       }
+    },
+
+    buildDesigner(container, options): unknown {
+      // V1 demo + vue-admin-main call `hiprint.buildDesigner(container, opts)`.
+      // Forward to the standalone export (mounts HiprintDesigner SFC).
+      return buildDesigner(container, (options ?? {}) as BuildDesignerOptions)
+    },
+
+    buildToolbar(container, template, options): unknown {
+      return buildToolbar(
+        container,
+        template as PrintTemplate,
+        (options ?? {}) as BuildToolbarOptions
+      )
     },
   }
 }
