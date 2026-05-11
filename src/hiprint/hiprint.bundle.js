@@ -155,6 +155,13 @@ var hiprint = function (t) {
     off: function off(t, e) {
       var n = i[t];
       if (n) {
+        // [PM-004 R3] 不传 fn 时清整个 key (destroy 内 o.a.event.off(key) 期望此行为).
+        // 之前实现 for-loop 找 n[r] === undefined 始终不命中, 是 silent no-op,
+        // 导致 destroy 不真清 event-bus subscribers → listener leak.
+        if (e === undefined) {
+          i[t] = [];
+          return;
+        }
         for (var o = -1, r = 0; r < n.length; r++) {
           if (n[r] === e) {
             o = r;
