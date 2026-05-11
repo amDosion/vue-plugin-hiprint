@@ -46,6 +46,14 @@ import HiprintElementList from './HiprintElementList.vue'
 import HiprintCanvas from './HiprintCanvas.vue'
 import HiprintPropertyPanel from './HiprintPropertyPanel.vue'
 import HiprintPreview from './HiprintPreview.vue'
+import {
+  TemplateDialog,
+  BusinessDialog,
+  SaveDialog,
+  type TemplateItem,
+  type BusinessItem,
+  type SaveDialogPayload,
+} from './dialogs'
 import type { PrintTemplate } from '@hiprint-v3/compat/print-template'
 
 // Local mirrors of HiprintToolbar.vue public types — Vue SFCs do not re-export
@@ -159,6 +167,21 @@ interface Props {
   toolbarAlignItems?: readonly ToolbarAlignType[]
   toolbarExtraButtons?: readonly ToolbarExtraButton[]
   toolbarExtraPosition?: 'start' | 'end'
+  // ---- Dialog data + handlers (P21.8 integration) ----
+  /** Template list shown in the templateSelect dialog. Empty by default. */
+  templateDialogItems?: readonly TemplateItem[]
+  templateDialogLoading?: boolean
+  templateDialogTitle?: string
+  /** Business / scene items shown in the businessSelect dialog. */
+  businessDialogItems?: readonly BusinessItem[]
+  businessDialogCategories?: readonly string[]
+  businessDialogLoading?: boolean
+  businessDialogTitle?: string
+  /** Save dialog options. */
+  saveDialogInitialValue?: Partial<SaveDialogPayload>
+  saveDialogCategoryOptions?: readonly string[]
+  saveDialogSaving?: boolean
+  saveDialogTitle?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -212,6 +235,17 @@ const props = withDefaults(defineProps<Props>(), {
   toolbarAlignItems: undefined,
   toolbarExtraButtons: undefined,
   toolbarExtraPosition: 'end',
+  templateDialogItems: undefined,
+  templateDialogLoading: false,
+  templateDialogTitle: '模板选择',
+  businessDialogItems: undefined,
+  businessDialogCategories: undefined,
+  businessDialogLoading: false,
+  businessDialogTitle: '业务场景',
+  saveDialogInitialValue: undefined,
+  saveDialogCategoryOptions: undefined,
+  saveDialogSaving: false,
+  saveDialogTitle: '保存模板',
 })
 
 const emit = defineEmits<{
@@ -223,7 +257,53 @@ const emit = defineEmits<{
   print: []
   /** Fired when template changes (after any user edit + history push). */
   templateChange: [json: TemplateJson]
+  /** Fired when user selects a template from the TemplateDialog. */
+  templateSelect: [item: TemplateItem]
+  /** Fired when user selects a business item from BusinessDialog. */
+  businessSelect: [item: BusinessItem]
+  /** Fired when user submits the SaveDialog form. */
+  saveDialogSubmit: [payload: SaveDialogPayload]
+  /** Fired when user requests refresh of template / business list. */
+  refreshTemplates: []
+  refreshBusinesses: []
 }>()
+
+// ---- Dialog visibility refs (P21.8 default integration) ----
+// V3 reactive: parent (or this SFC itself) controls dialog open state via
+// these refs. Toolbar emit('templateSelectClick' / 'businessSelectClick')
+// flips the corresponding ref. Save dialog opens when toolbar @save handler
+// chooses to defer to a save form (default save downloads JSON directly;
+// the dialog flow is opt-in by passing saveHandler that flips this ref).
+const templateDialogOpen = ref(false)
+const businessDialogOpen = ref(false)
+const saveDialogOpen = ref(false)
+
+function onToolbarTemplateSelectClick(): void {
+  templateDialogOpen.value = true
+}
+
+function onToolbarBusinessSelectClick(): void {
+  businessDialogOpen.value = true
+}
+
+function onTemplateDialogSelect(item: TemplateItem): void {
+  if (item.data) {
+    try {
+      tpl.loadFromJson(item.data)
+    } catch (err) {
+      console.warn('[hiprint-v3:designer] templateSelect loadFromJson failed:', err)
+    }
+  }
+  emit('templateSelect', item)
+}
+
+function onBusinessDialogSelect(item: BusinessItem): void {
+  emit('businessSelect', item)
+}
+
+function onSaveDialogSubmit(payload: SaveDialogPayload): void {
+  emit('saveDialogSubmit', payload)
+}
 
 // ============ Stores ============
 
@@ -373,6 +453,8 @@ defineExpose({
           @save="onToolbarSave"
           @preview="onToolbarPreview"
           @print="onToolbarPrint"
+          @templateSelectClick="onToolbarTemplateSelectClick"
+          @businessSelectClick="onToolbarBusinessSelectClick"
         />
       </slot>
     </header>
@@ -402,6 +484,41 @@ defineExpose({
         <HiprintPreview :data="props.data" />
       </slot>
     </section>
+
+    <!-- Default V3 dialog integration (P21.8). Business code can override via
+         the named slots; otherwise toolbar templateSelect/businessSelect
+         buttons + saveDialog opt-in flip these refs. -->
+    <slot name="template-dialog" :open="templateDialogOpen">
+      <TemplateDialog
+        v-model:open="templateDialogOpen"
+        :items="props.templateDialogItems as TemplateItem[] | undefined"
+        :loading="props.templateDialogLoading"
+        :title="props.templateDialogTitle"
+        @select="onTemplateDialogSelect"
+        @refresh="emit('refreshTemplates')"
+      />
+    </slot>
+    <slot name="business-dialog" :open="businessDialogOpen">
+      <BusinessDialog
+        v-model:open="businessDialogOpen"
+        :items="props.businessDialogItems as BusinessItem[] | undefined"
+        :categories="props.businessDialogCategories"
+        :loading="props.businessDialogLoading"
+        :title="props.businessDialogTitle"
+        @select="onBusinessDialogSelect"
+        @refresh="emit('refreshBusinesses')"
+      />
+    </slot>
+    <slot name="save-dialog" :open="saveDialogOpen">
+      <SaveDialog
+        v-model:open="saveDialogOpen"
+        :initial-value="props.saveDialogInitialValue"
+        :category-options="props.saveDialogCategoryOptions"
+        :saving="props.saveDialogSaving"
+        :title="props.saveDialogTitle"
+        @submit="onSaveDialogSubmit"
+      />
+    </slot>
   </div>
 </template>
 
@@ -439,7 +556,6 @@ defineExpose({
   flex: 1 1 auto;
   overflow: auto;
   background: var(--hiprint-designer-canvas-bg, #e8e8e8);
-  padding: 16px;
 }
 
 .hiprint-designer__property-panel {
