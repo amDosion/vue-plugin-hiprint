@@ -78,3 +78,28 @@ export {
   parseTemplate,
   safeParseTemplate,
 } from './hiprint-v3/schemas'
+
+// ============ V3 native composables (P20) ============
+//
+// Reactive API replacement for the 4 composables vue-admin-main currently
+// keeps in its own codebase. Modern adopters import from here; legacy
+// drop-in consumers keep using the V1 compat surface above.
+export {
+  useHiprintCanvas,
+  useHiprintTemplate,
+  useHiprintPrint,
+  useHiprintSocket,
+  useHiprintDesigner,
+  useHiprintRuntime,
+} from './hiprint-v3/composables'
+
+export type {
+  UseHiprintCanvasReturn,
+  UseHiprintTemplateReturn,
+  UseHiprintPrintReturn,
+  UseHiprintSocketReturn,
+  UseHiprintDesignerReturn,
+  UseHiprintRuntimeReturn,
+  UseHiprintDesignerOptions,
+  UseHiprintRuntimeOptions,
+} from './hiprint-v3/composables'
