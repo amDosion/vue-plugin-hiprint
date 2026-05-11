@@ -46,6 +46,33 @@ import HiprintElementList from './HiprintElementList.vue'
 import HiprintCanvas from './HiprintCanvas.vue'
 import HiprintPropertyPanel from './HiprintPropertyPanel.vue'
 import HiprintPreview from './HiprintPreview.vue'
+import type { PrintTemplate } from '@hiprint-v3/compat/print-template'
+
+// Local mirrors of HiprintToolbar.vue public types — Vue SFCs do not re-export
+// named types through the `*.vue` module resolver. Shapes must stay in sync.
+interface ToolbarPaperType {
+  label: string
+  width: number
+  height: number
+}
+type ToolbarAlignType =
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'top'
+  | 'middle'
+  | 'bottom'
+interface ToolbarExtraButton {
+  key: string
+  label?: string
+  icon?: string
+  type?: string
+  className?: string
+  visible?: boolean
+  disabled?: boolean
+  html?: string
+  onClick?: (tpl: PrintTemplate | null | undefined, event?: Event) => void
+}
 
 // ============ Props / Emits ============
 
@@ -68,6 +95,70 @@ interface Props {
   previewHandler?: () => void
   printHandler?: () => void
   saveHandler?: () => void
+  /** PrintTemplate to forward to HiprintToolbar so V1 callbacks get tpl. */
+  tpl?: PrintTemplate | null
+  // ---- Toolbar opts pass-through (P21.6 + P21.7) ----
+  toolbarButtons?: readonly string[]
+  toolbarPaperTypes?: readonly ToolbarPaperType[]
+  toolbarDefaultPaper?: string
+  toolbarScaleMin?: number
+  toolbarScaleMax?: number
+  toolbarScaleStep?: number
+  toolbarShowUndo?: boolean
+  toolbarShowRedo?: boolean
+  toolbarShowSave?: boolean
+  toolbarShowPreview?: boolean
+  toolbarShowPrint?: boolean
+  toolbarShowPdf?: boolean
+  toolbarShowClear?: boolean
+  toolbarShowPanelManager?: boolean
+  toolbarShowPaperSelect?: boolean
+  toolbarShowCustomPaper?: boolean
+  toolbarShowRotate?: boolean
+  toolbarShowAlign?: boolean
+  toolbarShowScale?: boolean
+  toolbarShowRuler?: boolean
+  toolbarShowGrid?: boolean
+  toolbarShowTemplateSelect?: boolean
+  toolbarShowBusinessSelect?: boolean
+  toolbarOnPreview?: (tpl: PrintTemplate | null | undefined) => void
+  toolbarOnPrint?: (tpl: PrintTemplate | null | undefined) => void
+  toolbarOnClear?: (tpl: PrintTemplate | null | undefined) => void
+  toolbarOnSave?: (
+    tpl: PrintTemplate | null | undefined,
+    json: TemplateJson,
+    event?: Event | null,
+    api?: unknown,
+    ctx?: { name?: string }
+  ) => void
+  toolbarOnPaperChange?: (
+    tpl: PrintTemplate | null | undefined,
+    name: string,
+    size: { width: number; height: number }
+  ) => void
+  toolbarOnRotate?: (tpl: PrintTemplate | null | undefined) => void
+  toolbarOnAlign?: (
+    tpl: PrintTemplate | null | undefined,
+    type: ToolbarAlignType
+  ) => void
+  toolbarOnScaleChange?: (
+    tpl: PrintTemplate | null | undefined,
+    scale: number
+  ) => void
+  toolbarOnAddPanel?: (tpl: PrintTemplate | null | undefined) => void
+  toolbarOnRemovePanel?: (
+    tpl: PrintTemplate | null | undefined,
+    idx: number
+  ) => void
+  toolbarOnSwitchPanel?: (
+    tpl: PrintTemplate | null | undefined,
+    idx: number
+  ) => void
+  toolbarPanelManagerLabel?: string
+  toolbarAddPanelButtonText?: string
+  toolbarAlignItems?: readonly ToolbarAlignType[]
+  toolbarExtraButtons?: readonly ToolbarExtraButton[]
+  toolbarExtraPosition?: 'start' | 'end'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -81,6 +172,46 @@ const props = withDefaults(defineProps<Props>(), {
   previewHandler: undefined,
   printHandler: undefined,
   saveHandler: undefined,
+  tpl: null,
+  toolbarButtons: undefined,
+  toolbarPaperTypes: undefined,
+  toolbarDefaultPaper: 'A4',
+  toolbarScaleMin: 0.5,
+  toolbarScaleMax: 5,
+  toolbarScaleStep: 0.1,
+  toolbarShowUndo: true,
+  toolbarShowRedo: true,
+  toolbarShowSave: true,
+  toolbarShowPreview: true,
+  toolbarShowPrint: true,
+  toolbarShowPdf: true,
+  toolbarShowClear: true,
+  toolbarShowPanelManager: false,
+  toolbarShowPaperSelect: true,
+  toolbarShowCustomPaper: false,
+  toolbarShowRotate: true,
+  toolbarShowAlign: true,
+  toolbarShowScale: true,
+  toolbarShowRuler: true,
+  toolbarShowGrid: true,
+  toolbarShowTemplateSelect: false,
+  toolbarShowBusinessSelect: false,
+  toolbarOnPreview: undefined,
+  toolbarOnPrint: undefined,
+  toolbarOnClear: undefined,
+  toolbarOnSave: undefined,
+  toolbarOnPaperChange: undefined,
+  toolbarOnRotate: undefined,
+  toolbarOnAlign: undefined,
+  toolbarOnScaleChange: undefined,
+  toolbarOnAddPanel: undefined,
+  toolbarOnRemovePanel: undefined,
+  toolbarOnSwitchPanel: undefined,
+  toolbarPanelManagerLabel: '',
+  toolbarAddPanelButtonText: '+',
+  toolbarAlignItems: undefined,
+  toolbarExtraButtons: undefined,
+  toolbarExtraPosition: 'end',
 })
 
 const emit = defineEmits<{
@@ -196,6 +327,46 @@ defineExpose({
       <slot name="toolbar">
         <HiprintToolbar
           ref="toolbarRef"
+          :tpl="props.tpl"
+          :buttons="props.toolbarButtons as undefined"
+          :paper-types="props.toolbarPaperTypes as undefined"
+          :default-paper="props.toolbarDefaultPaper"
+          :scale-min="props.toolbarScaleMin"
+          :scale-max="props.toolbarScaleMax"
+          :scale-step="props.toolbarScaleStep"
+          :show-undo="props.toolbarShowUndo"
+          :show-redo="props.toolbarShowRedo"
+          :show-save="props.toolbarShowSave"
+          :show-preview="props.toolbarShowPreview"
+          :show-print="props.toolbarShowPrint"
+          :show-pdf="props.toolbarShowPdf"
+          :show-clear="props.toolbarShowClear"
+          :show-panel-manager="props.toolbarShowPanelManager"
+          :show-paper-select="props.toolbarShowPaperSelect"
+          :show-custom-paper="props.toolbarShowCustomPaper"
+          :show-rotate="props.toolbarShowRotate"
+          :show-align="props.toolbarShowAlign"
+          :show-scale="props.toolbarShowScale"
+          :show-ruler="props.toolbarShowRuler"
+          :show-grid="props.toolbarShowGrid"
+          :show-template-select="props.toolbarShowTemplateSelect"
+          :show-business-select="props.toolbarShowBusinessSelect"
+          :on-preview="props.toolbarOnPreview"
+          :on-print="props.toolbarOnPrint"
+          :on-clear="props.toolbarOnClear"
+          :on-save="props.toolbarOnSave"
+          :on-paper-change="props.toolbarOnPaperChange"
+          :on-rotate="props.toolbarOnRotate"
+          :on-align="props.toolbarOnAlign"
+          :on-scale-change="props.toolbarOnScaleChange"
+          :on-add-panel="props.toolbarOnAddPanel"
+          :on-remove-panel="props.toolbarOnRemovePanel"
+          :on-switch-panel="props.toolbarOnSwitchPanel"
+          :panel-manager-label="props.toolbarPanelManagerLabel"
+          :add-panel-button-text="props.toolbarAddPanelButtonText"
+          :align-items="props.toolbarAlignItems as undefined"
+          :extra-buttons="props.toolbarExtraButtons as undefined"
+          :extra-position="props.toolbarExtraPosition"
           :preview-handler="props.previewHandler ?? onToolbarPreview"
           :print-handler="props.printHandler ?? onToolbarPrint"
           :save-handler="props.saveHandler ?? onToolbarSave"

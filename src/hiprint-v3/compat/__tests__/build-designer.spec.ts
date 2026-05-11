@@ -1,8 +1,9 @@
 /**
- * build-designer.spec.ts — V3 buildDesigner compat tests (P19).
+ * build-designer.spec.ts — V3 buildDesigner compat tests (P21.6 final).
  *
- * Mounts designer SFC + verifies controller surface (getJson / update / destroy /
- * stub setComponentPanelSlot warning).
+ * Mounts designer SFC + verifies the minimal V3 controller surface
+ * (getJson / update / destroy + onReady firing with `tpl` only — no
+ * `toolbarCtrl` second arg, no `getToolbarCtrl()` method on the controller).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -126,29 +127,29 @@ describe('buildDesigner — controller', () => {
     ctrl.destroy()
   })
 
-  it('getToolbarCtrl returns shim with getScale/setScale', () => {
+  it('setPaginationVisible warns + no-op (V3 reactive prop replaces V1 imperative)', () => {
     const ctrl = buildDesigner(host)
-    const tb = ctrl.getToolbarCtrl()
-    expect(typeof tb.getScale).toBe('function')
-    expect(typeof tb.setScale).toBe('function')
-    expect(tb.getScale()).toBe(1)
-    expect(() => tb.setScale(2)).not.toThrow()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ctrl.setPaginationVisible(true)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('setPaginationVisible is a no-op')
+    )
+    warn.mockRestore()
     ctrl.destroy()
   })
 })
 
-describe('buildDesigner — onReady contract (P21.5 root unblocker)', () => {
-  it('fires onReady(tpl, toolbarCtrl) after mount', async () => {
+describe('buildDesigner — onReady contract (V3 — tpl only)', () => {
+  it('fires onReady(tpl) after mount', async () => {
     const onReady = vi.fn()
     const ctrl = buildDesigner(host, { template: SAMPLE, onReady })
-    // onReady scheduled in nextTick — wait one microtask + flush
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(onReady).toHaveBeenCalledTimes(1)
-    const [tpl, toolbarCtrl] = onReady.mock.calls[0] ?? []
+    const callArgs = onReady.mock.calls[0] ?? []
+    expect(callArgs.length).toBeGreaterThanOrEqual(1)
+    const tpl = callArgs[0]
     expect(tpl).toBeTruthy()
     expect(typeof (tpl as { getJson?: () => unknown }).getJson).toBe('function')
-    expect(toolbarCtrl).toBeTruthy()
-    expect(typeof (toolbarCtrl as { destroy?: () => void }).destroy).toBe('function')
     ctrl.destroy()
   })
 
@@ -167,81 +168,9 @@ describe('buildDesigner — onReady contract (P21.5 root unblocker)', () => {
     ctrl.destroy()
   })
 
-  it('toolbarCtrl shim has 27 V1 methods (stubs warn)', async () => {
-    const onReady = vi.fn()
-    const ctrl = buildDesigner(host, { onReady })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    const tb = onReady.mock.calls[0]?.[1] as Record<string, unknown>
-    // Tier A dialog methods
-    expect(typeof tb.openTemplateDialog).toBe('function')
-    expect(typeof tb.closeTemplateDialog).toBe('function')
-    expect(typeof tb.openBusinessDialog).toBe('function')
-    expect(typeof tb.refreshTemplateList).toBe('function')
-    expect(typeof tb.refreshBusinessList).toBe('function')
-    expect(typeof tb.setTemplateListProvider).toBe('function')
-    expect(typeof tb.setTemplateLoader).toBe('function')
-    expect(typeof tb.setBusinessItems).toBe('function')
-    expect(typeof tb.setBusinessListProvider).toBe('function')
-    expect(typeof tb.setBusinessLoader).toBe('function')
-    expect(typeof tb.setDialogHandler).toBe('function')
-    expect(typeof tb.setBusinessDialogOpenHandler).toBe('function')
-    expect(typeof tb.setTemplateDialogOpenHandler).toBe('function')
-    expect(typeof tb.setSaveDialogOpenHandler).toBe('function')
-    expect(typeof tb.triggerSave).toBe('function')
-    // Tier B button methods
-    expect(typeof tb.setButtonText).toBe('function')
-    expect(typeof tb.setButtonVisible).toBe('function')
-    expect(typeof tb.setButtonDisabled).toBe('function')
-    expect(typeof tb.triggerButton).toBe('function')
-    expect(typeof tb.getButton).toBe('function')
-    expect(typeof tb.getButtons).toBe('function')
-    expect(typeof tb.setGroupVisible).toBe('function')
-    expect(typeof tb.getGroup).toBe('function')
-    expect(typeof tb.getGroups).toBe('function')
-    expect(typeof tb.addGroup).toBe('function')
-    // Real methods
-    expect(typeof tb.setScale).toBe('function')
-    expect(typeof tb.getScale).toBe('function')
-    expect(typeof tb.getToolbarElement).toBe('function')
-    expect(typeof tb.destroy).toBe('function')
-    ctrl.destroy()
-  })
-
-  it('toolbarCtrl stubs warn + return safe defaults', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const onReady = vi.fn()
-    const ctrl = buildDesigner(host, { onReady })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    const tb = onReady.mock.calls[0]?.[1] as {
-      openTemplateDialog: () => void
-      refreshTemplateList: () => Promise<unknown[]>
-      getButtons: () => readonly unknown[]
-    }
-    tb.openTemplateDialog()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('openTemplateDialog'))
-    const tpls = await tb.refreshTemplateList()
-    expect(tpls).toEqual([])
-    expect(tb.getButtons()).toEqual([])
-    warn.mockRestore()
-    ctrl.destroy()
-  })
-
-  it('toolbarOptions.onPreview gets the tpl as first arg', async () => {
-    const onPreview = vi.fn()
-    let toolbarCtrl: { destroy: () => void } | undefined
-    const ctrl = buildDesigner(host, {
-      template: SAMPLE,
-      toolbarOptions: { onPreview },
-      onReady: (_tpl, tb) => {
-        toolbarCtrl = tb as unknown as { destroy: () => void }
-      },
-    })
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    expect(toolbarCtrl).toBeTruthy()
-    // Simulate the toolbar firing previewHandler — we can't click the SFC
-    // button from happy-dom reliably; instead verify the wrapper exists by
-    // checking onPreview NOT called yet (before any user interaction).
-    expect(onPreview).not.toHaveBeenCalled()
+  it('controller has no getToolbarCtrl (pure V3 — no V1 imperative toolbar API)', () => {
+    const ctrl = buildDesigner(host)
+    expect((ctrl as unknown as { getToolbarCtrl?: () => unknown }).getToolbarCtrl).toBeUndefined()
     ctrl.destroy()
   })
 
@@ -256,17 +185,15 @@ describe('buildDesigner — onReady contract (P21.5 root unblocker)', () => {
     })
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(captured.tpl).toBeTruthy()
-    // Capacity actually applied is inside the history store; we just verify
-    // no throw when passing custom number.
     ctrl.destroy()
   })
 
-  it('destroy cleans up tpl + toolbarCtrl', async () => {
-    let captured: { tpl?: { _destroyed: boolean }; tb?: unknown } = {}
+  it('destroy cleans up tpl', async () => {
+    let captured: { tpl?: { _destroyed: boolean } } = {}
     const ctrl = buildDesigner(host, {
       template: SAMPLE,
-      onReady: (tpl, tb) => {
-        captured = { tpl: tpl as unknown as { _destroyed: boolean }, tb }
+      onReady: (tpl) => {
+        captured = { tpl: tpl as unknown as { _destroyed: boolean } }
       },
     })
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -286,6 +213,51 @@ describe('buildDesigner — onReady contract (P21.5 root unblocker)', () => {
     })
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(ctrl.getTpl()).toBe(onReadyTpl)
+    ctrl.destroy()
+  })
+
+  it('toolbarOptions.onPreview renders Preview button and forwards opts', async () => {
+    const onPreview = vi.fn()
+    const ctrl = buildDesigner(host, {
+      template: SAMPLE,
+      toolbarOptions: { onPreview },
+    })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    // Verify the toolbar mounted and the Preview button rendered. Clicking via
+    // jsdom does not reliably dispatch through Vue's listener proxy when the
+    // app was created via createApp; integration coverage lives in the
+    // component-level HiprintToolbar.spec.ts where mount() is used directly.
+    const toolbar = host.querySelector('.hiprint-toolbar')
+    expect(toolbar).toBeTruthy()
+    const previewBtn = toolbar?.querySelector('button[aria-label="Preview"]') as HTMLButtonElement | null
+    expect(previewBtn).toBeTruthy()
+    expect(previewBtn?.disabled).toBe(false)
+    ctrl.destroy()
+  })
+
+  it('toolbarOptions.showUndo=false hides the Undo button (reactive prop)', async () => {
+    const ctrl = buildDesigner(host, {
+      template: SAMPLE,
+      toolbarOptions: { showUndo: false },
+    })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    const undo = host.querySelector('button[aria-label="Undo"]')
+    expect(undo).toBeNull()
+    ctrl.destroy()
+  })
+
+  it('toolbarOptions.extraButtons render with custom labels', async () => {
+    const extraClick = vi.fn()
+    const ctrl = buildDesigner(host, {
+      template: SAMPLE,
+      toolbarOptions: {
+        extraButtons: [{ key: 'my-export', label: 'Export PDF', onClick: extraClick }],
+      },
+    })
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    const extraBtn = host.querySelector('button[aria-label="Export PDF"]') as HTMLButtonElement | null
+    expect(extraBtn).toBeTruthy()
+    expect(extraBtn?.textContent?.trim()).toBe('Export PDF')
     ctrl.destroy()
   })
 })

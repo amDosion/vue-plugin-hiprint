@@ -1,31 +1,24 @@
 <script setup lang="ts">
 /**
- * HiprintToolbar.vue — V3 designer toolbar (P18.2).
+ * HiprintToolbar.vue — V3 designer toolbar (P21.6 + P21.7 — pure reactive SFC).
  *
- * Replaces V2 `buildToolbar` (V1 buildToolbar adapter, V1 bundle.js line
- * 13305-14857) with a Vue 3 SFC that binds buttons directly to Pinia store
- * actions (canvas / history / template). No jQuery, no DOM mutation.
+ * V3 architecture (final):
+ *  - Pure reactive Vue 3 SFC: props in → render out + emits. No V1 imperative
+ *    defineExpose surface, no buttonOverlay map, no dialog open flags.
+ *  - All V1 toolbarCtrl imperative methods are deleted from the compat layer
+ *    as well (business consumers migrate to V3 native composables /
+ *    `<HiprintDesigner>` props + emits).
  *
- * V1/V2 references (read-only):
- *  - src/hiprint-v2/ui/toolbar.js (V2 adapter)
- *  - src/hiprint/hiprint.bundle.js line 13305+ (V1 buildToolbar opts seed)
+ * Props in this SFC:
+ *  1. Reactive opts — show* (visibility flags) plus on* (event handlers) plus
+ *     paperTypes, scaleMin/Max/Step, alignItems, extraButtons, extraPosition,
+ *     panelManagerLabel, addPanelButtonText.
+ *  2. `tpl` — the PrintTemplate so onXxx callbacks receive it per V1 signature
+ *     parity (some business callbacks still rely on the first-arg-is-tpl shape).
  *
- * Button mapping (V1 opts → V3 actions):
- *  - showPreview / onPreview        → handlePreview (custom override or noop)
- *  - showPrint / onPrint            → handlePrint  → browserPrint(json)
- *  - showSave / onSave              → handleSave   → template.save()
- *  - showClear                      → handleClear  → template.clear()
- *  - showPaperSelect                → handlePaperChange → canvas.updateElement on active panel
- *  - showScale                      → handleZoomIn/Out → canvas.setScale
- *  - showRotate                     → handleRotate → patches active panel rotate
- *  - showAlign                      → handleAlign(type) → align selected elements
- *  - showPanelManager / onAddPanel  → handleAddPanel/Remove → canvas.addPanel/removePanel
- *  - showRuler / showGrid           → toggle local UI flags (ruler/grid CSS)
- *  - undo / redo                    → history.undo / redo
- *
- * P18.2 emits onPreview/onPrint/onSave/onPaperChange/onScaleChange/onAddPanel
- * via either: (a) explicit props (override default behavior) or (b) component
- * events (default behavior runs AND we emit so business can observe).
+ * Locked invariants:
+ *  - #8: every business callback wrapped via `safeCall` (try/catch isolation).
+ *  - V1 onXxx signature parity: first arg is always `tpl` (when defined).
  *
  * Accessibility:
  *  - role="toolbar"
@@ -39,8 +32,11 @@ import {
   useTemplateStore,
 } from '@hiprint-v3/stores'
 import { browserPrint, downloadPdf } from '@hiprint-v3/print'
+import { safeCall } from '@hiprint-v3/internal'
+import type { TemplateJson } from '@hiprint-v3/schemas'
+import type { PrintTemplate } from '@hiprint-v3/compat/print-template'
 
-// ============ Props / Emits ============
+// ============ Public types ============
 
 export interface ToolbarPaperType {
   /** Display label e.g. "A4". */
@@ -77,9 +73,36 @@ export type ToolbarButtonId =
   | 'alignTop'
   | 'alignMiddle'
   | 'alignBottom'
+  | 'templateSelect'
+  | 'businessSelect'
+
+export type ToolbarAlignType =
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'top'
+  | 'middle'
+  | 'bottom'
+
+/**
+ * V1 extraButtons[] entry — declarative custom-button slot.
+ * `onClick` receives the PrintTemplate per V1 contract.
+ */
+export interface ToolbarExtraButton {
+  key: string
+  label?: string
+  icon?: string
+  type?: 'default' | 'primary' | 'danger' | string
+  className?: string
+  visible?: boolean
+  disabled?: boolean
+  /** Inline HTML alternative — caller owns sanitisation (V1 quirk). */
+  html?: string
+  onClick?: (tpl: PrintTemplate | null | undefined, event?: Event) => void
+}
 
 interface Props {
-  /** Subset of buttons to show. Default: all 22 buttons. */
+  /** Subset of buttons to show. Default: all 22 standard buttons. */
   buttons?: readonly ToolbarButtonId[]
   /** Paper-size list shown in select. Defaults to A3/A4/A5/B4/B5. */
   paperTypes?: readonly ToolbarPaperType[]
@@ -90,18 +113,82 @@ interface Props {
   scaleMax?: number
   scaleStep?: number
   /**
-   * Override default Preview behavior. If supplied, default is skipped (we
-   * still emit `preview` event for observability).
-   *
+   * The PrintTemplate this toolbar is bound to. buildDesigner injects this so
+   * onXxx callbacks receive `tpl` as first argument per V1 contract.
+   */
+  tpl?: PrintTemplate | null
+  /**
+   * Override default Preview behavior (legacy alias).
    * NOTE: named `previewHandler` (not `onPreview`) so Vue does not treat it
-   * as a listener auto-bound from `@preview` emits — that would cause the
-   * override to run twice on every click.
+   * as a listener auto-bound from `@preview` emits.
    */
   previewHandler?: () => void
-  /** Override default Print behavior. */
+  /** Override default Print behavior (legacy alias). */
   printHandler?: () => void
-  /** Override default Save behavior. */
+  /** Override default Save behavior (legacy alias). */
   saveHandler?: () => void
+  // ---- V1 showXxx visibility flags (default true unless V1 says otherwise) ----
+  showUndo?: boolean
+  showRedo?: boolean
+  showSave?: boolean
+  showPreview?: boolean
+  showPrint?: boolean
+  showPdf?: boolean
+  showClear?: boolean
+  showPanelManager?: boolean
+  showPaperSelect?: boolean
+  showCustomPaper?: boolean
+  showRotate?: boolean
+  showAlign?: boolean
+  showScale?: boolean
+  showRuler?: boolean
+  showGrid?: boolean
+  showTemplateSelect?: boolean
+  showBusinessSelect?: boolean
+  // ---- V1 onXxx handlers (each gets tpl as first arg) ----
+  onPreview?: (tpl: PrintTemplate | null | undefined) => void
+  onPrint?: (tpl: PrintTemplate | null | undefined) => void
+  onClear?: (tpl: PrintTemplate | null | undefined) => void
+  onSave?: (
+    tpl: PrintTemplate | null | undefined,
+    json: TemplateJson,
+    event?: Event | null,
+    api?: unknown,
+    ctx?: { name?: string }
+  ) => void
+  onPaperChange?: (
+    tpl: PrintTemplate | null | undefined,
+    name: string,
+    size: { width: number; height: number }
+  ) => void
+  onRotate?: (tpl: PrintTemplate | null | undefined) => void
+  onAlign?: (
+    tpl: PrintTemplate | null | undefined,
+    type: ToolbarAlignType
+  ) => void
+  onScaleChange?: (
+    tpl: PrintTemplate | null | undefined,
+    value: number
+  ) => void
+  onAddPanel?: (tpl: PrintTemplate | null | undefined) => void
+  onRemovePanel?: (
+    tpl: PrintTemplate | null | undefined,
+    idx: number
+  ) => void
+  onSwitchPanel?: (
+    tpl: PrintTemplate | null | undefined,
+    idx: number
+  ) => void
+  onTemplateSelectClick?: (tpl: PrintTemplate | null | undefined) => void
+  onBusinessSelectClick?: (tpl: PrintTemplate | null | undefined) => void
+  // ---- Panel manager opts ----
+  panelManagerLabel?: string
+  addPanelButtonText?: string
+  // ---- Align customisation ----
+  alignItems?: readonly ToolbarAlignType[]
+  // ---- Extra buttons ----
+  extraButtons?: readonly ToolbarExtraButton[]
+  extraPosition?: 'start' | 'end'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -140,24 +227,74 @@ const props = withDefaults(defineProps<Props>(), {
   scaleMin: 0.5,
   scaleMax: 5,
   scaleStep: 0.1,
+  tpl: null,
   previewHandler: undefined,
   printHandler: undefined,
   saveHandler: undefined,
+  showUndo: true,
+  showRedo: true,
+  showSave: true,
+  showPreview: true,
+  showPrint: true,
+  showPdf: true,
+  showClear: true,
+  showPanelManager: false,
+  showPaperSelect: true,
+  showCustomPaper: false,
+  showRotate: true,
+  showAlign: true,
+  showScale: true,
+  showRuler: true,
+  showGrid: true,
+  showTemplateSelect: false,
+  showBusinessSelect: false,
+  onPreview: undefined,
+  onPrint: undefined,
+  onClear: undefined,
+  onSave: undefined,
+  onPaperChange: undefined,
+  onRotate: undefined,
+  onAlign: undefined,
+  onScaleChange: undefined,
+  onAddPanel: undefined,
+  onRemovePanel: undefined,
+  onSwitchPanel: undefined,
+  onTemplateSelectClick: undefined,
+  onBusinessSelectClick: undefined,
+  panelManagerLabel: '',
+  addPanelButtonText: '+',
+  alignItems: () => ['left', 'center', 'right', 'top', 'middle', 'bottom'],
+  extraButtons: () => [],
+  extraPosition: 'end',
 })
 
+/**
+ * Vue 3 quirk: any prop named `onXxx` is treated as an `xxx` event listener.
+ * To prevent the V1 `onPreview` / `onPrint` / etc. props from double-firing,
+ * we DO NOT redundantly invoke `props.onXxx?.(...)` inside each handler when
+ * an emit already covers that event. Instead each emit declares the V1
+ * signature (tpl + V1 args), so Vue's auto-listener bridge invokes the
+ * onXxx prop exactly once with the correct arg shape.
+ *
+ * Side benefit: `<HiprintToolbar @preview="...">` consumers and prop-based
+ * `:on-preview="..."` consumers both work identically.
+ */
 interface Emits {
-  (e: 'preview'): void
-  (e: 'print'): void
-  (e: 'save'): void
-  (e: 'clear'): void
-  (e: 'paperChange', paper: ToolbarPaperType): void
-  (e: 'scaleChange', scale: number): void
-  (e: 'addPanel'): void
-  (e: 'removePanel', panelId: string): void
-  (e: 'rotate', panelId: string): void
-  (e: 'align', type: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'): void
+  (e: 'preview', tpl: PrintTemplate | null | undefined): void
+  (e: 'print', tpl: PrintTemplate | null | undefined): void
+  (e: 'save', tpl: PrintTemplate | null | undefined, json: TemplateJson, event: Event | null, api: unknown, ctx: { name?: string }): void
+  (e: 'clear', tpl: PrintTemplate | null | undefined): void
+  (e: 'paperChange', tpl: PrintTemplate | null | undefined, name: string, size: { width: number; height: number }): void
+  (e: 'scaleChange', tpl: PrintTemplate | null | undefined, scale: number): void
+  (e: 'addPanel', tpl: PrintTemplate | null | undefined): void
+  (e: 'removePanel', tpl: PrintTemplate | null | undefined, idx: number): void
+  (e: 'rotate', tpl: PrintTemplate | null | undefined): void
+  (e: 'align', tpl: PrintTemplate | null | undefined, type: ToolbarAlignType): void
   (e: 'toggleGrid', visible: boolean): void
   (e: 'toggleRuler', visible: boolean): void
+  (e: 'switchPanel', tpl: PrintTemplate | null | undefined, idx: number): void
+  (e: 'templateSelectClick', tpl: PrintTemplate | null | undefined): void
+  (e: 'businessSelectClick', tpl: PrintTemplate | null | undefined): void
 }
 const emit = defineEmits<Emits>()
 
@@ -169,19 +306,143 @@ const tpl = useTemplateStore()
 
 // ============ Local UI state ============
 
+const toolbarRootEl = ref<HTMLElement | null>(null)
 const selectedPaperLabel = ref<string>(props.defaultPaper)
 const gridVisible = ref<boolean>(true)
 const rulerVisible = ref<boolean>(true)
 
 // ============ Derived ============
 
-const visible = computed<Set<ToolbarButtonId>>(() => new Set(props.buttons))
+const explicitButtons = computed<Set<ToolbarButtonId>>(
+  () => new Set(props.buttons)
+)
+
+const defaultLabels: Record<string, string> = {
+  undo: '↶ Undo',
+  redo: '↷ Redo',
+  save: '💾 Save',
+  preview: '👁 Preview',
+  print: '🖨 Print',
+  pdf: '📄 PDF',
+  clear: '🗑 Clear',
+  addPanel: '+ Panel',
+  removePanel: '− Panel',
+  rotate: '⟲ Rotate',
+  zoomIn: '+',
+  zoomOut: '−',
+  zoomReset: '100%',
+  gridToggle: '▦ Grid',
+  rulerToggle: '⌖ Ruler',
+  alignLeft: '⊣ L',
+  alignCenter: '☰ C',
+  alignRight: '⊢ R',
+  alignTop: '⊤ T',
+  alignMiddle: '☱ M',
+  alignBottom: '⊥ B',
+  templateSelect: '📋 Templates',
+  businessSelect: '🏷 Business',
+}
+
+function defaultLabelFor(key: string): string {
+  return defaultLabels[key] ?? key
+}
+
+function showFlagFor(key: ToolbarButtonId): boolean {
+  switch (key) {
+    case 'undo': return props.showUndo
+    case 'redo': return props.showRedo
+    case 'save': return props.showSave
+    case 'preview': return props.showPreview
+    case 'print': return props.showPrint
+    case 'pdf': return props.showPdf
+    case 'clear': return props.showClear
+    case 'paper': return props.showPaperSelect
+    case 'rotate': return props.showRotate
+    case 'addPanel':
+    case 'removePanel':
+      return props.showPanelManager || explicitButtons.value.has(key)
+    case 'zoomIn':
+    case 'zoomOut':
+    case 'zoomReset':
+      return props.showScale
+    case 'gridToggle':
+      return props.showGrid
+    case 'rulerToggle':
+      return props.showRuler
+    case 'alignLeft':
+    case 'alignCenter':
+    case 'alignRight':
+    case 'alignTop':
+    case 'alignMiddle':
+    case 'alignBottom':
+      return props.showAlign && alignSet.value.has(stripAlignPrefix(key))
+    case 'templateSelect':
+      return props.showTemplateSelect
+    case 'businessSelect':
+      return props.showBusinessSelect
+    default:
+      return true
+  }
+}
+
+const alignSet = computed<Set<ToolbarAlignType>>(
+  () => new Set(props.alignItems)
+)
+
+function stripAlignPrefix(key: string): ToolbarAlignType {
+  return key.replace(/^align/, '').toLowerCase() as ToolbarAlignType
+}
 
 function isShown(id: ToolbarButtonId): boolean {
-  return visible.value.has(id)
+  // templateSelect / businessSelect / addPanel / removePanel are opt-in via
+  // showXxx alone (not in default `buttons` list) — match V1 buildToolbar
+  // semantics where showPanelManager/showTemplateSelect/showBusinessSelect
+  // surface their own buttons regardless of `buttons` prop.
+  const isOptIn =
+    id === 'templateSelect' ||
+    id === 'businessSelect' ||
+    id === 'addPanel' ||
+    id === 'removePanel'
+  if (!isOptIn && !explicitButtons.value.has(id)) return false
+  return showFlagFor(id)
+}
+
+function isDisabled(id: ToolbarButtonId): boolean {
+  switch (id) {
+    case 'undo': return !history.canUndo
+    case 'redo': return !history.canRedo
+    case 'rotate': return !canvas.activePanelId
+    case 'removePanel':
+      return canvas.panels.length <= 1 || !canvas.activePanelId
+    case 'zoomOut': return canvas.scale <= props.scaleMin
+    case 'zoomIn': return canvas.scale >= props.scaleMax
+    case 'alignLeft':
+    case 'alignCenter':
+    case 'alignRight':
+    case 'alignTop':
+    case 'alignMiddle':
+    case 'alignBottom':
+      return canvas.selectedElementIds.size === 0
+    default:
+      return false
+  }
+}
+
+function labelFor(id: ToolbarButtonId): string {
+  return defaultLabelFor(id)
+}
+
+/** Reserved for future templated/themeable labels with HTML. Pure-V3 SFC never
+ *  renders HTML labels — returns false to keep the template ergonomics terse. */
+function useHtmlFor(_id: ToolbarButtonId): boolean {
+  return false
 }
 
 const scalePercent = computed<number>(() => Math.round(canvas.scale * 100))
+
+const orderedExtraButtons = computed<readonly ToolbarExtraButton[]>(
+  () => props.extraButtons ?? []
+)
 
 // ============ Action handlers ============
 
@@ -194,28 +455,48 @@ function handleRedo(): void {
 }
 
 function handleSave(): void {
-  if (props.saveHandler) {
-    safeCallOverride(props.saveHandler, 'saveHandler')
+  if (props.onSave) {
+    // Emit takes care of invoking the onSave prop (Vue 3 auto-listener bridge).
+    const json = tpl.getJson()
+    emit('save', props.tpl, json, null, undefined, {})
+  } else if (props.saveHandler) {
+    safeCall(
+      props.saveHandler as unknown as (...args: unknown[]) => void,
+      [],
+      'toolbar.saveHandler'
+    )
+    emit('save', props.tpl, tpl.getJson(), null, undefined, {})
   } else {
-    tpl.save()
+    const json = tpl.save()
+    emit('save', props.tpl, json, null, undefined, {})
   }
-  emit('save')
 }
 
 function handlePreview(): void {
-  if (props.previewHandler) {
-    safeCallOverride(props.previewHandler, 'previewHandler')
+  if (!props.onPreview && props.previewHandler) {
+    safeCall(
+      props.previewHandler as unknown as (...args: unknown[]) => void,
+      [],
+      'toolbar.previewHandler'
+    )
   }
-  emit('preview')
+  // Emit invokes onPreview prop (auto-listener bridge) with V1 signature.
+  emit('preview', props.tpl)
 }
 
 function handlePrint(): void {
-  if (props.printHandler) {
-    safeCallOverride(props.printHandler, 'printHandler')
-  } else {
-    runBrowserPrint()
+  if (!props.onPrint) {
+    if (props.printHandler) {
+      safeCall(
+        props.printHandler as unknown as (...args: unknown[]) => void,
+        [],
+        'toolbar.printHandler'
+      )
+    } else {
+      runBrowserPrint()
+    }
   }
-  emit('print')
+  emit('print', props.tpl)
 }
 
 function runBrowserPrint(): void {
@@ -233,10 +514,10 @@ function handlePdf(): void {
 }
 
 function handleClear(): void {
-  // tpl.clear wipes canvas + history. UX safety: caller may want a confirm
-  // dialog upstream; we just emit so they can intercept.
-  tpl.clear()
-  emit('clear')
+  if (!props.onClear) {
+    tpl.clear()
+  }
+  emit('clear', props.tpl)
 }
 
 function handleAddPanel(): void {
@@ -248,15 +529,23 @@ function handleAddPanel(): void {
     paperType: paper.label,
   })
   history.pushSnapshot()
-  emit('addPanel')
+  emit('addPanel', props.tpl)
 }
 
 function handleRemovePanel(): void {
   const id = canvas.activePanelId
   if (!id) return
+  const idx = canvas.panels.findIndex((p) => p.id === id)
   canvas.removePanel(id)
   history.pushSnapshot()
-  emit('removePanel', id)
+  emit('removePanel', props.tpl, idx)
+}
+
+function handleSwitchPanel(idx: number): void {
+  const panel = canvas.panels[idx]
+  if (!panel) return
+  canvas.setActivePanel(panel.id)
+  emit('switchPanel', props.tpl, idx)
 }
 
 function handlePaperChange(label: string): void {
@@ -264,9 +553,6 @@ function handlePaperChange(label: string): void {
   const paper = currentPaper()
   const panelId = canvas.activePanelId
   if (!panelId) return
-  // Patch active panel's width/height via direct mutation of panels array.
-  // (canvas store has no setPanelSize action yet; this mirrors how P18.1's
-  // canvas component is expected to write back paper dims.)
   const idx = canvas.panels.findIndex((p) => p.id === panelId)
   if (idx < 0) return
   const panel = canvas.panels[idx]
@@ -280,34 +566,36 @@ function handlePaperChange(label: string): void {
   }
   canvas.panels = nextPanels
   history.pushSnapshot()
-  emit('paperChange', paper)
+  emit('paperChange', props.tpl, paper.label, { width: paper.width, height: paper.height })
 }
 
 function currentPaper(): ToolbarPaperType {
   const found = props.paperTypes.find((p) => p.label === selectedPaperLabel.value)
   if (found) return found
   if (props.paperTypes.length > 0) return props.paperTypes[0]!
-  // Ultimate fallback (paperTypes prop forced to empty array)
   return { label: 'A4', width: 210, height: 297 }
 }
 
 function handleZoomIn(): void {
   canvas.setScale(canvas.scale + props.scaleStep)
-  emit('scaleChange', canvas.scale)
+  fireScaleChange()
 }
 
 function handleZoomOut(): void {
   canvas.setScale(canvas.scale - props.scaleStep)
-  emit('scaleChange', canvas.scale)
+  fireScaleChange()
 }
 
 function handleZoomReset(): void {
   canvas.setScale(1)
-  emit('scaleChange', canvas.scale)
+  fireScaleChange()
+}
+
+function fireScaleChange(): void {
+  emit('scaleChange', props.tpl, canvas.scale)
 }
 
 function handleRotate(): void {
-  // V1 onRotate rotates the panel paper (swap width/height).
   const panelId = canvas.activePanelId
   if (!panelId) return
   const idx = canvas.panels.findIndex((p) => p.id === panelId)
@@ -322,23 +610,20 @@ function handleRotate(): void {
   }
   canvas.panels = nextPanels
   history.pushSnapshot()
-  emit('rotate', panelId)
+  emit('rotate', props.tpl)
 }
 
-function handleAlign(
-  type: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
-): void {
+function handleAlign(type: ToolbarAlignType): void {
   const ids = canvas.selectedElementIds
   if (ids.size === 0) {
-    emit('align', type)
+    emit('align', props.tpl, type)
     return
   }
   const selected = canvas.selectedElements
   if (selected.length === 0) {
-    emit('align', type)
+    emit('align', props.tpl, type)
     return
   }
-  // Compute anchor from selected bounding box.
   const lefts: number[] = []
   const tops: number[] = []
   const rights: number[] = []
@@ -364,7 +649,7 @@ function handleAlign(
   const centerY = (anchor.top + anchor.bottom) / 2
   const panelId = canvas.activePanelId
   if (!panelId) {
-    emit('align', type)
+    emit('align', props.tpl, type)
     return
   }
   for (const el of selected) {
@@ -398,7 +683,7 @@ function handleAlign(
     })
   }
   history.pushSnapshot()
-  emit('align', type)
+  emit('align', props.tpl, type)
 }
 
 function handleToggleGrid(): void {
@@ -411,86 +696,166 @@ function handleToggleRuler(): void {
   emit('toggleRuler', rulerVisible.value)
 }
 
-// ============ Helpers ============
+function handleTemplateSelectClick(): void {
+  emit('templateSelectClick', props.tpl)
+}
 
-function safeCallOverride(fn: () => void, label: string): void {
-  try {
-    fn()
-  } catch (err) {
-    console.warn('[hiprint-v3] toolbar ' + label + ' threw:', err)
+function handleBusinessSelectClick(): void {
+  emit('businessSelectClick', props.tpl)
+}
+
+function handleExtraButtonClick(btn: ToolbarExtraButton, event: Event): void {
+  if (typeof btn.onClick === 'function') {
+    safeCall(
+      btn.onClick as unknown as (...args: unknown[]) => void,
+      [props.tpl, event],
+      'toolbar.extraButtons[' + btn.key + '].onClick'
+    )
   }
 }
+
+// ============ Minimal defineExpose (DOM accessor only) ============
+
+defineExpose({
+  /** Root toolbar DOM ref for compat layer getToolbarElement() lookup. */
+  getRootEl(): HTMLElement | null {
+    return toolbarRootEl.value
+  },
+})
 </script>
 
 <template>
-  <div class="hiprint-toolbar" role="toolbar" aria-label="Designer toolbar">
+  <div
+    ref="toolbarRootEl"
+    class="hiprint-toolbar"
+    role="toolbar"
+    aria-label="Designer toolbar"
+  >
+    <!-- Extra buttons (start position) -->
+    <template v-if="extraPosition === 'start'">
+      <button
+        v-for="btn in orderedExtraButtons"
+        :key="'extra-start-' + btn.key"
+        v-show="btn.visible !== false"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :class="btn.className"
+        :disabled="btn.disabled === true"
+        :aria-label="btn.label ?? btn.key"
+        @click="handleExtraButtonClick(btn, $event)"
+      >
+        <span v-if="btn.html" v-html="btn.html" />
+        <template v-else>{{ btn.label ?? btn.key }}</template>
+      </button>
+      <span
+        v-if="orderedExtraButtons.length > 0"
+        class="hiprint-toolbar-sep"
+        aria-hidden="true"
+      />
+    </template>
+
     <button
       v-if="isShown('undo')"
       type="button"
       class="hiprint-toolbar-btn"
-      :disabled="!history.canUndo"
+      :disabled="isDisabled('undo')"
       aria-label="Undo"
       @click="handleUndo"
     >
-      ↶ Undo
+      <span v-if="useHtmlFor('undo')" v-html="labelFor('undo')" />
+      <template v-else>{{ labelFor('undo') }}</template>
     </button>
     <button
       v-if="isShown('redo')"
       type="button"
       class="hiprint-toolbar-btn"
-      :disabled="!history.canRedo"
+      :disabled="isDisabled('redo')"
       aria-label="Redo"
       @click="handleRedo"
     >
-      ↷ Redo
+      <span v-if="useHtmlFor('redo')" v-html="labelFor('redo')" />
+      <template v-else>{{ labelFor('redo') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
     <button
+      v-if="isShown('templateSelect')"
+      type="button"
+      class="hiprint-toolbar-btn"
+      :disabled="isDisabled('templateSelect')"
+      aria-label="Templates"
+      @click="handleTemplateSelectClick"
+    >
+      <span v-if="useHtmlFor('templateSelect')" v-html="labelFor('templateSelect')" />
+      <template v-else>{{ labelFor('templateSelect') }}</template>
+    </button>
+    <button
+      v-if="isShown('businessSelect')"
+      type="button"
+      class="hiprint-toolbar-btn"
+      :disabled="isDisabled('businessSelect')"
+      aria-label="Business"
+      @click="handleBusinessSelectClick"
+    >
+      <span v-if="useHtmlFor('businessSelect')" v-html="labelFor('businessSelect')" />
+      <template v-else>{{ labelFor('businessSelect') }}</template>
+    </button>
+
+    <button
       v-if="isShown('save')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('save')"
       aria-label="Save"
       @click="handleSave"
     >
-      💾 Save
+      <span v-if="useHtmlFor('save')" v-html="labelFor('save')" />
+      <template v-else>{{ labelFor('save') }}</template>
     </button>
     <button
       v-if="isShown('preview')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('preview')"
       aria-label="Preview"
       @click="handlePreview"
     >
-      👁 Preview
+      <span v-if="useHtmlFor('preview')" v-html="labelFor('preview')" />
+      <template v-else>{{ labelFor('preview') }}</template>
     </button>
     <button
       v-if="isShown('print')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('print')"
       aria-label="Print"
       @click="handlePrint"
     >
-      🖨 Print
+      <span v-if="useHtmlFor('print')" v-html="labelFor('print')" />
+      <template v-else>{{ labelFor('print') }}</template>
     </button>
     <button
       v-if="isShown('pdf')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('pdf')"
       aria-label="Download PDF"
       @click="handlePdf"
     >
-      📄 PDF
+      <span v-if="useHtmlFor('pdf')" v-html="labelFor('pdf')" />
+      <template v-else>{{ labelFor('pdf') }}</template>
     </button>
     <button
       v-if="isShown('clear')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('clear')"
       aria-label="Clear template"
       @click="handleClear"
     >
-      🗑 Clear
+      <span v-if="useHtmlFor('clear')" v-html="labelFor('clear')" />
+      <template v-else>{{ labelFor('clear') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
@@ -520,32 +885,66 @@ function safeCallOverride(fn: () => void, label: string): void {
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Rotate paper"
-      :disabled="!canvas.activePanelId"
+      :disabled="isDisabled('rotate')"
       @click="handleRotate"
     >
-      ⟲ Rotate
+      <span v-if="useHtmlFor('rotate')" v-html="labelFor('rotate')" />
+      <template v-else>{{ labelFor('rotate') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
+
+    <!-- Panel manager dropdown (showPanelManager) — multi-panel switcher -->
+    <span
+      v-if="showPanelManager && canvas.panels.length > 0"
+      class="hiprint-toolbar-panel-manager"
+    >
+      <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
+        {{ panelManagerLabel }}
+      </span>
+      <select
+        class="hiprint-toolbar-select"
+        aria-label="Active panel"
+        :value="canvas.activePanelId ?? ''"
+        @change="
+          handleSwitchPanel(
+            canvas.panels.findIndex(
+              (p) => p.id === ($event.target as HTMLSelectElement).value
+            )
+          )
+        "
+      >
+        <option
+          v-for="(p, i) in canvas.panels"
+          :key="p.id"
+          :value="p.id"
+        >
+          {{ p.name ?? '第 ' + (i + 1) + ' 页' }}
+        </option>
+      </select>
+    </span>
 
     <button
       v-if="isShown('addPanel')"
       type="button"
       class="hiprint-toolbar-btn"
+      :disabled="isDisabled('addPanel')"
       aria-label="Add panel"
       @click="handleAddPanel"
     >
-      + Panel
+      <span v-if="useHtmlFor('addPanel')" v-html="labelFor('addPanel')" />
+      <template v-else>{{ labelFor('addPanel') }}</template>
     </button>
     <button
       v-if="isShown('removePanel')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Remove panel"
-      :disabled="canvas.panels.length <= 1 || !canvas.activePanelId"
+      :disabled="isDisabled('removePanel')"
       @click="handleRemovePanel"
     >
-      − Panel
+      <span v-if="useHtmlFor('removePanel')" v-html="labelFor('removePanel')" />
+      <template v-else>{{ labelFor('removePanel') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
@@ -555,10 +954,11 @@ function safeCallOverride(fn: () => void, label: string): void {
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Zoom out"
-      :disabled="canvas.scale <= scaleMin"
+      :disabled="isDisabled('zoomOut')"
       @click="handleZoomOut"
     >
-      −
+      <span v-if="useHtmlFor('zoomOut')" v-html="labelFor('zoomOut')" />
+      <template v-else>{{ labelFor('zoomOut') }}</template>
     </button>
     <button
       v-if="isShown('zoomReset')"
@@ -574,10 +974,11 @@ function safeCallOverride(fn: () => void, label: string): void {
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Zoom in"
-      :disabled="canvas.scale >= scaleMax"
+      :disabled="isDisabled('zoomIn')"
       @click="handleZoomIn"
     >
-      +
+      <span v-if="useHtmlFor('zoomIn')" v-html="labelFor('zoomIn')" />
+      <template v-else>{{ labelFor('zoomIn') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
@@ -591,7 +992,8 @@ function safeCallOverride(fn: () => void, label: string): void {
       aria-label="Toggle grid"
       @click="handleToggleGrid"
     >
-      ▦ Grid
+      <span v-if="useHtmlFor('gridToggle')" v-html="labelFor('gridToggle')" />
+      <template v-else>{{ labelFor('gridToggle') }}</template>
     </button>
     <button
       v-if="isShown('rulerToggle')"
@@ -602,7 +1004,8 @@ function safeCallOverride(fn: () => void, label: string): void {
       aria-label="Toggle ruler"
       @click="handleToggleRuler"
     >
-      ⌖ Ruler
+      <span v-if="useHtmlFor('rulerToggle')" v-html="labelFor('rulerToggle')" />
+      <template v-else>{{ labelFor('rulerToggle') }}</template>
     </button>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
@@ -612,61 +1015,86 @@ function safeCallOverride(fn: () => void, label: string): void {
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align left"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignLeft')"
       @click="handleAlign('left')"
     >
-      ⊣ L
+      <span v-if="useHtmlFor('alignLeft')" v-html="labelFor('alignLeft')" />
+      <template v-else>{{ labelFor('alignLeft') }}</template>
     </button>
     <button
       v-if="isShown('alignCenter')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align center"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignCenter')"
       @click="handleAlign('center')"
     >
-      ☰ C
+      <span v-if="useHtmlFor('alignCenter')" v-html="labelFor('alignCenter')" />
+      <template v-else>{{ labelFor('alignCenter') }}</template>
     </button>
     <button
       v-if="isShown('alignRight')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align right"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignRight')"
       @click="handleAlign('right')"
     >
-      ⊢ R
+      <span v-if="useHtmlFor('alignRight')" v-html="labelFor('alignRight')" />
+      <template v-else>{{ labelFor('alignRight') }}</template>
     </button>
     <button
       v-if="isShown('alignTop')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align top"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignTop')"
       @click="handleAlign('top')"
     >
-      ⊤ T
+      <span v-if="useHtmlFor('alignTop')" v-html="labelFor('alignTop')" />
+      <template v-else>{{ labelFor('alignTop') }}</template>
     </button>
     <button
       v-if="isShown('alignMiddle')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align middle"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignMiddle')"
       @click="handleAlign('middle')"
     >
-      ☱ M
+      <span v-if="useHtmlFor('alignMiddle')" v-html="labelFor('alignMiddle')" />
+      <template v-else>{{ labelFor('alignMiddle') }}</template>
     </button>
     <button
       v-if="isShown('alignBottom')"
       type="button"
       class="hiprint-toolbar-btn"
       aria-label="Align bottom"
-      :disabled="canvas.selectedElementIds.size === 0"
+      :disabled="isDisabled('alignBottom')"
       @click="handleAlign('bottom')"
     >
-      ⊥ B
+      <span v-if="useHtmlFor('alignBottom')" v-html="labelFor('alignBottom')" />
+      <template v-else>{{ labelFor('alignBottom') }}</template>
     </button>
+
+    <!-- Extra buttons (end position; default) -->
+    <template v-if="extraPosition !== 'start' && orderedExtraButtons.length > 0">
+      <span class="hiprint-toolbar-sep" aria-hidden="true" />
+      <button
+        v-for="btn in orderedExtraButtons"
+        :key="'extra-end-' + btn.key"
+        v-show="btn.visible !== false"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :class="btn.className"
+        :disabled="btn.disabled === true"
+        :aria-label="btn.label ?? btn.key"
+        @click="handleExtraButtonClick(btn, $event)"
+      >
+        <span v-if="btn.html" v-html="btn.html" />
+        <template v-else>{{ btn.label ?? btn.key }}</template>
+      </button>
+    </template>
   </div>
 </template>
 
@@ -728,7 +1156,8 @@ function safeCallOverride(fn: () => void, label: string): void {
   margin: 0 4px;
 }
 
-.hiprint-toolbar-paper {
+.hiprint-toolbar-paper,
+.hiprint-toolbar-panel-manager {
   display: inline-flex;
   align-items: center;
   gap: 4px;
