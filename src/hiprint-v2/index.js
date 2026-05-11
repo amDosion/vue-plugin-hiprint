@@ -75,6 +75,33 @@ export {
   getInstance as getRegistry,
 } from './core/index.js'
 
+// =========== P9: BasePrintElement (skeleton, P9b TODO for drag/design) ===========
+export { BasePrintElement } from './core/print-element-entity.js'
+
+// =========== P6: 10 element-type subclasses + factory ===========
+export {
+  TextPrintElement,
+  LongTextPrintElement,
+  ImagePrintElement,
+  HtmlPrintElement,
+  BarcodePrintElement,
+  QRCodePrintElement,
+  HLinePrintElement,
+  VLinePrintElement,
+  RectPrintElement,
+  OvalPrintElement,
+  createPrintElementByType,
+} from './core/etypes/index.js'
+
+// =========== P8: PrintPanel (skeleton + serialize) ===========
+export { PrintPanel } from './core/panel.js'
+
+// =========== P10: PrintTemplate (V2 main entry class, skeleton) ===========
+export {
+  PrintTemplate,
+  getTemplateById,
+} from './template/index.js'
+
 // =========== P12 (partial): socket ===========
 export {
   createHiWebSocket,
@@ -108,11 +135,11 @@ export function getV2PhaseStatus() {
     P3_vendor: 'stub', // jQuery plugins still loaded via V1 bundle.js side-effects
     P4_renderers: 'done',
     P5_core_registry: 'done',
-    P6_etypes: 'pending',
-    P7_table: 'pending',
-    P8_panel: 'pending',
-    P9_base_print_element: 'pending', // CRITICAL — 70+ V1 references, P9 is gating
-    P10_template: 'pending',
+    P6_etypes: 'done', // 10 subclasses + factory
+    P7_table: 'pending', // 2500 行 V1 table complex (cell/excel-helper/inline-editor)
+    P8_panel: 'skeleton', // data layer + serialize; design/drag/shortcuts TODO P8b
+    P9_base_print_element: 'skeleton', // core API + abstract; drag/copy/keyboard P9b TODO
+    P10_template: 'skeleton', // core API + serialize; getHtml/print/pdf/design P10b TODO
     P11_ui_toolbar_designer: 'pending',
     P12_socket: 'partial', // socket done; full entry wiring pending P6-P11
     P13_switch: 'pending',
