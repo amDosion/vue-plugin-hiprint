@@ -198,9 +198,24 @@ onBeforeUnmount(() => {
   <div
     ref="canvasEl"
     class="hiprint-canvas"
-    :class="{ 'hiprint-canvas--readonly': readonly }"
+    :class="{
+      'hiprint-canvas--readonly': readonly,
+      'hiprint-canvas--with-ruler': canvas.rulerVisible && !readonly,
+    }"
     @contextmenu="onContextMenu"
   >
+    <!-- Ruler tracks (CSS gradient pattern — major mark every 10pt + minor
+         every 5pt). Toolbar gridToggle button flips canvas.rulerVisible. -->
+    <div
+      v-if="canvas.rulerVisible && !readonly"
+      class="hiprint-canvas__ruler hiprint-canvas__ruler--top"
+      aria-hidden="true"
+    />
+    <div
+      v-if="canvas.rulerVisible && !readonly"
+      class="hiprint-canvas__ruler hiprint-canvas__ruler--left"
+      aria-hidden="true"
+    />
     <template v-if="activePanel">
       <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">
         <component
@@ -230,11 +245,15 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: auto;
   background: #f5f5f5;
-  padding: 16pt;
   box-sizing: border-box;
 }
 .hiprint-canvas--readonly {
   background: #fafafa;
+}
+/* Ruler-on layout: reserve 14pt top/left for the bars. */
+.hiprint-canvas--with-ruler {
+  padding-top: 14pt;
+  padding-left: 14pt;
 }
 .hiprint-canvas__empty {
   display: flex;
@@ -243,5 +262,39 @@ onBeforeUnmount(() => {
   height: 100%;
   color: #999;
   font-size: 14pt;
+}
+/* Top + left ruler tracks. Major tick every 10pt + minor every 5pt via
+   stacked linear-gradients. Pure CSS — no extra DOM nodes per tick. */
+.hiprint-canvas__ruler {
+  position: absolute;
+  background: #fafafa;
+  border: 1px solid #ccc;
+  pointer-events: none;
+  font-size: 8pt;
+  color: #666;
+}
+.hiprint-canvas__ruler--top {
+  top: 0;
+  left: 14pt;
+  right: 0;
+  height: 14pt;
+  background-image:
+    linear-gradient(to right, #888 1px, transparent 1px), /* major */
+    linear-gradient(to right, #bbb 1px, transparent 1px); /* minor */
+  background-size: 10pt 14pt, 5pt 7pt;
+  background-position: 0 0, 0 100%;
+  background-repeat: repeat-x;
+}
+.hiprint-canvas__ruler--left {
+  top: 14pt;
+  left: 0;
+  bottom: 0;
+  width: 14pt;
+  background-image:
+    linear-gradient(to bottom, #888 1px, transparent 1px),
+    linear-gradient(to bottom, #bbb 1px, transparent 1px);
+  background-size: 14pt 10pt, 7pt 5pt;
+  background-position: 0 0, 100% 0;
+  background-repeat: repeat-y;
 }
 </style>
