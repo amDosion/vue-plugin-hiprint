@@ -993,7 +993,9 @@ var hiprint = function (t) {
             delete this.options.draggable;
           }
           // 位置锁定：禁止拖动 + 同步锁定大小
-          try { this.designTarget.hidraggable('update', { draggable: !_posLocked }); } catch(ex){}
+          // hidraggable 插件可能因 DOM 已 detach 或插件未加载抛错; 失败不致命但必须有诊断
+          try { this.designTarget.hidraggable('update', { draggable: !_posLocked }); }
+          catch (ex) { console.warn('[hiprint] hidraggable update failed (posLock):', ex); }
           var _$rp = this.designTarget && this.designTarget.find('.resize-panel');
           if (_$rp && _$rp.length) {
             if (_posLocked) {
@@ -2090,7 +2092,17 @@ var hiprint = function (t) {
           var rowsColumnsMerge = ''
           if (n.rowsColumnsMerge) {
             try { rowsColumnsMerge = new Function('return ' + n.rowsColumnsMerge)(); } catch (e) { console.error('[hiprint] rowsColumnsMerge eval failed:', e); }
-            var rowsColumnsArr = rowsColumnsMerge(e, t, i, rowIndex, tableData, printData) || [1, 1]
+            // 业务方 rowsColumnsMerge fn 本身可能 throw (运行时 user data 异常),
+            // 不包 try 会冒泡进 forEach 中断整行渲染, 静默产生空表格。
+            var rowsColumnsArr = [1, 1];
+            try {
+              if (typeof rowsColumnsMerge === 'function') {
+                rowsColumnsArr = rowsColumnsMerge(e, t, i, rowIndex, tableData, printData) || [1, 1];
+              }
+            } catch (err) {
+              console.error('[hiprint] rowsColumnsMerge call failed (cell-level):', err);
+              rowsColumnsArr = [1, 1];
+            }
             var r = $(`<td style = 'display:${!(rowsColumnsArr[0] && rowsColumnsArr[1]) ? "none" : ""}' rowspan = '${rowsColumnsArr[0]}' colspan = '${rowsColumnsArr[1]}'></td>`);
           } else {
             var r = $("<td></td>");
@@ -6585,7 +6597,8 @@ var hiprint = function (t) {
           }
           if (_tblPosLocked) {
             this.designTarget.addClass('position-locked');
-            try { this.designTarget.hidraggable('update', { draggable: false }); } catch(ex){}
+            try { this.designTarget.hidraggable('update', { draggable: false }); }
+            catch (ex) { console.warn('[hiprint] hidraggable update failed (table posLock):', ex); }
           }
         }
       }, TablePrintElement.prototype.setHitable = function () {
@@ -8402,12 +8415,22 @@ var hiprint = function (t) {
           const endIndex = index + 1 === fragmentsCount ? charsCount : (index + 1) * fragmentSize
           // socket分段发送内容
           setTimeout(() => {
-            this.socket.emit('printByFragments', {
-              ...otherFields,
-              index,
-              total: fragmentsCount,
-              htmlFragment: contentToSplit.slice(startIndex, endIndex)
-            });
+            // [silent-failure / state-modeler] hiwebSocket.stop() 后 this.socket = null,
+            // 已 schedule 的 setTimeout 仍会触发 → emit on null 抛 TypeError. 必须守卫。
+            if (!this.socket) {
+              console.warn('[hiprint] sendByFragments: socket closed, dropping fragment', index, '/', fragmentsCount);
+              return;
+            }
+            try {
+              this.socket.emit('printByFragments', {
+                ...otherFields,
+                index,
+                total: fragmentsCount,
+                htmlFragment: contentToSplit.slice(startIndex, endIndex)
+              });
+            } catch (e) {
+              console.error('[hiprint] sendByFragments: emit failed for fragment', index, ':', e);
+            }
           }, sendInterval * index);
         })
       } catch (e) {
@@ -12320,6 +12343,19 @@ var hiprint = function (t) {
       }
 
       return t.prototype.design = function (t, e) {
+        // [state-modeler idempotency] design() 二次调用 (HMR / KeepAlive 重 mount)
+        // 之前会再 createContainer + 重新 panel.design() 累积 jQuery 事件订阅. 加幂等守卫:
+        // 已 designed 则先 unbind 旧 container 内的 jQuery 事件 + 清 container DOM, 再走流程.
+        if (this._designed) {
+          console.warn('[hiprint] design() called twice on same template, cleaning prior bind');
+          try {
+            if (this.container && this.container.length) {
+              this.container.find('*').off('.hiprint');
+              this.container.empty();
+            }
+          } catch (err) { console.warn('[hiprint] design re-entry cleanup failed:', err); }
+        }
+        this._designed = true;
         var n = this;
 
         if (e || (e = {}), 0 == this.printPanels.length) {
@@ -12355,7 +12391,7 @@ var hiprint = function (t) {
         return e && e.imgToBase64 && this.transformImg(i.find("img")), i;
       }, t.prototype.getSimpleHtmlAsync = function (dataItemOrList, e) {
         if (this._assertNotDestroyed('getHtmlAsync')) return Promise.resolve($('<div></div>'));
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
           var that = this;
           e || (e = {});
           let rootElement = $('<div class="hiprint-printTemplate"></div>');
@@ -12374,7 +12410,8 @@ var hiprint = function (t) {
             // 已被清空的 panel.printElements / DOM。
             if (that._destroyed) {
               console.warn('[hiprint] getHtmlAsync aborted: template destroyed mid-async');
-              return onFinish();
+              // [state-modeler] destroy 中断必须 reject 让 caller 区分"成功" vs "中断"
+              return reject(new Error('aborted: template destroyed mid-async'));
             }
             if (!paramsListToCreateHTML.length) return onFinish();
             const [panel, data, e] = paramsListToCreateHTML.shift();
@@ -12438,7 +12475,14 @@ var hiprint = function (t) {
           console.warn('[hiprint] deletePanel ignored: must keep at least 1 panel');
           return;
         }
+        // [state-modeler] 记录被删 panel 是否为 editingPanel, 删后必须重新 selectPanel
+        // 避免 editingPanel 引用已 .remove() 的 stale DOM 实例。
+        var wasEditing = this.editingPanel && this.editingPanel === this.printPanels[t];
         this.printPanels[t].clear(), this.printPanels[t].getTarget().remove(), this.printPanels.splice(t, 1);
+        if (wasEditing) {
+          // 选下一个可用 panel (clamp 到合法 index 范围)
+          this.selectPanel(Math.min(t, this.printPanels.length - 1));
+        }
       }, t.prototype.getPaneltotal = function () {
         if (this._assertNotDestroyed('getPaneltotal')) return 0;
         return this.printPanels.length;
@@ -12594,13 +12638,22 @@ var hiprint = function (t) {
           }
           r.each(function (a, p) {
             var s = new XMLHttpRequest();
+            // [silent-failure] XHR 网络错 / 404 / CORS / timeout 全部产生 readyState=4 status=0,
+            // 原 if (200 === status) 条件不命中, sentToClient 永不调, 印字静默丢失。
+            s.onerror = function () { console.error('[hiprint] print2: CSS XHR failed for', $(p).attr("href")); };
+            s.ontimeout = function () { console.error('[hiprint] print2: CSS XHR timeout for', $(p).attr("href")); };
             s.open("GET", $(p).attr("href")), s.onreadystatechange = function () {
-              if (4 === s.readyState && 200 === s.status && (o[a + ""] = '<style rel="stylesheet" type="text/css">' + s.responseText + "</style>", ++i == r.length)) {
-                for (var p = "", l = 0; l < r.length; l++) {
-                  p += o[l + ""];
+              if (4 === s.readyState) {
+                if (200 === s.status) {
+                  o[a + ""] = '<style rel="stylesheet" type="text/css">' + s.responseText + "</style>";
+                  if (++i == r.length) {
+                    for (var p = "", l = 0; l < r.length; l++) { p += o[l + ""]; }
+                    if (css) p = css + p;
+                    n.sentToClient(p, t, e);
+                  }
+                } else if (s.status !== 0) {
+                  console.error('[hiprint] print2: CSS load got HTTP', s.status, 'for', $(p).attr("href"));
                 }
-                if (css) p = css + p;
-                n.sentToClient(p, t, e);
               }
             }, s.send();
           });
@@ -12637,6 +12690,11 @@ var hiprint = function (t) {
               var o = t + rootElement[0].outerHTML;
               i.id = s.a.instance.guid(), i.html = o, i.templateId = this.id, hiwebSocket.sendByFragments(i, n);
             })
+            .catch(function (err) {
+              // [silent-failure] getHtmlAsync reject (destroy mid-async / 内部 throw) 时
+              // 印字静默丢失,业务方无反馈; 用 console.error 让 dev 看到。
+              console.error('[hiprint] sentToClient printByFragments failed:', err);
+            });
         } else {
           // 同步打印
           var o = t + this.getHtml(e, i)[0].outerHTML;
@@ -12658,6 +12716,9 @@ var hiprint = function (t) {
           }
           r.each(function (a, p) {
             var l = new XMLHttpRequest();
+            // [silent-failure] 同 print2: 网络错全部静默, 加 onerror/ontimeout 诊断
+            l.onerror = function () { console.error('[hiprint] printByHtml2: CSS XHR failed for', $(p).attr("href")); };
+            l.ontimeout = function () { console.error('[hiprint] printByHtml2: CSS XHR timeout for', $(p).attr("href")); };
             l.open("GET", $(p).attr("href")), l.onreadystatechange = function () {
               if (4 === l.readyState && 200 === l.status && (o[a + ""] = '<style rel="stylesheet" type="text/css">' + l.responseText + "</style>", ++i == r.length)) {
                 for (var p = "", u = 0; u < r.length; u++) {
@@ -12711,6 +12772,12 @@ var hiprint = function (t) {
           this.svg2canvas(l), u.html(l[0]);
           var d = u.find(".hiprint-printPanel .hiprint-printPaper").length;
           $(l).css("position:fixed"), domtoimage.toCanvas(l[0], p).then(function (t) {
+            // [state-modeler] destroy 后此 .then 仍触发 — 中断避免操作 stale 状态 + reject 让 caller 感知
+            if (i._destroyed) {
+              i.removeTempContainer();
+              dtd.reject(new Error('template destroyed mid-toPdf'));
+              return;
+            }
             var n = t.getContext("2d");
             n.mozImageSmoothingEnabled = !1, n.webkitImageSmoothingEnabled = !1, n.msImageSmoothingEnabled = !1, n.imageSmoothingEnabled = !1;
 
@@ -12719,12 +12786,19 @@ var hiprint = function (t) {
             }
             if (isDownload) {
               i.removeTempContainer(), e.indexOf(".pdf") > -1 ? s.save(e) : s.save(e + ".pdf");
+              dtd.resolve();
             } else {
               i.removeTempContainer();
               let type = options.type || 'blob';
               var pdfFile = s.output(type);
               dtd.resolve(pdfFile);
             }
+          }).catch(function (err) {
+            // [silent-failure] domtoimage 失败 (CORS / canvas size / 元素 detached) 时
+            // Promise 必须 reject, 否则调用方 hang + tempContainer 泄漏。
+            console.error('[hiprint] toPdf: domtoimage failed:', err);
+            i.removeTempContainer();
+            dtd.reject(err);
           });
         }
         return dtd.promise();
