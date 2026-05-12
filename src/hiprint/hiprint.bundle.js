@@ -12673,7 +12673,6 @@ var hiprint = function (t) {
           }
           if (r.length <= 0) {
             throw new Error("请在 入口文件(index.html) 中引入 print-lock.css. 注意: link[media=\"print\"]");
-            return;
           }
           r.each(function (a, p) {
             var s = new XMLHttpRequest();
@@ -12751,7 +12750,6 @@ var hiprint = function (t) {
             r = $('link[media=print][href*="print-lock"]');
           if (r.length <= 0) {
             throw new Error("请在 入口文件(index.html) 中引入 print-lock.css. 注意: link[media=\"print\"]");
-            return;
           }
           r.each(function (a, p) {
             var l = new XMLHttpRequest();
@@ -15163,6 +15161,10 @@ var hiprint = function (t) {
           try { hiprintTemplate.destroy(); }
           catch (err) { console.warn('[hiprint] designer.destroy: template destroy failed', err); }
         }
+        // 清掉绑在 document 上的本 designer 实例所有 mousemove/mouseup 监听:
+        // splitter resize 用 mousedown 在 document 上注册 namespace 事件, mouseup 时才 off。
+        // 若 destroy 在 mousedown 后 / mouseup 前调用 (用户 drag 中切路由), 闭包会泄漏。
+        $(document).off(_designerEventNs);
         $container.empty();
       },
       // 运行时切换分页栏显隐(画布底部的 "+" 添加新页按钮)。
