@@ -2,10 +2,10 @@
  * ImagePropertyPanel.spec.ts — V3 image property panel tests (PP-005).
  *
  * Covers:
- *  - Render bound to element.options (src / objectFit / borderRadius /
- *    aspectRatioLock / width / height).
+ *  - Render bound to element.options (src / fit / borderRadius /
+ *    aspectRatioLock / width / height). NOTE V1 key `fit` per TKT-004.
  *  - Field change dispatches canvas.updateElement with the right options
- *    patch.
+ *    patch (V1 keys).
  *  - History snapshot fires on commit boundary (change).
  *  - Aspect-ratio lock: editing width adjusts height proportionally.
  */
@@ -41,7 +41,7 @@ function seedImage(extra: Record<string, unknown> = {}): {
       width: 200,
       height: 100,
       src: 'https://example.com/a.png',
-      objectFit: 'contain',
+      fit: 'contain',
       borderRadius: 0,
       aspectRatioLock: false,
       ...extra,
@@ -58,7 +58,7 @@ function getOpts(el: CanvasElement | undefined): Record<string, unknown> {
 }
 
 describe('ImagePropertyPanel — bindings', () => {
-  it('renders bound to element.options.src and objectFit', async () => {
+  it('renders bound to element.options.src and fit (V1 key)', async () => {
     const { getElement } = seedImage()
     const w = mount(ImagePropertyPanel, {
       props: { element: getElement()! },
@@ -90,14 +90,17 @@ describe('ImagePropertyPanel — field changes', () => {
     w.unmount()
   })
 
-  it('changing objectFit patches options.objectFit', async () => {
+  it('changing object-fit dropdown patches options.fit (V1 key, TKT-004)', async () => {
     const { getElement } = seedImage()
     const w = mount(ImagePropertyPanel, {
       props: { element: getElement()! },
     })
     await w.vm.$nextTick()
     await w.find('select.img-object-fit').setValue('cover')
-    expect(getOpts(getElement()).objectFit).toBe('cover')
+    // V1 key contract — TKT-004
+    expect(getOpts(getElement()).fit).toBe('cover')
+    // ensure the old V3-invented name is NOT written
+    expect(getOpts(getElement()).objectFit).toBeUndefined()
     w.unmount()
   })
 

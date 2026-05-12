@@ -28,7 +28,7 @@ import {
   isTrue,
   type Opts,
 } from './_helpers'
-import { coerceText } from '@hiprint-v3/internal'
+import { coerceText, compileFormatter } from '@hiprint-v3/internal'
 
 const props = withDefaults(
   defineProps<{
@@ -63,17 +63,13 @@ const formatterHtml = computed<string | null>(() => {
   const el = element.value
   if (!el) return null
   const opts = el.options as Opts
-  const formatter = opts.formatter
-  if (typeof formatter !== 'function') return null
+  // TKT-006: accept string-source formatter as well (V1 parity).
+  const fn = compileFormatter(opts.formatter)
+  if (!fn) return null
   try {
     const title = coerceText(opts.title)
     const value = getElementValue(el, props.data)
-    const out = (formatter as (...a: unknown[]) => unknown)(
-      title,
-      value,
-      opts,
-      props.data
-    )
+    const out = fn(title, value, opts, props.data)
     return out == null ? '' : String(out)
   } catch (err) {
     console.warn('[hiprint-v3:TextElement] formatter threw:', err)

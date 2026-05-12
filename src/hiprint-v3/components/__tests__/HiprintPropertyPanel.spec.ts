@@ -352,16 +352,20 @@ describe('HiprintPropertyPanel — dispatch (Wave 2 PP-005/007/008/010/011)', ()
   })
 
   it('renders BarcodePropertyPanel for single barcode element', async () => {
-    seedSingleEtype('barcode', { format: 'CODE128' })
+    // Sprint 22a-r TKT-002: panel uses `barcodeType` (renderer key, lowercase
+    // bwip-js bcid) instead of legacy `format` (UPPERCASE JsBarcode vocab).
+    seedSingleEtype('barcode', { barcodeType: 'code128' })
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
     expect(w.find('.hiprint-barcode-property-panel').exists()).toBe(true)
-    expect(w.find('select.bc-format').exists()).toBe(true)
+    expect(w.find('select.bc-barcode-type').exists()).toBe(true)
     w.unmount()
   })
 
   it('renders QrcodePropertyPanel for single qrcode element', async () => {
-    seedSingleEtype('qrcode', { errorCorrectionLevel: 'M' })
+    // Sprint 22a-r TKT-003: panel uses `qrCodeLevel` int (renderer key) instead
+    // of legacy string `errorCorrectionLevel`.
+    seedSingleEtype('qrcode', { qrCodeLevel: 0 })
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
     expect(w.find('.hiprint-qrcode-property-panel').exists()).toBe(true)
@@ -397,13 +401,31 @@ describe('HiprintPropertyPanel — dispatch (Wave 2 PP-005/007/008/010/011)', ()
     w.unmount()
   })
 
-  it('renders TablePropertyPanel for single tableCustom element', async () => {
-    seedSingleEtype('tableCustom', {
+  it('renders TablePropertyPanel for single table element', async () => {
+    // TKT-010: only the canonical 'table' etype dispatches to TablePropertyPanel.
+    // See `docs/V3-PARITY-MATRIX/06-table.md` VIOLATION 1.1 for the audit trail.
+    seedSingleEtype('table', {
       columns: [[{ title: 'A', field: 'a', width: 100, align: 'left' }]],
     })
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
     expect(w.find('.hiprint-table-property-panel').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('does NOT dispatch to TablePropertyPanel for legacy tableCustom etype (TKT-010 rollback)', async () => {
+    // TKT-010 rollback regression guard. V1 bundle 10737-10739 throws on
+    // the legacy etype name; the V3 dispatcher must fall through to the
+    // generic editor rather than treating it as a known table-like etype.
+    seedSingleEtype('tableCustom', {
+      columns: [[{ title: 'A', field: 'a', width: 100, align: 'left' }]],
+    })
+    const w = mount(HiprintPropertyPanel)
+    await w.vm.$nextTick()
+    expect(w.find('.hiprint-table-property-panel').exists()).toBe(false)
+    // Generic fallback (Position fieldset) renders instead.
+    const legends = w.findAll('legend').map((l) => l.text())
+    expect(legends).toContain('Position')
     w.unmount()
   })
 

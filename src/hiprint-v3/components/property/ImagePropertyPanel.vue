@@ -5,7 +5,9 @@
  * Fields:
  *  - `src`             — image source URL (text). For data URLs / https only;
  *                        business-controlled — caller validates upstream.
- *  - `objectFit`       — CSS object-fit (contain/cover/fill/none/scale-down).
+ *  - `fit`             — CSS object-fit (contain/cover/fill/none/scale-down).
+ *                        V1 key name (TKT-004 fix — panel previously wrote
+ *                        `objectFit` while ImageElement.vue reads `fit`).
  *  - `borderRadius`    — corner radius in pt.
  *  - `aspectRatioLock` — boolean. When true, editing width also rescales height
  *                        to preserve current aspect ratio (and vice versa).
@@ -59,7 +61,8 @@ function onSrc(ev: Event): void {
 function onObjectFit(ev: Event): void {
   const target = ev.target as HTMLSelectElement | null
   if (!target) return
-  patch({ objectFit: String(target.value) }, true)
+  // TKT-004 — write V1 `fit` key (the one ImageElement.vue + render.ts read).
+  patch({ fit: String(target.value) }, true)
 }
 
 function onBorderRadius(ev: Event): void {
@@ -129,7 +132,7 @@ function commit(): void {
         Object fit
         <select
           class="img-object-fit"
-          :value="String(opts.objectFit ?? 'contain')"
+          :value="String(opts.fit ?? 'contain')"
           @change="onObjectFit"
         >
           <option value="contain">contain</option>

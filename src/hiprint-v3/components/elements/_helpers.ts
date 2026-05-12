@@ -50,8 +50,18 @@ export function computeGeometryStyle(opts: Opts): CSSProperties {
   if (opts.zIndex != null) {
     style.zIndex = String(safeNumber(opts.zIndex, { fallback: 0 }))
   }
-  if (opts.rotate != null) {
-    style.transform = 'rotate(' + safeNumber(opts.rotate, { fallback: 0 }) + 'deg)'
+  // TKT-005 — accept both V1 `transform` (preferred for backcompat with
+  // existing V1 templates) and V3 panel-written `rotate`. Numeric degrees in
+  // either key. `transform` wins when both present so V1 imports do not lose
+  // rotation.
+  const rotateDeg =
+    opts.transform != null
+      ? safeNumber(opts.transform, { fallback: 0 })
+      : opts.rotate != null
+        ? safeNumber(opts.rotate, { fallback: 0 })
+        : null
+  if (rotateDeg != null) {
+    style.transform = 'rotate(' + rotateDeg + 'deg)'
   }
   return style
 }

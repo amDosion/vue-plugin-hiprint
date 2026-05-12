@@ -1,12 +1,26 @@
 /**
- * TablePropertyPanel.spec.ts — V3 table property panel tests (PP-009).
+ * TablePropertyPanel.spec.ts — V3 table property panel tests.
+ *
+ * TKT-009 rollback: tests for the four invented options (`rowsPerPage`,
+ * `maxPage`, `alternateRowColor`, raw-HTML `footer`) were removed because
+ * the underlying UI was removed. Replacement coverage:
+ *   - `footerFormatter` textarea writes the literal string source
+ *     (V1 function-string contract, bundle 2038-2041).
+ *   - `tableHeaderRepeat` 3-state select writes `every` / `first` / `none`
+ *     (V1 bundle 6308, replaces the wrong-type boolean `columnHeader`).
+ *   - `tableFooterRepeat` 3-state select writes `every` / `last` / `no`
+ *     (V1 bundle 6309).
  *
  * Covers:
  *  - Columns CRUD (add / remove / update title / reorder up & down).
  *  - Boundary moveColumn (first col up, last col down) is a no-op.
- *  - Header/Footer field handlers (columnHeader / headerType / footer).
- *  - Rows config handlers (rowsPerPage / maxPage / rowHeight /
- *    alternateRowColor) all commit through canvas.updateElement.
+ *  - V1-faithful Header/Footer handlers (tableHeaderRepeat / tableFooterRepeat /
+ *    headerType / footerFormatter).
+ *  - rowHeight handler.
+ *
+ * TKT-010 follow-on: the seed now writes `type: 'table'` (the canonical V1
+ * etype) instead of the resurrected legacy name; V1 bundle 10737-10739
+ * explicitly throws for the legacy etype.
  *
  * All assertions go through the real Pinia canvas store (no mocks) so
  * `applyElementPatch`'s shallow-merge semantics are exercised end-to-end.
@@ -27,7 +41,7 @@ interface SeedOptions {
 }
 
 /**
- * Seed a single tableCustom element on panel "p1" and return the live
+ * Seed a single `table` element on panel "p1" and return the live
  * CanvasElement reference (re-fetch from store after each mutation —
  * applyElementPatch produces a NEW object on every update).
  */
@@ -46,8 +60,8 @@ function seedTable(options: SeedOptions = {}): {
   ]
   canvas.addElement('p1', {
     id: 'e1',
-    tid: 'default.tableCustom',
-    printElementType: { type: 'tableCustom', title: 'Table' },
+    tid: 'default.table',
+    printElementType: { type: 'table', title: 'Table' },
     options: {
       left: 10,
       top: 20,
@@ -184,20 +198,30 @@ describe('TablePropertyPanel — columns CRUD', () => {
   })
 })
 
-describe('TablePropertyPanel — header / footer handlers', () => {
-  it('columnHeader checkbox toggles option + commits', async () => {
-    const { getElement } = seedTable({ columnHeader: false })
+describe('TablePropertyPanel — header / footer handlers (V1-faithful)', () => {
+  it('tableHeaderRepeat select writes 3-state value', async () => {
+    const { getElement } = seedTable({ tableHeaderRepeat: 'every' })
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    const cb = w.find('input[type="checkbox"]')
-    expect(cb.exists()).toBe(true)
-    ;(cb.element as HTMLInputElement).checked = true
-    await cb.trigger('change')
-    expect(getOptions(getElement()).columnHeader).toBe(true)
-    // Toggle back off
-    ;(cb.element as HTMLInputElement).checked = false
-    await cb.trigger('change')
-    expect(getOptions(getElement()).columnHeader).toBe(false)
+    const sel = w.find('select.table-header-repeat')
+    expect(sel.exists()).toBe(true)
+    await sel.setValue('first')
+    expect(getOptions(getElement()).tableHeaderRepeat).toBe('first')
+    await sel.setValue('none')
+    expect(getOptions(getElement()).tableHeaderRepeat).toBe('none')
+    w.unmount()
+  })
+
+  it('tableFooterRepeat select writes 3-state value', async () => {
+    const { getElement } = seedTable({ tableFooterRepeat: 'last' })
+    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
+    await w.vm.$nextTick()
+    const sel = w.find('select.table-footer-repeat')
+    expect(sel.exists()).toBe(true)
+    await sel.setValue('every')
+    expect(getOptions(getElement()).tableFooterRepeat).toBe('every')
+    await sel.setValue('no')
+    expect(getOptions(getElement()).tableFooterRepeat).toBe('no')
     w.unmount()
   })
 
@@ -205,53 +229,42 @@ describe('TablePropertyPanel — header / footer handlers', () => {
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    const selects = w.findAll('select')
-    // Last select inside Header/Footer fieldset (col-align selects come first).
-    const headerSelect = selects.find(
-      (s) => !s.classes('col-align')
-    )
+    // The headerType select is the third <select> in the Header / Footer
+    // fieldset (col-align selects appear first, then table-header-repeat,
+    // table-footer-repeat). Match by absence of all the more-specific
+    // classes to find it.
+    const headerSelect = w
+      .findAll('select')
+      .find(
+        (s) =>
+          !s.classes('col-align') &&
+          !s.classes('table-header-repeat') &&
+          !s.classes('table-footer-repeat')
+      )
     expect(headerSelect).toBeDefined()
     await headerSelect!.setValue('group')
     expect(getOptions(getElement()).headerType).toBe('group')
     w.unmount()
   })
 
-  it('footer textarea change updates option', async () => {
+  it('footerFormatter textarea writes the literal function source string', async () => {
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    const ta = w.find('textarea')
+    const ta = w.find('textarea.footer-formatter')
     expect(ta.exists()).toBe(true)
-    ;(ta.element as HTMLTextAreaElement).value = '<div>foot</div>'
+    const src =
+      "function(opts, allData, printData, pageData, pageIndex){ return '<tr><td>summary</td></tr>' }"
+    ;(ta.element as HTMLTextAreaElement).value = src
     await ta.trigger('change')
-    expect(getOptions(getElement()).footer).toBe('<div>foot</div>')
+    // The renderer is responsible for `new Function('return '+src)()`; the
+    // panel only writes the raw string (V1 contract, bundle 2038-2041).
+    expect(getOptions(getElement()).footerFormatter).toBe(src)
     w.unmount()
   })
 })
 
 describe('TablePropertyPanel — rows config handlers', () => {
-  it('rowsPerPage commits on change', async () => {
-    const { getElement } = seedTable()
-    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
-    await w.vm.$nextTick()
-    const input = w.find('input.rows-per-page')
-    expect(input.exists()).toBe(true)
-    await input.setValue(15)
-    expect(getOptions(getElement()).rowsPerPage).toBe(15)
-    w.unmount()
-  })
-
-  it('maxPage commits on change', async () => {
-    const { getElement } = seedTable()
-    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
-    await w.vm.$nextTick()
-    const input = w.find('input.max-page')
-    expect(input.exists()).toBe(true)
-    await input.setValue(3)
-    expect(getOptions(getElement()).maxPage).toBe(3)
-    w.unmount()
-  })
-
   it('rowHeight commits on change', async () => {
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
@@ -262,16 +275,41 @@ describe('TablePropertyPanel — rows config handlers', () => {
     expect(getOptions(getElement()).rowHeight).toBe(28)
     w.unmount()
   })
+})
 
-  it('alternateRowColor commits on change', async () => {
+describe('TablePropertyPanel — TKT-009 rollback (invented options are gone)', () => {
+  it('does not render rowsPerPage input', async () => {
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    const input = w.find('input.alt-row-color')
-    expect(input.exists()).toBe(true)
-    ;(input.element as HTMLInputElement).value = '#eeeeee'
-    await input.trigger('change')
-    expect(getOptions(getElement()).alternateRowColor).toBe('#eeeeee')
+    expect(w.find('input.rows-per-page').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('does not render maxPage input', async () => {
+    const { getElement } = seedTable()
+    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
+    await w.vm.$nextTick()
+    expect(w.find('input.max-page').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('does not render alternateRowColor input', async () => {
+    const { getElement } = seedTable()
+    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
+    await w.vm.$nextTick()
+    expect(w.find('input.alt-row-color').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('does not render a raw-HTML `footer` textarea (only footerFormatter)', async () => {
+    const { getElement } = seedTable()
+    const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
+    await w.vm.$nextTick()
+    // Only the V1-faithful footerFormatter textarea should remain.
+    const tas = w.findAll('textarea')
+    expect(tas.length).toBe(1)
+    expect(tas[0]!.classes('footer-formatter')).toBe(true)
     w.unmount()
   })
 })

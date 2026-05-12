@@ -16,7 +16,7 @@
  */
 import { computed } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { coerceText, safeNumber } from '@hiprint-v3/internal'
+import { coerceText, compileFormatter, safeNumber } from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { computeDisplayText, getElementValue, type Opts } from './_helpers'
 
@@ -53,10 +53,11 @@ const formatterHtml = computed<string | null>(() => {
   const el = element.value
   if (!el) return null
   const opts = el.options as Opts
-  const formatter = opts.formatter
-  if (typeof formatter !== 'function') return null
+  // TKT-006: accept string-source formatter as well (V1 parity).
+  const fn = compileFormatter(opts.formatter)
+  if (!fn) return null
   try {
-    const out = (formatter as (...a: unknown[]) => unknown)(
+    const out = fn(
       coerceText(opts.title),
       getElementValue(el, props.data),
       opts,

@@ -405,85 +405,20 @@ describe('HiprintToolbar — TB-003 panel chip list', () => {
   })
 })
 
-describe('HiprintToolbar — TB-006 pagination bar', () => {
-  it('hidden when only 1 panel exists', () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    const w = mount(HiprintToolbar)
-    expect(w.find('.hiprint-toolbar-pagination').exists()).toBe(false)
-    w.unmount()
-  })
-
-  it('shows X / Y indicator when 2+ panels', () => {
+// Sprint 22a-r TKT-012: TB-006 inline toolbar pagination bar rolled back —
+// V1 has no toolbar pagination (only a bottom canvas strip), so the V3
+// `< Page X / Y >` indicator + prev/next buttons + `showPagination` prop +
+// `currentPanelIdx` computed + `gotoPanelDelta` fn were all removed.
+describe('HiprintToolbar — TKT-012 TB-006 pagination rollback (V1 parity)', () => {
+  it('renders no .hiprint-toolbar-pagination element with 3 panels', () => {
     const canvas = useCanvasStore()
     canvas.addPanel({ id: 'p1', width: 200, height: 200 })
     canvas.addPanel({ id: 'p2', width: 200, height: 200 })
     canvas.addPanel({ id: 'p3', width: 200, height: 200 })
     const w = mount(HiprintToolbar)
-    const pag = w.find('.hiprint-toolbar-pagination')
-    expect(pag.exists()).toBe(true)
-    // p1 is active → "1 / 3"
-    expect(pag.text().replace(/\s+/g, ' ')).toContain('1 / 3')
-    w.unmount()
-  })
-
-  it('prev disabled on first panel; next enabled', () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
-    const w = mount(HiprintToolbar)
-    const prev = w.find('button[aria-label="Previous panel"]')
-    const next = w.find('button[aria-label="Next panel"]')
-    expect((prev.element as HTMLButtonElement).disabled).toBe(true)
-    expect((next.element as HTMLButtonElement).disabled).toBe(false)
-    w.unmount()
-  })
-
-  it('next disabled on last panel', async () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
-    canvas.setActivePanel('p2')
-    const w = mount(HiprintToolbar)
-    await w.vm.$nextTick()
-    const prev = w.find('button[aria-label="Previous panel"]')
-    const next = w.find('button[aria-label="Next panel"]')
-    expect((prev.element as HTMLButtonElement).disabled).toBe(false)
-    expect((next.element as HTMLButtonElement).disabled).toBe(true)
-    w.unmount()
-  })
-
-  it('next button advances activePanelId', async () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p3', width: 200, height: 200 })
-    const w = mount(HiprintToolbar)
-    await w.find('button[aria-label="Next panel"]').trigger('click')
-    expect(canvas.activePanelId).toBe('p2')
-    await w.find('button[aria-label="Next panel"]').trigger('click')
-    expect(canvas.activePanelId).toBe('p3')
-    w.unmount()
-  })
-
-  it('prev button rewinds activePanelId', async () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
-    canvas.setActivePanel('p2')
-    const w = mount(HiprintToolbar)
-    await w.vm.$nextTick()
-    await w.find('button[aria-label="Previous panel"]').trigger('click')
-    expect(canvas.activePanelId).toBe('p1')
-    w.unmount()
-  })
-
-  it('showPagination=false hides indicator even with 2+ panels', () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
-    canvas.addPanel({ id: 'p2', width: 200, height: 200 })
-    const w = mount(HiprintToolbar, { props: { showPagination: false } })
     expect(w.find('.hiprint-toolbar-pagination').exists()).toBe(false)
+    expect(w.find('button[aria-label="Previous panel"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Next panel"]').exists()).toBe(false)
     w.unmount()
   })
 })

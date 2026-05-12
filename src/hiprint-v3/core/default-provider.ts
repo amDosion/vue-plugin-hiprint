@@ -212,15 +212,18 @@ function buildECommerceGroup(): PrintElementTypeGroup {
       options: { width: 160, height: 12, fontSize: 10, testData: '2026-05-09 14:30' },
     },
     {
+      // Sprint 22a-r TKT-008: emit Path B (`type:'barcode'`) — V3 only ships
+      // the bwip-js renderer, so the V1 Path A shape (`type:'text' +
+      // textType:'barcode'`) rendered as a plain text node. See matrix
+      // 04-barcode-qrcode VIOLATION-1.
       tid: 'defaultModule.trackingNo',
       title: '快递单号',
       field: 'trackingNo',
-      type: 'text',
+      type: 'barcode',
       icon: 'ep:list',
       options: {
         width: 180,
         height: 50,
-        textType: 'barcode',
         barcodeType: 'code128',
         testData: 'SF1234567890',
       },
@@ -275,29 +278,34 @@ function buildAuxiliaryGroup(): PrintElementTypeGroup {
       icon: 'ep:aim',
     },
     {
+      // Sprint 22a-r TKT-008: Path B shape (`type:'barcode'`); see trackingNo
+      // entry above. V3 has no Path A handler — `type:'text'+textType:'barcode'`
+      // rendered as plain text.
       tid: 'defaultModule.barcode',
       title: '条形码',
       field: 'barcode',
-      type: 'text',
+      type: 'barcode',
       icon: 'ep:list',
       options: {
         width: 140,
         height: 35,
-        textType: 'barcode',
+        barcodeType: 'code128',
         hideTitle: true,
         testData: '123456789',
       },
     },
     {
+      // Sprint 22a-r TKT-008: Path B shape (`type:'qrcode'`); V3 reads
+      // qrCodeLevel as int index into ['M','L','H','Q'] — default 0 = M.
       tid: 'defaultModule.qrcode',
       title: '二维码',
       field: 'qrcode',
-      type: 'text',
+      type: 'qrcode',
       icon: 'ep:grid',
       options: {
         width: 50,
         height: 50,
-        textType: 'qrcode',
+        qrCodeLevel: 0,
         hideTitle: true,
         testData: 'https://example.com',
       },

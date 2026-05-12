@@ -33,7 +33,7 @@ describe('HtmlElement — by-design innerHTML (Invariant #2)', () => {
     w.unmount()
   })
 
-  it('renders bound data string as live HTML when no formatter/content', () => {
+  it('renders bound data string as escaped text by default (TKT-007 XSS-safe)', () => {
     const canvas = useCanvasStore()
     canvas.addPanel({ id: 'p1', width: 200, height: 200 })
     canvas.addElement('p1', {
@@ -41,6 +41,30 @@ describe('HtmlElement — by-design innerHTML (Invariant #2)', () => {
       tid: 't.html',
       printElementType: { type: 'html' },
       options: { field: 'snippet' },
+    })
+    const w = mount(HtmlElement, {
+      props: {
+        elementId: 'e1',
+        panelId: 'p1',
+        data: { snippet: '<span class="from-data">x</span>' },
+        interactive: false,
+      },
+    })
+    // TKT-007: default is v-text — markup must NOT parse into live nodes.
+    expect(w.find('span.from-data').exists()).toBe(false)
+    // The raw string must appear as text.
+    expect(w.text()).toContain('<span class="from-data">x</span>')
+    w.unmount()
+  })
+
+  it('renders bound data string as live HTML when escape=false opt-in (TKT-007)', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.html',
+      printElementType: { type: 'html' },
+      options: { field: 'snippet', escape: false },
     })
     const w = mount(HtmlElement, {
       props: {

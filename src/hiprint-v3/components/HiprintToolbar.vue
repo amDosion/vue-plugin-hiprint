@@ -185,12 +185,6 @@ interface Props {
   // ---- Panel manager opts ----
   panelManagerLabel?: string
   addPanelButtonText?: string
-  /**
-   * Show the pagination indicator + prev/next buttons next to the panel chip
-   * list (TB-006). Only renders when there are 2+ panels regardless of flag.
-   * Default true.
-   */
-  showPagination?: boolean
   // ---- Align customisation ----
   alignItems?: readonly ToolbarAlignType[]
   // ---- Extra buttons ----
@@ -223,10 +217,15 @@ const props = withDefaults(defineProps<Props>(), {
     'alignMiddle',
     'alignBottom',
   ],
+  // V1 parity: `_defaultPaperTypes` dictionary [V1 bundle.js lines 13296-13303]
+  // — A3/A4/A5/B3/B4/B5 with these exact dimensions (mm). Sprint 22a-r rollback
+  // restored B3 (was dropped) + fixed A3/A5/B5 width/height swap. Values match
+  // V1 inventory `docs/V1-INVENTORY/toolbar-and-shell.md` §1.15 + Appendix A.
   paperTypes: () => [
     { label: 'A3', width: 297, height: 420 },
     { label: 'A4', width: 210, height: 297 },
     { label: 'A5', width: 148, height: 210 },
+    { label: 'B3', width: 353, height: 500 },
     { label: 'B4', width: 250, height: 353 },
     { label: 'B5', width: 176, height: 250 },
   ],
@@ -273,7 +272,6 @@ const props = withDefaults(defineProps<Props>(), {
   onBusinessSelectClick: undefined,
   panelManagerLabel: '',
   addPanelButtonText: '+',
-  showPagination: true,
   alignItems: () => ['left', 'center', 'right', 'top', 'middle', 'bottom'],
   extraButtons: () => [],
   extraPosition: 'end',
@@ -466,17 +464,6 @@ function useHtmlFor(_id: ToolbarButtonId): boolean {
 
 const scalePercent = computed<number>(() => Math.round(canvas.scale * 100))
 
-/**
- * TB-006 — index of the currently-active panel inside `canvas.panels`.
- * Returns -1 when no panel is active (used by `gotoPanelDelta` boundary
- * checks + pagination "X / Y" indicator).
- */
-const currentPanelIdx = computed<number>(() => {
-  const id = canvas.activePanelId
-  if (!id) return -1
-  return canvas.panels.findIndex((p) => p.id === id)
-})
-
 const orderedExtraButtons = computed<readonly ToolbarExtraButton[]>(
   () => props.extraButtons ?? []
 )
@@ -645,19 +632,6 @@ function handleSwitchPanel(idx: number): void {
   const panel = canvas.panels[idx]
   if (!panel) return
   canvas.setActivePanel(panel.id)
-  emit('switchPanel', props.tpl, idx)
-}
-
-/**
- * TB-006 — Move active panel by ±1 (prev/next pagination). Boundaries are
- * already enforced by the buttons' :disabled binding; this function still
- * guards defensively so direct keyboard / programmatic calls cannot wrap.
- */
-function gotoPanelDelta(d: number): void {
-  const idx = currentPanelIdx.value + d
-  const target = canvas.panels[idx]
-  if (!target) return
-  canvas.setActivePanel(target.id)
   emit('switchPanel', props.tpl, idx)
 }
 
@@ -1071,30 +1045,10 @@ defineExpose({
       </button>
     </span>
 
-    <!-- TB-006: Pagination indicator + prev/next. Hidden when ≤1 panel even
-         if `showPagination=true` (no value in showing "1 / 1"). -->
-    <span
-      v-if="showPagination && canvas.panels.length > 1"
-      class="hiprint-toolbar-pagination"
-    >
-      <button
-        type="button"
-        class="hiprint-toolbar-btn"
-        :disabled="currentPanelIdx <= 0"
-        aria-label="Previous panel"
-        @click="gotoPanelDelta(-1)"
-      >‹</button>
-      <span class="hiprint-toolbar-label">
-        {{ currentPanelIdx + 1 }} / {{ canvas.panels.length }}
-      </span>
-      <button
-        type="button"
-        class="hiprint-toolbar-btn"
-        :disabled="currentPanelIdx >= canvas.panels.length - 1"
-        aria-label="Next panel"
-        @click="gotoPanelDelta(1)"
-      >›</button>
-    </span>
+    <!-- Sprint 22a-r TKT-012: TB-006 inline pagination bar removed. V1 has no
+         toolbar pagination — panel chip switcher (TB-003 above) is the only
+         in-toolbar panel selector. V1's `.hiprint-printPagination` is a
+         bottom-strip concept handled by `<HiprintCanvas>`, not the toolbar. -->
 
     <button
       v-if="isShown('addPanel')"
@@ -1373,13 +1327,6 @@ defineExpose({
   background: #1677ff;
   color: #fff;
   border-color: #1677ff;
-}
-
-/* TB-006: Pagination indicator wrapper. */
-.hiprint-toolbar-pagination {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .hiprint-toolbar-label {

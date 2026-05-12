@@ -61,9 +61,11 @@ const dispatchedTypes = new Set<string>([
   'rect',
   'oval',
   'html',
+  // TKT-010: only the canonical `'table'` etype dispatches to TablePropertyPanel.
+  // The legacy etype name (V1 bundle 10737-10739 throws on it) was resurrected
+  // in Sprint 22a and has been rolled back here. See
+  // `docs/V3-PARITY-MATRIX/06-table.md` VIOLATION 1.1 / Section 19.
   'table',
-  // PP-009 / TableElement.vue uses `tableCustom` as the runtime etype.
-  'tableCustom',
 ])
 
 // ============ Derived ============
@@ -97,9 +99,9 @@ const isShapeType = computed<boolean>(() =>
   ['hline', 'vline', 'rect', 'oval'].includes(elementType.value)
 )
 
-const isTableType = computed<boolean>(() =>
-  ['table', 'tableCustom'].includes(elementType.value)
-)
+// TKT-010: only `'table'` is a valid table etype in V3 (V1 throws on the
+// legacy name at bundle 10737-10739).
+const isTableType = computed<boolean>(() => elementType.value === 'table')
 
 /**
  * Use the per-etype dispatched panel when (a) exactly one element is

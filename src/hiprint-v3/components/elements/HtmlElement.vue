@@ -2,28 +2,36 @@
 /**
  * HtmlElement.vue — V3 html etype (P17.1).
  *
- * ⚠️ SECURITY — BY DESIGN INNERHTML (Invariant #2 from ADR-0011).
+ * ⚠️ SECURITY — TWO DISTINCT PATHS (TKT-007 fix)
  *
- * The `html` etype is the ONE etype where rendering user-controlled HTML is
- * intentional. Business consumers use it for stamps/signatures/marketing
- * snippets that include arbitrary markup.
+ * V3 inherits V1's "by-design innerHTML" contract for the **explicit** rendering
+ * paths (`options.content` literal + `options.formatter` output). On those
+ * paths business code owns sanitization — same contract as V1.
  *
- * **Business code is responsible for sanitizing input before it reaches this
- * component.** Hiprint does not run an HTML sanitizer. See:
- *  - docs/integration-guide.md ⚠️ 安全注意事项 #1
- *  - .claude/rules/security.md §1
- *  - V2 src/hiprint-v2/renderers/html.js (same contract)
+ * V3 Sprint 22a Wave 2 ALSO introduced a NEW path that V1 never had:
+ * **field-bound data string rendered via v-html.** That path is a brand-new
+ * XSS surface — user-controlled template data flowing into innerHTML at
+ * runtime, with no sanitization. TKT-007 makes the field-bound path
+ * default-safe by escaping (v-text) and requires explicit opt-in via either
+ * `options.escape === false` or `options.html === true` to keep V1's
+ * by-design HTML behavior.
  *
- * V2 reference: `render.ts` renderHtmlElement (line 451-477).
+ *   resolution order               escape default?   override
+ *   -------------------------     ---------------   --------
+ *   1. options.formatter (any)    NO (v-html, V1)   — (always raw)
+ *   2. options.content (string)   NO (v-html, V1)   — (always raw)
+ *   3. data[options.field]        YES (v-text)      escape=false / html=true
+ *   4. fallback empty             —                 —
  *
- * Resolution order for the rendered HTML string:
- *   1. options.formatter(...) → string (preferred extension point).
- *   2. options.content — design-time literal.
- *   3. Bound business data via field — runtime value.
- *   4. Empty string (renders nothing).
+ * V1 reference: `render.ts` renderHtmlElement (line 451-477).
+ * Integration guide §"安全注意事项 #1" + `.claude/rules/security.md §1`.
+ *
+ * TKT-006: `options.formatter` now accepts BOTH a function AND a string of
+ * JS source (V1 parity via `compileFormatter`).
  */
 import { computed } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
+import { compileFormatter } from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { getElementValue, type Opts } from './_helpers'
 
@@ -47,29 +55,48 @@ const element = computed(() => {
   return null
 })
 
-const html = computed<string>(() => {
+/**
+ * Render-resolution outcome.
+ *  - `mode: 'html'`  — value is rendered via v-html (V1 by-design path).
+ *  - `mode: 'text'`  — value is rendered via v-text (XSS-safe; field-binding
+ *                      default, TKT-007).
+ */
+type Resolved = { mode: 'html' | 'text'; value: string }
+
+const resolved = computed<Resolved>(() => {
   const el = element.value
-  if (!el) return ''
+  if (!el) return { mode: 'text', value: '' }
   const opts = el.options as Opts
-  const formatter = opts.formatter
-  if (typeof formatter === 'function') {
+
+  // 1) formatter (V1 path — by-design HTML). TKT-006: accept string source.
+  const fn = compileFormatter(opts.formatter)
+  if (fn) {
     try {
-      const out = (formatter as (...a: unknown[]) => unknown)(
+      const out = fn(
         opts.title,
         getElementValue(el, props.data),
         opts,
         props.data
       )
-      return out == null ? '' : String(out)
+      return { mode: 'html', value: out == null ? '' : String(out) }
     } catch (err) {
       console.warn('[hiprint-v3:HtmlElement] formatter threw:', err)
-      return ''
+      return { mode: 'html', value: '' }
     }
   }
-  if (typeof opts.content === 'string') return opts.content
+
+  // 2) options.content (V1 path — by-design HTML).
+  if (typeof opts.content === 'string') {
+    return { mode: 'html', value: opts.content }
+  }
+
+  // 3) field-bound data string — TKT-007 default-safe path.
   const value = getElementValue(el, props.data)
-  if (typeof value === 'string') return value
-  return ''
+  if (typeof value === 'string') {
+    const optIn = opts.escape === false || opts.html === true
+    return { mode: optIn ? 'html' : 'text', value }
+  }
+  return { mode: 'text', value: '' }
 })
 </script>
 
@@ -80,13 +107,23 @@ const html = computed<string>(() => {
     :interactive="interactive"
   >
     <!--
+      Two rendering paths, decided by the resolution above:
+      - `html`: V1 by-design innerHTML (formatter / content / opt-in field).
+        Business owns input sanitization (Invariant #2).
+      - `text`: XSS-safe field-binding default (TKT-007).
       eslint-disable-next-line vue/no-v-html
-      BY DESIGN: see file header. Business owns input sanitization.
     -->
     <div
+      v-if="resolved.mode === 'html'"
       class="hiprint-printElement-html-content"
       style="height: 100%; width: 100%"
-      v-html="html"
+      v-html="resolved.value"
+    />
+    <div
+      v-else
+      class="hiprint-printElement-html-content"
+      style="height: 100%; width: 100%"
+      v-text="resolved.value"
     />
   </ElementWrapper>
 </template>

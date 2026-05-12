@@ -2,12 +2,23 @@
 /**
  * QrcodePropertyPanel.vue — V3 property editor for `qrcode` etype (PP-008).
  *
+ * Sprint 22a-r TKT-003 rollback: panel keys realigned to V3-renderer keys.
+ * Previous shipping shape wrote string `errorCorrectionLevel` + `color` +
+ * `backgroundColor` + `padding` — none read by the renderer. See
+ * `docs/V3-PARITY-MATRIX/04-barcode-qrcode.md` VIOLATION-3 + VIOLATION-4.
+ *
  * Fields:
- *  - `errorCorrectionLevel` — Reed-Solomon level (L / M / Q / H). Higher = more
- *                             damage tolerance but larger pattern density.
- *  - `padding`              — quiet-zone padding in pt around the QR matrix.
- *  - `color`                — foreground (module / dark) color.
- *  - `backgroundColor`      — background (quiet-zone) color.
+ *  - `qrCodeLevel` — INTEGER index into V1-canonical array `['M','L','H','Q']`.
+ *    Renderer reads at `QrcodeElement.vue:92-94`.
+ *    UI value mapping (L/M/Q/H → 1/0/3/2) keeps the V1 J.9 quirk that any
+ *    change to the array order requires updating the panel.
+ *  - `barColor`    — foreground (module / dark) color.
+ *    Renderer reads at `QrcodeElement.vue:104`.
+ *
+ * Dropped fields (renderer did not read; carried zero functional value):
+ *  - `color` / `backgroundColor` / `padding` — bwip-js qrcode in V3 does not
+ *    expose these. `backgroundColor` defaults to white via bwip-js; quiet zone
+ *    is hard-coded. See matrix VIOLATION-4 row evidence.
  *
  * All edits go through `canvas.updateElement(activePanelId, element.id,
  * { options: patch })`. History snapshots fire on commit boundaries.
@@ -30,9 +41,12 @@ const opts = computed<Record<string, unknown>>(
   () => (props.element.options as Record<string, unknown>) ?? {}
 )
 
-function num(v: unknown, fallback: number): number {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : fallback
+/** Coerce stored qrCodeLevel into the renderer's accepted int range [0,3]. */
+function levelIndex(v: unknown): number {
+  const n = typeof v === 'number' ? v : parseInt(String(v), 10)
+  if (!Number.isFinite(n)) return 0
+  if (n < 0 || n > 3) return 0
+  return n
 }
 
 function patch(p: Record<string, unknown>, commit = false): void {
@@ -42,32 +56,19 @@ function patch(p: Record<string, unknown>, commit = false): void {
   if (commit) history.pushSnapshot()
 }
 
-function onErrorCorrectionLevel(ev: Event): void {
+function onQrCodeLevel(ev: Event): void {
   const target = ev.target as HTMLSelectElement | null
   if (!target) return
-  patch({ errorCorrectionLevel: String(target.value) }, true)
+  // <option value="..."> values are already int strings (1/0/3/2 for L/M/Q/H).
+  // Renderer expects an int that indexes into ['M','L','H','Q'].
+  const next = parseInt(target.value, 10)
+  patch({ qrCodeLevel: Number.isFinite(next) ? next : 0 }, true)
 }
 
-function onPadding(ev: Event): void {
+function onBarColor(ev: Event): void {
   const target = ev.target as HTMLInputElement | null
   if (!target) return
-  patch({ padding: num(target.value, 0) })
-}
-
-function onColor(ev: Event): void {
-  const target = ev.target as HTMLInputElement | null
-  if (!target) return
-  patch({ color: String(target.value) }, true)
-}
-
-function onBackgroundColor(ev: Event): void {
-  const target = ev.target as HTMLInputElement | null
-  if (!target) return
-  patch({ backgroundColor: String(target.value) }, true)
-}
-
-function commit(): void {
-  history.pushSnapshot()
+  patch({ barColor: String(target.value) }, true)
 }
 </script>
 
@@ -79,42 +80,23 @@ function commit(): void {
         Error correction
         <select
           class="qr-ec-level"
-          :value="String(opts.errorCorrectionLevel ?? 'M')"
-          @change="onErrorCorrectionLevel"
+          :value="String(levelIndex(opts.qrCodeLevel))"
+          @change="onQrCodeLevel"
         >
-          <option value="L">L — Low (7%)</option>
-          <option value="M">M — Medium (15%)</option>
-          <option value="Q">Q — Quartile (25%)</option>
-          <option value="H">H — High (30%)</option>
+          <!-- Values are INT indexes into renderer array ['M','L','H','Q']. -->
+          <option value="1">L — Low (7%)</option>
+          <option value="0">M — Medium (15%)</option>
+          <option value="3">Q — Quartile (25%)</option>
+          <option value="2">H — High (30%)</option>
         </select>
       </label>
       <label>
-        Padding (pt)
-        <input
-          type="number"
-          min="0"
-          class="qr-padding"
-          :value="num(opts.padding, 0)"
-          @input="onPadding"
-          @change="commit"
-        />
-      </label>
-      <label>
-        Foreground color
+        Bar color
         <input
           type="color"
-          class="qr-color"
-          :value="String(opts.color ?? '#000000')"
-          @change="onColor"
-        />
-      </label>
-      <label>
-        Background color
-        <input
-          type="color"
-          class="qr-background-color"
-          :value="String(opts.backgroundColor ?? '#ffffff')"
-          @change="onBackgroundColor"
+          class="qr-bar-color"
+          :value="String(opts.barColor ?? '#000000')"
+          @change="onBarColor"
         />
       </label>
     </fieldset>

@@ -61,6 +61,11 @@ function onContent(ev: Event): void {
         ⚠️ Raw HTML is rendered as-is. Sanitize untrusted input upstream
         (XSS risk).
       </p>
+      <p class="hiprint-html-warning hiprint-html-warning-field" role="note">
+        TKT-007: field-bound data is escaped by default. Set
+        <code>options.escape=false</code> or <code>options.html=true</code>
+        to render runtime data as raw HTML — XSS 风险自负.
+      </p>
       <label>
         Content
         <textarea

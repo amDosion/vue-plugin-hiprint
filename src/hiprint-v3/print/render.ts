@@ -38,6 +38,7 @@ import {
   safeNumber,
   mm,
   pt,
+  compileFormatter,
 } from '@hiprint-v3/internal'
 import type {
   TemplateJson,
@@ -228,11 +229,12 @@ function renderTextElement(
   const value = getElementValue(element, opts, options)
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
-  const formatter = opts.formatter
+  // TKT-006: accept string-source formatter as well (V1 parity).
+  const formatter = compileFormatter(opts.formatter)
   const separator = typeof opts.titleSep === 'string' ? opts.titleSep : '：'
 
   // Formatter is by-design HTML (Invariant #2); else default text-safe.
-  if (typeof formatter === 'function') {
+  if (formatter) {
     const out = safelyCall(formatter, [title, value, opts, options.data])
     content.innerHTML = out == null ? '' : String(out)
   } else {
@@ -289,7 +291,8 @@ function renderLongTextElement(
   const value = getElementValue(element, opts, options)
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
-  const formatter = opts.formatter
+  // TKT-006: accept string-source formatter as well (V1 parity).
+  const formatter = compileFormatter(opts.formatter)
   const separator = '：'
 
   // Leading indent <span> — V1 R3 C1 fix (numeric clamp)
@@ -301,7 +304,7 @@ function renderLongTextElement(
     content.appendChild(indent)
   }
 
-  if (typeof formatter === 'function') {
+  if (formatter) {
     const out = safelyCall(formatter, [title, value, opts, options.data])
     // by-design HTML for longText with formatter (Invariant #2)
     const span = document.createElement('span')
@@ -458,21 +461,34 @@ function renderHtmlElement(
   content.style.height = '100%'
   content.style.width = '100%'
 
-  const formatter = opts.formatter
+  // TKT-006: accept string-source formatter as well (V1 parity).
+  const formatter = compileFormatter(opts.formatter)
   const value = getElementValue(element, opts, options)
   let html: string
-  if (typeof formatter === 'function') {
+  let mode: 'html' | 'text' = 'html'
+  if (formatter) {
     const out = safelyCall(formatter, [opts.title, value, opts, options.data])
     html = out == null ? '' : String(out)
   } else if (typeof opts.content === 'string') {
     html = opts.content
   } else if (typeof value === 'string') {
+    // TKT-007: field-bound runtime data is the NEW V3 path. V1 never had this
+    // surface; it was introduced in Sprint 22a. Escape by default; require
+    // explicit opt-in (options.escape === false OR options.html === true) to
+    // keep V1's by-design HTML behavior.
     html = value
+    const optIn = opts.escape === false || opts.html === true
+    if (!optIn) mode = 'text'
   } else {
     html = ''
   }
-  // [Invariant #2] by-design HTML
-  content.innerHTML = html
+  // [Invariant #2] by-design HTML for formatter/content/opt-in field paths;
+  // textContent for default field-binding (TKT-007).
+  if (mode === 'html') {
+    content.innerHTML = html
+  } else {
+    content.textContent = html
+  }
   return content
 }
 
@@ -495,9 +511,20 @@ function renderShapeElement(
     shape.style.borderLeft = width + 'pt solid ' + color
   } else if (type === 'rect') {
     shape.style.border = width + 'pt solid ' + color
+    // TKT-001 — apply optional V3-exposed borderRadius + V1 backgroundColor.
+    if (opts.borderRadius != null) {
+      const r = safeNumber(opts.borderRadius, { fallback: 0, min: 0 })
+      if (r > 0) shape.style.borderRadius = r + 'pt'
+    }
+    if (typeof opts.backgroundColor === 'string') {
+      shape.style.backgroundColor = opts.backgroundColor
+    }
   } else if (type === 'oval') {
     shape.style.border = width + 'pt solid ' + color
     shape.style.borderRadius = '50%'
+    if (typeof opts.backgroundColor === 'string') {
+      shape.style.backgroundColor = opts.backgroundColor
+    }
   }
   return shape
 }
@@ -582,8 +609,9 @@ function renderTableElement(
       td.style.padding = '2pt 4pt'
       const cellField = typeof col.field === 'string' ? col.field : undefined
       const cellValue = cellField ? resolveField(row, cellField, '') : ''
-      const formatter = col.formatter
-      if (typeof formatter === 'function') {
+      // TKT-006: accept string-source formatter as well (V1 parity).
+      const formatter = compileFormatter(col.formatter)
+      if (formatter) {
         // by-design HTML for cell formatter
         const out = safelyCall(formatter, [cellValue, row, col, options.data])
         td.innerHTML = out == null ? '' : String(out)

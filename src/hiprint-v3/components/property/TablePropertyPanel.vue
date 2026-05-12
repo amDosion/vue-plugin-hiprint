@@ -1,22 +1,46 @@
 <script setup lang="ts">
 /**
- * TablePropertyPanel.vue — V3 property editor for `tableCustom` etype (PP-009).
+ * TablePropertyPanel.vue — V3 property editor for the `table` etype.
  *
- * Provides three sections:
- *  1. Columns — per-column inline editor (title / field / width / align) with
- *     reorder (↑↓) and delete (✕) controls. "+ Add column" appends a default
- *     column to the FIRST header layer (row 0).
- *  2. Header / Footer — columnHeader toggle (repeat header per page),
- *     headerType select (none/group), footer raw-HTML textarea.
- *  3. Rows — rowsPerPage / maxPage / rowHeight / alternateRowColor.
+ * TKT-009 rollback (Sprint 22a-r): four invented options that V1 never had
+ * (`rowsPerPage`, `maxPage`, `alternateRowColor`, raw-HTML `footer` textarea)
+ * have been removed. They violated V1 parity in three ways:
+ *   1. `rowsPerPage` / `maxPage` — V1 inventory P.8 explicitly says these
+ *      fields do not exist on V1 tables. V3 was inventing options the
+ *      contract V1 round-trip will discard. See `docs/V3-PARITY-MATRIX/06-table.md`
+ *      VIOLATION 2.13 / 2.14 / 16.1 / 16.2.
+ *   2. `alternateRowColor` — V1 only has the vestigial `striped` boolean
+ *      (bundle 9182). The colour-picker variant V3 invented was also a
+ *      dead-letter (no renderer ever read it). Matrix VIOLATION 2.62 / 16.4.
+ *   3. `footer` (raw HTML textarea) — V1 instead has `footerFormatter`,
+ *      a function-string compiled with `new Function('return '+src)()`
+ *      (bundle 2038-2041, 2331-2338). V3's `footer` textarea was a
+ *      dead-letter never consumed by render layer. Matrix VIOLATION 11.2 / 16.7.
  *
- * V3 columns shape ([V3] TableElement.vue ~81–95):
+ * What this panel now exposes (V1-faithful subset, see V1 inventory P.5-P.9):
+ *  1. Columns — per-column inline editor (title / field / width / align)
+ *     with reorder (↑↓) and delete (✕) controls. "+ Add column" appends
+ *     to the FIRST header layer (row 0). Multi-layer header editing remains
+ *     out of scope (preserved untouched via `columns.map(r => r.slice())`).
+ *  2. Header / Footer
+ *     - `tableHeaderRepeat` — three-state select (every / first / none),
+ *       matches V1 bundle 6308. **Replaces** the boolean `columnHeader`
+ *       toggle. The old `columnHeader` option was a wrong-type contract
+ *       (matrix VIOLATION 16.5).
+ *     - `tableFooterRepeat` — three-state select (every / last / no),
+ *       matches V1 bundle 6309.
+ *     - `headerType` — preserved (none / group) for current callers.
+ *     - `footerFormatter` — function-string textarea (monospace) with
+ *       JSDoc-style hint. JSON persistence is the literal string source;
+ *       compilation (`new Function('return '+src)()`) is the renderer's
+ *       responsibility (TKT-022 wires the compile pipeline; this panel
+ *       only writes the string).
+ *  3. Rows — `rowHeight` only (the V1-faithful field). `rowsPerPage`,
+ *     `maxPage`, `alternateRowColor` were removed.
+ *
+ * V3 columns shape (TableElement.vue ~81–95):
  *   options.columns: Array<Array<{ title, field, width, align|halign,
  *                                  colspan?, rowspan?, format? }>>
- * The outer array is "header layers" (multi-layer headers supported). This
- * panel edits the FIRST layer's column list for simplicity — multi-layer
- * editing is out of scope for PP-009 (the editor preserves additional layers
- * untouched via `columns.map(r => r.slice())`).
  *
  * Mutation path:
  *  canvas.updateElement(panelId, elementId, { options: { ... } })
@@ -29,17 +53,8 @@
  *  - Column updates create a fresh `columns` array (immutable patch),
  *    so reactivity + history snapshots fire correctly.
  *  - boundary moveColumn (col 0 up, last col down) is a no-op.
- *
- * Intentionally NOT included (out of scope per task):
- *  - Multi-layer header row editing (only row 0 in UI).
- *  - gridColumnsFooter structured editor — `footer` textarea is treated as
- *    raw HTML per V1 parity (matches task spec verbatim). The V3 renderer
- *    currently only consumes `gridColumnsFooter`; a follow-up task wires
- *    `footer` HTML through the render layer.
- *
- * Wave 2 integration (Stream D):
- *  HiprintPropertyPanel.vue will dispatch on `elementType === 'tableCustom'`
- *  and mount this SFC. This file does NOT import / modify that orchestrator.
+ *  - `footerFormatter` is persisted as a STRING — not a Function — so it
+ *    survives JSON round-trip back to V1 (which compiles on demand).
  */
 import { computed } from 'vue'
 import {
@@ -139,10 +154,16 @@ function moveColumn(rowIdx: number, colIdx: number, dir: -1 | 1): void {
 
 // ============ Field-level handlers ============
 
-function onColumnHeader(ev: Event): void {
-  const target = ev.target as HTMLInputElement | null
+function onTableHeaderRepeat(ev: Event): void {
+  const target = ev.target as HTMLSelectElement | null
   if (!target) return
-  patch({ columnHeader: !!target.checked }, true)
+  patch({ tableHeaderRepeat: target.value }, true)
+}
+
+function onTableFooterRepeat(ev: Event): void {
+  const target = ev.target as HTMLSelectElement | null
+  if (!target) return
+  patch({ tableFooterRepeat: target.value }, true)
 }
 
 function onHeaderType(ev: Event): void {
@@ -151,10 +172,17 @@ function onHeaderType(ev: Event): void {
   patch({ headerType: target.value }, true)
 }
 
-function onFooter(ev: Event): void {
+/**
+ * Write the function-source string for `footerFormatter`. V1 persists
+ * formatters as raw source (`"function(opts, allData, ...){ return '<tr>...</tr>' }"`)
+ * and compiles on demand with `new Function('return ' + src)()`. We keep that
+ * contract: the panel writes a string, the renderer (TKT-022 compileFormatter)
+ * is responsible for compilation. Writing an empty string clears the option.
+ */
+function onFooterFormatter(ev: Event): void {
   const target = ev.target as HTMLTextAreaElement | null
   if (!target) return
-  patch({ footer: target.value }, true)
+  patch({ footerFormatter: target.value }, true)
 }
 
 function numFromInput(ev: Event, fallback: number): number {
@@ -164,19 +192,8 @@ function numFromInput(ev: Event, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
-function onRowsPerPage(ev: Event): void {
-  patch({ rowsPerPage: numFromInput(ev, 0) }, true)
-}
-function onMaxPage(ev: Event): void {
-  patch({ maxPage: numFromInput(ev, 0) }, true)
-}
 function onRowHeight(ev: Event): void {
   patch({ rowHeight: numFromInput(ev, 20) }, true)
-}
-function onAltRowColor(ev: Event): void {
-  const target = ev.target as HTMLInputElement | null
-  if (!target) return
-  patch({ alternateRowColor: String(target.value) }, true)
 }
 
 function colString(col: Record<string, unknown>, key: string, fb = ''): string {
@@ -296,13 +313,37 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
     <!-- Section 2. Header / Footer -->
     <fieldset class="hiprint-property-fieldset">
       <legend>Header / Footer</legend>
-      <label class="inline">
-        <input
-          type="checkbox"
-          :checked="!!opts.columnHeader"
-          @change="onColumnHeader"
-        />
-        Repeat header on each page
+      <!--
+        TKT-009: replaced boolean `columnHeader` checkbox with V1's
+        `tableHeaderRepeat` 3-state select (bundle 6308, matrix 2.8 / 16.5).
+      -->
+      <label>
+        Header repeat
+        <select
+          class="table-header-repeat"
+          :value="String(opts.tableHeaderRepeat ?? 'every')"
+          @change="onTableHeaderRepeat"
+        >
+          <option value="every">Every page</option>
+          <option value="first">First page only</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+      <!--
+        TKT-009: new V1-faithful `tableFooterRepeat` 3-state select
+        (bundle 6309, matrix 2.9). Previously missing from V3 panel.
+      -->
+      <label>
+        Footer repeat
+        <select
+          class="table-footer-repeat"
+          :value="String(opts.tableFooterRepeat ?? 'last')"
+          @change="onTableFooterRepeat"
+        >
+          <option value="every">Every page</option>
+          <option value="last">Last page only</option>
+          <option value="no">No</option>
+        </select>
       </label>
       <label>
         Header type
@@ -314,12 +355,22 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
           <option value="group">Group</option>
         </select>
       </label>
+      <!--
+        TKT-009: replaced raw-HTML `footer` textarea (V3-invented, dead-letter)
+        with V1's `footerFormatter` function-source textarea (bundle
+        2038-2041, 2331-2338, matrix 11.2 / 16.7). JSON persists the
+        literal string; renderer compiles via `new Function('return '+src)()`
+        (TKT-022 wires the compile pipeline).
+      -->
       <label>
-        Footer (HTML)
+        Footer formatter (function source)
         <textarea
-          rows="3"
-          :value="String(opts.footer ?? '')"
-          @change="onFooter"
+          class="footer-formatter"
+          rows="4"
+          spellcheck="false"
+          :value="String(opts.footerFormatter ?? '')"
+          placeholder="function(options, allData, printData, pageData, pageIndex){\n  return '<tr><td colspan=&quot;3&quot;>summary</td></tr>'\n}"
+          @change="onFooterFormatter"
         />
       </label>
     </fieldset>
@@ -327,26 +378,12 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
     <!-- Section 3. Rows -->
     <fieldset class="hiprint-property-fieldset">
       <legend>Rows</legend>
-      <label>
-        Rows per page
-        <input
-          type="number"
-          min="0"
-          class="rows-per-page"
-          :value="Number(opts.rowsPerPage ?? 0)"
-          @change="onRowsPerPage"
-        />
-      </label>
-      <label>
-        Max pages
-        <input
-          type="number"
-          min="0"
-          class="max-page"
-          :value="Number(opts.maxPage ?? 0)"
-          @change="onMaxPage"
-        />
-      </label>
+      <!--
+        TKT-009: rolled back invented options. `rowsPerPage`, `maxPage`
+        (matrix 2.13 / 2.14 / 16.1 / 16.2) and `alternateRowColor`
+        (matrix 2.62 / 16.4) were removed — V1 has no such fields.
+        `rowHeight` is retained as a V1-aligned ergonomic option.
+      -->
       <label>
         Row height (pt)
         <input
@@ -355,15 +392,6 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
           class="row-height"
           :value="Number(opts.rowHeight ?? 20)"
           @change="onRowHeight"
-        />
-      </label>
-      <label>
-        Alternate row color
-        <input
-          type="color"
-          class="alt-row-color"
-          :value="String(opts.alternateRowColor ?? '#fafafa')"
-          @change="onAltRowColor"
         />
       </label>
     </fieldset>
@@ -418,6 +446,13 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
   font: inherit;
   color: #333;
   background: #fff;
+}
+.hiprint-property-fieldset textarea.footer-formatter {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
 }
 .hiprint-table-col-section {
   display: flex;

@@ -2,14 +2,17 @@
  * ShapePropertyPanel.spec.ts — V3 shape property panel tests (PP-010).
  *
  * Covers:
- *  - Render bound to element.options (strokeWidth / strokeColor /
- *    strokeStyle / fillColor / borderRadius).
+ *  - Render bound to element.options (borderWidth / borderColor /
+ *    borderStyle / backgroundColor / borderRadius — V1 key contract per TKT-001).
  *  - Conditional rendering by element.printElementType.type:
  *      hline / vline → stroke fieldset only.
  *      oval          → stroke + fill (no borderRadius).
  *      rect          → stroke + fill + borderRadius.
- *  - Field changes dispatch canvas.updateElement.
+ *  - Field changes dispatch canvas.updateElement with the V1 key.
  *  - History snapshot fires on commit boundary.
+ *
+ * NOTE: Asserts the V1 key names — `strokeWidth` etc. were the V3 invented
+ * names that caused TKT-001 (silent roundtrip). Tests now lock the V1 keys.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -45,10 +48,10 @@ function seedShape(
       top: 20,
       width: 100,
       height: 50,
-      strokeWidth: 1,
-      strokeColor: '#000000',
-      strokeStyle: 'solid',
-      fillColor: '#ffffff',
+      borderWidth: 1,
+      borderColor: '#000000',
+      borderStyle: 'solid',
+      backgroundColor: '#ffffff',
       borderRadius: 0,
       ...extra,
     },
@@ -113,8 +116,8 @@ describe('ShapePropertyPanel — conditional fieldsets', () => {
   })
 })
 
-describe('ShapePropertyPanel — field changes', () => {
-  it('strokeWidth input + change commits snapshot', async () => {
+describe('ShapePropertyPanel — field changes (V1 keys, TKT-001)', () => {
+  it('strokeWidth input + change commits snapshot, writes options.borderWidth', async () => {
     const { getElement, history } = seedShape('rect')
     const w = mount(ShapePropertyPanel, {
       props: { element: getElement()! },
@@ -123,25 +126,43 @@ describe('ShapePropertyPanel — field changes', () => {
     const sw = w.find('input.shape-stroke-width')
     ;(sw.element as HTMLInputElement).value = '3'
     await sw.trigger('input')
-    expect(getOpts(getElement()).strokeWidth).toBe(3)
+    // V1 key — TKT-001
+    expect(getOpts(getElement()).borderWidth).toBe(3)
+    // ensure NOT writing the old V3-invented name
+    expect(getOpts(getElement()).strokeWidth).toBeUndefined()
     const before = history.canUndo
     await sw.trigger('change')
     expect(history.canUndo).not.toBe(before)
     w.unmount()
   })
 
-  it('strokeStyle select patches options.strokeStyle', async () => {
+  it('strokeStyle select patches options.borderStyle (V1 key)', async () => {
     const { getElement } = seedShape('hline')
     const w = mount(ShapePropertyPanel, {
       props: { element: getElement()! },
     })
     await w.vm.$nextTick()
     await w.find('select.shape-stroke-style').setValue('dashed')
-    expect(getOpts(getElement()).strokeStyle).toBe('dashed')
+    expect(getOpts(getElement()).borderStyle).toBe('dashed')
+    expect(getOpts(getElement()).strokeStyle).toBeUndefined()
     w.unmount()
   })
 
-  it('fillColor change (rect) patches options.fillColor', async () => {
+  it('strokeColor change patches options.borderColor (V1 key)', async () => {
+    const { getElement } = seedShape('hline')
+    const w = mount(ShapePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const c = w.find('input.shape-stroke-color')
+    ;(c.element as HTMLInputElement).value = '#123456'
+    await c.trigger('change')
+    expect(getOpts(getElement()).borderColor).toBe('#123456')
+    expect(getOpts(getElement()).strokeColor).toBeUndefined()
+    w.unmount()
+  })
+
+  it('fillColor change (rect) patches options.backgroundColor (V1 key)', async () => {
     const { getElement } = seedShape('rect')
     const w = mount(ShapePropertyPanel, {
       props: { element: getElement()! },
@@ -150,7 +171,8 @@ describe('ShapePropertyPanel — field changes', () => {
     const c = w.find('input.shape-fill-color')
     ;(c.element as HTMLInputElement).value = '#abcdef'
     await c.trigger('change')
-    expect(getOpts(getElement()).fillColor).toBe('#abcdef')
+    expect(getOpts(getElement()).backgroundColor).toBe('#abcdef')
+    expect(getOpts(getElement()).fillColor).toBeUndefined()
     w.unmount()
   })
 

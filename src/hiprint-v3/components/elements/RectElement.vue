@@ -35,12 +35,22 @@ const shapeStyle = computed(() => {
   const opts = (el?.options as Opts) ?? {}
   const color = typeof opts.borderColor === 'string' ? opts.borderColor : '#000'
   const width = safeNumber(opts.borderWidth, { fallback: 1, min: 0 })
-  return {
+  const style: Record<string, string> = {
     width: '100%',
     height: '100%',
     boxSizing: 'border-box',
     border: width + 'pt solid ' + color,
   }
+  // V3-exposed UI (V1 quirk #4 had no UI). TKT-001 fix — RectElement now
+  // actually reads the value the panel writes so the field stops being a ghost.
+  if (opts.borderRadius != null) {
+    const r = safeNumber(opts.borderRadius, { fallback: 0, min: 0 })
+    if (r > 0) style.borderRadius = r + 'pt'
+  }
+  if (typeof opts.backgroundColor === 'string') {
+    style.backgroundColor = opts.backgroundColor
+  }
+  return style
 })
 </script>
 

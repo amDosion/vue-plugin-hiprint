@@ -48,9 +48,10 @@ describe('buildDefaultElementTypeGroups', () => {
     groups.forEach((g) =>
       g.printElementTypes.forEach((et) => allTypes.add(et.type))
     )
-    // Note: V3 default-provider uses textType=barcode/qrcode for default
-    // 条形码/二维码 (V1 behavior). Pure barcode/qrcode types still exist as
-    // dedicated etypes via createBarcodeElement / createQrcodeElement.
+    // Sprint 22a-r TKT-008: default-provider now emits Path B barcode/qrcode
+    // (`type:'barcode'`/`'qrcode'`) instead of V1 Path A (`type:'text'+
+    // textType:'barcode'`). V3 only ships the bwip-js renderer, so Path A
+    // rendered as plain text. See matrix 04-barcode-qrcode VIOLATION-1.
     expect(allTypes.has('text')).toBe(true)
     expect(allTypes.has('image')).toBe(true)
     expect(allTypes.has('longText')).toBe(true)
@@ -60,6 +61,8 @@ describe('buildDefaultElementTypeGroups', () => {
     expect(allTypes.has('vline')).toBe(true)
     expect(allTypes.has('rect')).toBe(true)
     expect(allTypes.has('oval')).toBe(true)
+    expect(allTypes.has('barcode')).toBe(true)
+    expect(allTypes.has('qrcode')).toBe(true)
   })
 
   it('"常规" group contains text + image + longText + table + html', () => {

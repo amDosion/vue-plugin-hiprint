@@ -35,13 +35,18 @@ const shapeStyle = computed(() => {
   const opts = (el?.options as Opts) ?? {}
   const color = typeof opts.borderColor === 'string' ? opts.borderColor : '#000'
   const width = safeNumber(opts.borderWidth, { fallback: 1, min: 0 })
-  return {
+  const style: Record<string, string> = {
     width: '100%',
     height: '100%',
     boxSizing: 'border-box',
     border: width + 'pt solid ' + color,
     borderRadius: '50%',
   }
+  // TKT-001 fix — read backgroundColor so the panel's fill-color edit lands.
+  if (typeof opts.backgroundColor === 'string') {
+    style.backgroundColor = opts.backgroundColor
+  }
+  return style
 })
 </script>
 

@@ -164,8 +164,6 @@ interface Props {
   ) => void
   toolbarPanelManagerLabel?: string
   toolbarAddPanelButtonText?: string
-  /** Forward `showPagination` to the toolbar (TB-006). Default true. */
-  toolbarShowPagination?: boolean
   toolbarAlignItems?: readonly ToolbarAlignType[]
   toolbarExtraButtons?: readonly ToolbarExtraButton[]
   toolbarExtraPosition?: 'start' | 'end'
@@ -234,7 +232,6 @@ const props = withDefaults(defineProps<Props>(), {
   toolbarOnSwitchPanel: undefined,
   toolbarPanelManagerLabel: '',
   toolbarAddPanelButtonText: '+',
-  toolbarShowPagination: true,
   toolbarAlignItems: undefined,
   toolbarExtraButtons: undefined,
   toolbarExtraPosition: 'end',
@@ -447,7 +444,6 @@ defineExpose({
           :on-switch-panel="props.toolbarOnSwitchPanel"
           :panel-manager-label="props.toolbarPanelManagerLabel"
           :add-panel-button-text="props.toolbarAddPanelButtonText"
-          :show-pagination="props.toolbarShowPagination"
           :align-items="props.toolbarAlignItems as undefined"
           :extra-buttons="props.toolbarExtraButtons as undefined"
           :extra-position="props.toolbarExtraPosition"

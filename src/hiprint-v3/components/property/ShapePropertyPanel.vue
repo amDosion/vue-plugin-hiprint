@@ -1,15 +1,32 @@
 <script setup lang="ts">
 /**
- * ShapePropertyPanel.vue — V3 property editor for shape etypes (PP-010):
- *   hline / vline / rect / oval.
+ * ShapePropertyPanel.vue — V3 property editor for shape etypes (PP-010).
+ *
+ * Etypes: hline / vline / rect / oval.
+ *
+ * 🔴 KEY CONTRACT (TKT-001 fix — Sprint 22a regression)
+ * ----------------------------------------------------
+ * Panel writes V1 option keys so the SFCs in `components/elements/*Element.vue`
+ * and the imperative renderer in `print/render.ts:484-501` (which read V1
+ * keys) actually pick up the edits. Previously the panel wrote V3-invented
+ * names (`strokeWidth/strokeColor/strokeStyle/fillColor`) → every edit was
+ * silently discarded.
+ *
+ *   UI label        → option key (V1)
+ *   --------------- → -----------------
+ *   Width (pt)      → borderWidth
+ *   Color           → borderColor
+ *   Style           → borderStyle
+ *   Fill color      → backgroundColor (rect/oval only)
+ *   Border radius   → borderRadius    (rect only)
  *
  * Conditional rendering (driven by `element.printElementType.type`):
- *  - Always:    strokeWidth, strokeColor, strokeStyle.
- *  - rect/oval: + fillColor.
+ *  - Always:    borderWidth, borderColor, borderStyle.
+ *  - rect/oval: + backgroundColor.
  *  - rect:      + borderRadius.
  *
- * `strokeStyle` mirrors CSS border-style (solid/dashed/dotted) so the
- * renderer can map straight through. `strokeWidth` is in pt.
+ * `borderStyle` mirrors CSS border-style (solid/dashed/dotted). `borderWidth`
+ * is in pt.
  *
  * All edits go through `canvas.updateElement(activePanelId, element.id,
  * { options: patch })`. History snapshots fire on commit boundaries.
@@ -58,25 +75,25 @@ function patch(p: Record<string, unknown>, commit = false): void {
 function onStrokeWidth(ev: Event): void {
   const target = ev.target as HTMLInputElement | null
   if (!target) return
-  patch({ strokeWidth: num(target.value, 1) })
+  patch({ borderWidth: num(target.value, 1) })
 }
 
 function onStrokeColor(ev: Event): void {
   const target = ev.target as HTMLInputElement | null
   if (!target) return
-  patch({ strokeColor: String(target.value) }, true)
+  patch({ borderColor: String(target.value) }, true)
 }
 
 function onStrokeStyle(ev: Event): void {
   const target = ev.target as HTMLSelectElement | null
   if (!target) return
-  patch({ strokeStyle: String(target.value) }, true)
+  patch({ borderStyle: String(target.value) }, true)
 }
 
 function onFillColor(ev: Event): void {
   const target = ev.target as HTMLInputElement | null
   if (!target) return
-  patch({ fillColor: String(target.value) }, true)
+  patch({ backgroundColor: String(target.value) }, true)
 }
 
 function onBorderRadius(ev: Event): void {
@@ -101,7 +118,7 @@ function commit(): void {
           min="0"
           max="20"
           class="shape-stroke-width"
-          :value="num(opts.strokeWidth, 1)"
+          :value="num(opts.borderWidth, 1)"
           @input="onStrokeWidth"
           @change="commit"
         />
@@ -111,7 +128,7 @@ function commit(): void {
         <input
           type="color"
           class="shape-stroke-color"
-          :value="String(opts.strokeColor ?? '#000000')"
+          :value="String(opts.borderColor ?? '#000000')"
           @change="onStrokeColor"
         />
       </label>
@@ -119,7 +136,7 @@ function commit(): void {
         Style
         <select
           class="shape-stroke-style"
-          :value="String(opts.strokeStyle ?? 'solid')"
+          :value="String(opts.borderStyle ?? 'solid')"
           @change="onStrokeStyle"
         >
           <option value="solid">solid</option>
@@ -139,7 +156,7 @@ function commit(): void {
         <input
           type="color"
           class="shape-fill-color"
-          :value="String(opts.fillColor ?? '#ffffff')"
+          :value="String(opts.backgroundColor ?? '#ffffff')"
           @change="onFillColor"
         />
       </label>
