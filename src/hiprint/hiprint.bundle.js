@@ -838,7 +838,8 @@ var hiprint = function (t) {
           var designTarget = this.designTarget[0];
           var dragData = $.data(designTarget, "hidraggable");
           if (dragData && dragData.options && typeof dragData.options.onBeforeSelectAllDrag === "function") {
-            dragData.options.onBeforeSelectAllDrag.call(designTarget, {});
+            try { dragData.options.onBeforeSelectAllDrag.call(designTarget, {}); }
+            catch (err) { console.error('[hiprint] onBeforeSelectAllDrag threw:', err); }
           }
         }
         // 显式触发属性同步事件，确保右侧属性面板必定刷新
@@ -12319,7 +12320,7 @@ var hiprint = function (t) {
               index: n.template.printPanels.length,
               paperType: "A4"
             }
-            n.template.onPanelAddClick(panel, createPanel);
+            _safeCall(n.template.onPanelAddClick, [panel, createPanel], 'onPanelAddClick');
           } else {
             createPanel();
           }
@@ -12954,7 +12955,7 @@ var hiprint = function (t) {
           }
         } catch (er) {
           console.warn('[hiprint] template.update failed:', er);
-          e.onUpdateError && e.onUpdateError(er);
+          _safeCall(e.onUpdateError, [er], 'onUpdateError');
         }
       }, t.prototype.getSelectEls = function () {
         if (this._assertNotDestroyed('getSelectEls')) return [];
@@ -13161,7 +13162,7 @@ var hiprint = function (t) {
             } else {
               t.historyPos += 1;
             }
-            t.onDataChanged && t.onDataChanged(type, j);
+            _safeCall(t.onDataChanged, [type, j], 'onDataChanged');
           }
         });
       }, t;
