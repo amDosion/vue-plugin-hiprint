@@ -38,6 +38,7 @@ import {
   enableElementResize,
   enableElementSelection,
 } from '@hiprint-v3/interactions'
+import { isAnyLocked, isFullyLocked } from '@hiprint-v3/interactions/lock'
 import type { CanvasElement } from '@hiprint-v3/stores'
 import { computeBaseStyle, type Opts } from './_helpers'
 
@@ -71,6 +72,12 @@ const isSelected = computed<boolean>(() =>
   canvas.selectedElementIds.has(props.elementId)
 )
 
+// TKT-027: lock state reactivity. `isLocked` powers the BEM class + lock-badge
+// overlay; `isFullLock` is exposed via slot scope so child SFCs (e.g.
+// TextElement) can gate inline edit on the catch-all `lock` field.
+const isLocked = computed<boolean>(() => isAnyLocked(options.value))
+const isFullLock = computed<boolean>(() => isFullyLocked(options.value))
+
 const wrapperStyle = computed(() => computeBaseStyle(options.value))
 
 const wrapperClass = computed(() => {
@@ -81,6 +88,9 @@ const wrapperClass = computed(() => {
     'hiprint-printElement',
     'hiprint-printElement-' + type,
     { 'hiprint-element--selected': isSelected.value },
+    // TKT-027: visual hook for locked elements (any lock). Panel CSS uses
+    // this to hide resize handles + show a lock cursor.
+    { 'hiprint-element--locked': isLocked.value },
   ]
 })
 
@@ -155,7 +165,18 @@ onBeforeUnmount(() => {
       :element="element"
       :options="options"
       :selected="isSelected"
+      :locked="isLocked"
+      :fully-locked="isFullLock"
     />
+    <!-- TKT-027: lock badge overlay (top-right corner). Rendered only for
+         locked elements. Pure visual — pointer-events:none keeps it from
+         intercepting clicks. Emoji renders as text (no XSS surface). -->
+    <div
+      v-if="isLocked"
+      class="hiprint-element__lock-badge"
+      aria-hidden="true"
+      title="Locked"
+    >🔒</div>
   </div>
 </template>
 
@@ -168,5 +189,33 @@ onBeforeUnmount(() => {
 .hiprint-element--selected {
   outline: 1px dashed #409eff;
   outline-offset: -1px;
+}
+/* TKT-027 — locked element visuals.
+ * V1 reference: `.hiprint-lock-badge` on `.resize-panel` (inventory §1.9 line
+ * 164, per-etype §H.2 line 1010). V3 puts the badge on the wrapper root so it
+ * stays visible even when the element is unselected.
+ */
+.hiprint-element--locked {
+  /* Lock cursor instead of `move` so users get a hover hint. */
+  cursor: not-allowed;
+}
+.hiprint-element__lock-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #c0c4cc;
+  border-radius: 50%;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 </style>

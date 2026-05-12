@@ -112,7 +112,7 @@ describe('TableElement', () => {
     expect(bodyCells[1]?.text()).toBe('real-2')
   })
 
-  it('applies rowsColumnsMerge — rowspan attribute on merged cell', () => {
+  it('applies rowsColumnsMerge — rowspan attribute + display:none on hidden cell (V1 G.3)', () => {
     // Merge first column on rows 0/1 (rowspan=2 on row 0, hidden on row 1).
     const rowsColumnsMerge = function (
       _r: unknown,
@@ -134,14 +134,17 @@ describe('TableElement', () => {
       testData: '[{"g":"x","v":1},{"g":"x","v":2}]',
       rowsColumnsMerge,
     })
-    // Row 0 first cell has rowspan=2; row 1 first cell is omitted.
+    // Row 0 first cell has rowspan=2.
     const row0Cells = wrapper.findAll('tbody tr').at(0)?.findAll('td') ?? []
     const row1Cells = wrapper.findAll('tbody tr').at(1)?.findAll('td') ?? []
     expect(row0Cells.length).toBe(2)
     expect(row0Cells[0]?.attributes('rowspan')).toBe('2')
-    // Row 1 only renders the value column.
-    expect(row1Cells.length).toBe(1)
-    expect(row1Cells[0]?.text()).toBe('2')
+    // TKT-021: V1 G.3 — hidden merged cell stays in the DOM with display:none
+    // (NOT omitted). cross-page fixMergeSpan relies on the slot.
+    expect(row1Cells.length).toBe(2)
+    const hiddenStyle = row1Cells[0]?.attributes('style') ?? ''
+    expect(hiddenStyle.toLowerCase()).toContain('display: none')
+    expect(row1Cells[1]?.text()).toBe('2')
   })
 
   it('rowsColumnsMerge throw is caught and falls back to [1,1] per cell', () => {

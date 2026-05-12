@@ -11,7 +11,7 @@
 import bwipjs from 'bwip-js/browser'
 import { computed, ref, watch } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { coerceText, pt, safeNumber } from '@hiprint-v3/internal'
+import { coerceText, mapQrCodeLevel, pt, safeNumber } from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { getElementValue, isTrue, type Opts } from './_helpers'
 
@@ -89,9 +89,8 @@ function render(): void {
     const widthPx = pt.toPx(widthPt)
     const heightPx = pt.toPx(heightPt - titleH)
     const square = Math.max(1, Math.floor(Math.min(widthPx / 2.835, heightPx / 2.835)))
-    const ecLevel = (['M', 'L', 'H', 'Q'] as const)[
-      safeNumber(opts.qrCodeLevel, { min: 0, max: 3, fallback: 0 })
-    ]
+    // TKT-023: clamp + alias V1 Path A `qrCodeLevel` int via shared helper.
+    const ecLevel = (['M', 'L', 'H', 'Q'] as const)[mapQrCodeLevel(opts.qrCodeLevel)]
 
     const svgStr = bwipjs.toSVG({
       bcid: typeof opts.qrcodeType === 'string' ? opts.qrcodeType : 'qrcode',

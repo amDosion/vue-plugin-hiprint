@@ -16,3 +16,11 @@ export * from './i18n'
 export * from './constants'
 export * from './dom-helpers'
 export * from './compile-formatter'
+// TKT-024: dataType + format pipeline (datetime / boolean conversion).
+export * from './data-format'
+// TKT-023: V1 Path A → bwip-js value mapping (text+textType compat layer).
+export * from './path-a-mapping'
+// TKT-026: long-text binary-search pagination (V1 9757-9931 port).
+export * from './long-text-paginate'
+// TKT-021: V3 double-render-path convergence — shared pure table model.
+export * from './render-table'

@@ -34,11 +34,16 @@ import bwipjs from 'bwip-js/browser'
 import {
   coerceText,
   escapeHtml,
+  formatValue,
+  mapBarcodeMode,
+  mapQrCodeLevel,
   resolveField,
   safeNumber,
   mm,
   pt,
   compileFormatter,
+  buildTableModel,
+  evalCap,
 } from '@hiprint-v3/internal'
 import type {
   TemplateJson,
@@ -53,6 +58,12 @@ export interface RenderOptions {
   data?: Record<string, unknown> | undefined
   /** Optional total page count for paper numbering (ignored if disabled). */
   pageCount?: number
+  /**
+   * TKT-025 — current page index (0-based) being rendered. Used by per-element
+   * pagination filters (pageBreak / showInPage / unShowInPage / fixed).
+   * Default 0 (single-page render).
+   */
+  pageIndex?: number
   /** Optional stylesheet href injected as <link rel="stylesheet"> inside root. */
   stylesheetHref?: string | undefined
 }
@@ -133,8 +144,20 @@ export function renderPanel(
 
   // Print elements
   const elements = Array.isArray(panel.printElements) ? panel.printElements : []
+  // TKT-025: resolve page filter context once per panel.
+  const pageIndex = safeNumber(options.pageIndex, { min: 0, fallback: 0 })
+  const pageCount = safeNumber(options.pageCount, { min: 1, fallback: 1 })
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i]!
+    // TKT-025: pageBreak / showInPage / unShowInPage / fixed visibility filter.
+    // V1 source: BasePrintElement.showInPage [bundle.js 692-704] +
+    //            getPaperHtmlResult pageBreak check [bundle.js 9831].
+    // V3 API: array semantics (1-indexed page numbers) per ticket, PLUS
+    // V1-compat string semantics ('first'/'last'/'odd'/'even'/'none') for
+    // legacy templates.
+    if (!isElementVisibleOnPage(el, pageIndex, pageCount)) {
+      continue
+    }
     try {
       const node = renderElement(el, panel, options)
       paper.appendChild(node)
@@ -162,9 +185,22 @@ export function renderElement(
 
   let inner: HTMLElement
   switch (type) {
-    case 'text':
-      inner = renderTextElement(element, opts, options)
+    case 'text': {
+      // TKT-023: V1 Path A compat — `text` element with `options.textType`
+      // = 'barcode' / 'qrcode' must dispatch to the code renderer. V3 only
+      // ships the bwip-js renderer; without dispatch, the element would
+      // render as plain text. New templates should use Path B
+      // (printElementType.type = 'barcode' / 'qrcode') instead.
+      const tt = opts.textType
+      if (tt === 'barcode') {
+        inner = renderBarcodeElement(element, opts, options)
+      } else if (tt === 'qrcode') {
+        inner = renderQrcodeElement(element, opts, options)
+      } else {
+        inner = renderTextElement(element, opts, options)
+      }
       break
+    }
     case 'image':
       inner = renderImageElement(element, opts, options)
       break
@@ -215,7 +251,14 @@ export function renderElement(
 
 // ============ Per-element renderers ============
 
-/** Text element — title-prefix + value, .textContent default (XSS-safe). */
+/**
+ * Text element — title-prefix + value, .textContent default (XSS-safe).
+ *
+ * TKT-024 pipeline: raw → dataType+format → formatter → DOM.
+ * The formatter receives the already-converted value (matches V1 bundle.js
+ * line 10037 — getData() runs first, then updateTargetText invokes the
+ * formatter with the converted value).
+ */
 function renderTextElement(
   element: ElementJson,
   opts: Record<string, unknown>,
@@ -226,7 +269,14 @@ function renderTextElement(
   content.style.height = '100%'
   content.style.width = '100%'
 
-  const value = getElementValue(element, opts, options)
+  const raw = getElementValue(element, opts, options)
+  // TKT-024: apply dataType + format conversion BEFORE formatter chain.
+  const value = formatValue(raw, {
+    dataType: opts.dataType as 'text' | 'datetime' | 'boolean' | undefined,
+    format: typeof opts.format === 'string' ? opts.format : undefined,
+    trueText: typeof opts.trueText === 'string' ? opts.trueText : undefined,
+    falseText: typeof opts.falseText === 'string' ? opts.falseText : undefined,
+  })
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   // TKT-006: accept string-source formatter as well (V1 parity).
@@ -238,8 +288,8 @@ function renderTextElement(
     const out = safelyCall(formatter, [title, value, opts, options.data])
     content.innerHTML = out == null ? '' : String(out)
   } else {
-    const valueStr = coerceText(value)
-    const text = hideTitle || !title ? valueStr : title + separator + valueStr
+    // `value` is already a string (formatValue guarantees); no re-coerce.
+    const text = hideTitle || !title ? value : title + separator + value
     content.textContent = text // [Invariant #1]
   }
   return content
@@ -288,7 +338,14 @@ function renderLongTextElement(
   content.style.height = '100%'
   content.style.width = '100%'
 
-  const value = getElementValue(element, opts, options)
+  const raw = getElementValue(element, opts, options)
+  // TKT-024: apply dataType + format conversion BEFORE formatter chain.
+  const value = formatValue(raw, {
+    dataType: opts.dataType as 'text' | 'datetime' | 'boolean' | undefined,
+    format: typeof opts.format === 'string' ? opts.format : undefined,
+    trueText: typeof opts.trueText === 'string' ? opts.trueText : undefined,
+    falseText: typeof opts.falseText === 'string' ? opts.falseText : undefined,
+  })
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   // TKT-006: accept string-source formatter as well (V1 parity).
@@ -311,8 +368,8 @@ function renderLongTextElement(
     span.innerHTML = out == null ? '' : String(out)
     content.appendChild(span)
   } else {
-    const valueStr = coerceText(value)
-    const text = hideTitle || !title ? valueStr : title + separator + valueStr
+    // `value` is already a string (formatValue guarantees); no re-coerce.
+    const text = hideTitle || !title ? value : title + separator + value
     const textNode = document.createTextNode(text) // [Invariant #1]
     content.appendChild(textNode)
   }
@@ -349,8 +406,16 @@ function renderBarcodeElement(
     const widthMm = Math.max(0, pt.toMm(widthPt))
     const barAutoWidth = isTrue(opts.barAutoWidth)
 
+    // TKT-023: prefer Path B `barcodeType`; fall back to V1 Path A
+    // `barcodeMode` enum (CODE128 / EAN13 / ITF14 / ...) via compat mapping.
+    const bcid =
+      typeof opts.barcodeType === 'string' && opts.barcodeType
+        ? opts.barcodeType
+        : mapBarcodeMode(
+            typeof opts.barcodeMode === 'string' ? opts.barcodeMode : undefined
+          )
     const svgStr = bwipjs.toSVG({
-      bcid: typeof opts.barcodeType === 'string' ? opts.barcodeType : 'code128',
+      bcid,
       text: text || '',
       scale: safeNumber(opts.barWidth, { fallback: 1, min: 1 }),
       width: !barAutoWidth ? Math.floor(widthMm) : ('' as unknown as number),
@@ -408,9 +473,8 @@ function renderQrcodeElement(
     const widthPx = pt.toPx(widthPt)
     const heightPx = pt.toPx(heightPt - titleH)
     const square = Math.max(1, Math.floor(Math.min(widthPx / 2.835, heightPx / 2.835)))
-    const ecLevel = (['M', 'L', 'H', 'Q'] as const)[
-      safeNumber(opts.qrCodeLevel, { min: 0, max: 3, fallback: 0 })
-    ]
+    // TKT-023: clamp + alias V1 Path A `qrCodeLevel` int via shared helper.
+    const ecLevel = (['M', 'L', 'H', 'Q'] as const)[mapQrCodeLevel(opts.qrCodeLevel)]
 
     const svgStr = bwipjs.toSVG({
       bcid: typeof opts.qrcodeType === 'string' ? opts.qrcodeType : 'qrcode',
@@ -529,46 +593,85 @@ function renderShapeElement(
   return shape
 }
 
-/** Table — single + multi-layer header + footer + group subset. */
+/**
+ * Table — TKT-021 Sprint 22b convergence.
+ *
+ * Delegates the layout + data model to `buildTableModel` (pure helper in
+ * `internal/render-table.ts`). This function ONLY emits DOM from the model so
+ * the designer (TableElement.vue) and the print pipeline produce identical
+ * trees from the same fixture (TableElement-render-parity.spec.ts asserts it).
+ *
+ * V1 fidelity notes honored here:
+ *  - `<thead>` cells use `<th>` (V3 designer + print path agree); V1 used `<td>`
+ *    historically — see V3-PARITY 4.7 quirk. Convergence requires both paths
+ *    to emit the same tag, so we keep `<th>` here (matching TableElement.vue).
+ *  - V1 G.3: hidden merged cells emit `<td style="display:none">` rather than
+ *    being omitted entirely. We honor that here so `fixMergeSpan` (future
+ *    pagination port) can re-anchor.
+ *  - Cell formatter outputs `innerHTML` (by-design HTML); default value path
+ *    uses `textContent` (Invariant #1).
+ *  - `rowsColumnsMerge` source-string passes through `evalCap` (5000-char
+ *    security cap) before being handed to the model — matches TableElement.vue.
+ *  - `column.field` resolution: tries `row[field]` flat key first (V1 line
+ *    2138-2139, V1-INVENTORY F.2) then dot-path fallback (V3 extension).
+ */
 function renderTableElement(
   element: ElementJson,
   opts: Record<string, unknown>,
   options: RenderOptions
 ): HTMLElement {
+  void element // printElementType.field handled via getElementValue elsewhere
   const content = document.createElement('div')
   content.classList.add('hiprint-printElement-table-content')
   content.style.height = '100%'
   content.style.width = '100%'
 
   const table = document.createElement('table')
+  table.classList.add('hiprint-printElement-tableTarget')
   table.style.width = '100%'
   table.style.borderCollapse = 'collapse'
 
-  const columnsRaw = opts.columns as unknown
-  if (!Array.isArray(columnsRaw) || columnsRaw.length === 0) {
+  // Pre-resolve rowsColumnsMerge (string → function via evalCap security cap).
+  let mergeFn: ((...args: unknown[]) => unknown) | undefined
+  const mergeSrc = opts.rowsColumnsMerge
+  if (typeof mergeSrc === 'function') {
+    mergeFn = mergeSrc as (...a: unknown[]) => unknown
+  } else if (typeof mergeSrc === 'string') {
+    const f = evalCap(mergeSrc, 'rowsColumnsMerge')
+    if (typeof f === 'function') mergeFn = f as (...a: unknown[]) => unknown
+  }
+
+  const model = buildTableModel({
+    options: opts,
+    data: options.data,
+    rowsColumnsMerge: mergeFn,
+    // V1 print path: when bound data is unavailable AND testData parse fails,
+    // V1 falls back to `[{}]`. For runtime print we keep the conservative
+    // `[]` fallback (no preview row), matching Sprint 22a-r behavior.
+    rowsFallbackPlaceholder: false,
+  })
+
+  if (model.borderClass) table.classList.add(model.borderClass)
+
+  // Empty-columns short-circuit (preserve existing contract).
+  if (model.theadRows.length === 0) {
     content.appendChild(table)
     return content
   }
-  // Normalize to Array<Array<col>> — V1 stored either shape.
-  const layers: unknown[][] = Array.isArray(columnsRaw[0]) ? (columnsRaw as unknown[][]) : [columnsRaw as unknown[]]
-  const leafColumns = (layers[layers.length - 1] ?? []) as Array<Record<string, unknown>>
 
-  // ===== thead (multi-layer support) =====
+  // ===== thead =====
   const thead = document.createElement('thead')
-  for (const layer of layers) {
+  for (const layer of model.theadRows) {
     const tr = document.createElement('tr')
-    for (const col of layer as Array<Record<string, unknown>>) {
+    for (const cell of layer) {
       const th = document.createElement('th')
-      const colspan = safeNumber(col.colspan, { fallback: 1, min: 1 })
-      const rowspan = safeNumber(col.rowspan, { fallback: 1, min: 1 })
-      if (colspan > 1) th.setAttribute('colspan', String(colspan))
-      if (rowspan > 1) th.setAttribute('rowspan', String(rowspan))
-      const halign = typeof col.halign === 'string' ? col.halign : (typeof col.align === 'string' ? col.align : 'center')
-      th.style.textAlign = String(halign)
+      if (cell.colspan && cell.colspan > 1) th.setAttribute('colspan', String(cell.colspan))
+      if (cell.rowspan && cell.rowspan > 1) th.setAttribute('rowspan', String(cell.rowspan))
+      th.style.textAlign = cell.align || 'center'
       th.style.border = '0.5pt solid #000'
       th.style.padding = '2pt 4pt'
-      // [Invariant #1] header title is user data
-      th.textContent = coerceText(col.title)
+      // [Invariant #1] header title is user data → textContent
+      th.textContent = cell.title
       tr.appendChild(th)
     }
     thead.appendChild(tr)
@@ -576,47 +679,36 @@ function renderTableElement(
   table.appendChild(thead)
 
   // ===== tbody =====
-  const rawData = options.data
-  const fieldName = typeof opts.field === 'string' ? opts.field : undefined
-  let rows: Array<Record<string, unknown>> = []
-  if (fieldName && rawData) {
-    const v = resolveField(rawData, fieldName, [])
-    if (Array.isArray(v)) rows = v as Array<Record<string, unknown>>
-  }
-  if (rows.length === 0) {
-    // fallback to testData (V1 design-time)
-    const td = opts.testData
-    if (typeof td === 'string') {
-      try {
-        const parsed = JSON.parse(td)
-        if (Array.isArray(parsed)) rows = parsed
-      } catch {
-        /* ignore */
-      }
-    } else if (Array.isArray(td)) {
-      rows = td as Array<Record<string, unknown>>
-    }
-  }
-
   const tbody = document.createElement('tbody')
-  for (const row of rows) {
+  for (const row of model.bodyRows) {
     const tr = document.createElement('tr')
-    for (const col of leafColumns) {
+    // V1 + Vue parity: TableCell emits `hiprint-printElement-table-tr` on
+    // each body <tr> and `hiprint-printElement-table-td` on each <td>.
+    tr.classList.add('hiprint-printElement-table-tr')
+    for (const cell of row.cells) {
       const td = document.createElement('td')
-      const halign = typeof col.halign === 'string' ? col.halign : (typeof col.align === 'string' ? col.align : 'left')
-      td.style.textAlign = String(halign)
+      td.classList.add('hiprint-printElement-table-td')
+      // V1 G.3: hidden merged cells keep their DOM slot with display:none.
+      if (cell.hidden) td.style.display = 'none'
+      if (cell.rowspan && cell.rowspan > 1) td.setAttribute('rowspan', String(cell.rowspan))
+      if (cell.colspan && cell.colspan > 1) td.setAttribute('colspan', String(cell.colspan))
+      td.style.textAlign = cell.align
       td.style.border = '0.5pt solid #000'
       td.style.padding = '2pt 4pt'
-      const cellField = typeof col.field === 'string' ? col.field : undefined
-      const cellValue = cellField ? resolveField(row, cellField, '') : ''
-      // TKT-006: accept string-source formatter as well (V1 parity).
-      const formatter = compileFormatter(col.formatter)
-      if (formatter) {
-        // by-design HTML for cell formatter
-        const out = safelyCall(formatter, [cellValue, row, col, options.data])
-        td.innerHTML = out == null ? '' : String(out)
+      for (const cn of cell.classNames) td.classList.add(cn)
+      for (const k of Object.keys(cell.style)) {
+        const styleProp = cell.style[k]
+        if (styleProp != null) td.style.setProperty(k, styleProp)
+      }
+      if (cell.isHtml) {
+        // [Invariant #2] formatter output is by-design HTML. Wrap in <span>
+        // to mirror TableCell.vue's <span v-html> structure (parity).
+        const span = document.createElement('span')
+        span.innerHTML = cell.rendered
+        td.appendChild(span)
       } else {
-        td.textContent = coerceText(cellValue)
+        // [Invariant #1] default cell path is textContent.
+        td.textContent = cell.rendered
       }
       tr.appendChild(td)
     }
@@ -624,23 +716,36 @@ function renderTableElement(
   }
   table.appendChild(tbody)
 
-  // ===== tfoot (gridColumnsFooter) — optional =====
-  const footer = opts.gridColumnsFooter
-  if (Array.isArray(footer) && footer.length > 0) {
+  // ===== tfoot (gridColumnsFooter + footerFormatter) =====
+  const hasFooterRows = model.footerRows.length > 0
+  const hasFooterHtml = model.footerHtml !== ''
+  if (hasFooterRows || hasFooterHtml) {
     const tfoot = document.createElement('tfoot')
-    for (const footRow of footer as unknown[]) {
+    for (const footRow of model.footerRows) {
       const tr = document.createElement('tr')
-      if (Array.isArray(footRow)) {
-        for (const cell of footRow as Array<Record<string, unknown>>) {
-          const td = document.createElement('td')
-          const colspan = safeNumber(cell.colspan, { fallback: 1, min: 1 })
-          if (colspan > 1) td.setAttribute('colspan', String(colspan))
-          td.style.border = '0.5pt solid #000'
-          td.style.padding = '2pt 4pt'
-          td.textContent = coerceText(cell.title ?? cell.text)
-          tr.appendChild(td)
-        }
+      for (const fc of footRow.cells) {
+        const td = document.createElement('td')
+        if (fc.colspan && fc.colspan > 1) td.setAttribute('colspan', String(fc.colspan))
+        td.style.border = '0.5pt solid #000'
+        td.style.padding = '2pt 4pt'
+        td.textContent = fc.text
+        tr.appendChild(td)
       }
+      tfoot.appendChild(tr)
+    }
+    if (hasFooterHtml) {
+      // V1 K.1: footerFormatter output is by-design HTML inside <tfoot>.
+      // Wrap in a <tr><td colspan="N"> covering all leaf columns to keep DOM
+      // valid; the caller's formatter may return raw HTML so we inject as
+      // innerHTML on the <td> (escape responsibility lies with the formatter).
+      const tr = document.createElement('tr')
+      const td = document.createElement('td')
+      const span = model.leafColumns.length
+      if (span > 1) td.setAttribute('colspan', String(span))
+      td.style.border = '0.5pt solid #000'
+      td.style.padding = '2pt 4pt'
+      td.innerHTML = model.footerHtml
+      tr.appendChild(td)
       tfoot.appendChild(tr)
     }
     table.appendChild(tfoot)
@@ -734,6 +839,77 @@ function applyPadding(el: HTMLElement, opts: Record<string, unknown>): void {
 }
 
 // ============ Helpers ============
+
+/**
+ * TKT-025 — Determine whether `element` should render on the given 0-based
+ * `pageIndex` out of `pageCount` total pages.
+ *
+ * Honors four V1 options:
+ *  - `options.fixed === true`     → render on every page (page filter bypass).
+ *  - `options.pageBreak`          → whitelist of pages to render on.
+ *  - `options.showInPage`         → whitelist of pages to render on.
+ *  - `options.unShowInPage`       → blacklist of pages to hide on.
+ *
+ * Value semantics (per ticket TKT-025):
+ *  - Array of numbers (1-indexed page numbers, matching V1 user-facing): the
+ *    ticket spec — `pageBreak=[1,3]` means "render on V1 page 1 and 3" which
+ *    is 0-indexed `[0, 2]`. So we translate `arr.includes(pageIndex + 1)`.
+ *  - V1 legacy string ('first' / 'last' / 'odd' / 'even' / 'none') is also
+ *    supported for backward compatibility with V1 templates per F.6 of
+ *    docs/V1-INVENTORY/etypes/text-longtext.md. `pageBreak` as boolean
+ *    `true` is a V1 "force new page" marker (no visibility filter).
+ *
+ * Returns true if element should be rendered; false if it should be skipped.
+ */
+function isElementVisibleOnPage(
+  element: ElementJson,
+  pageIndex: number,
+  pageCount: number
+): boolean {
+  const opts = (element.options ?? {}) as Record<string, unknown>
+
+  // `fixed` short-circuit: render on every page regardless of any filter.
+  // V1 source: bundle.js 9831 isFixed() — bypasses pagination logic.
+  if (opts.fixed === true || opts.fixed === 'true') {
+    return true
+  }
+
+  // pageBreak filter — array form is a whitelist of 1-indexed page numbers.
+  // V1 source: bundle.js 4200-4209 (pageBreak as boolean marker for "force
+  // new page", not a visibility filter). The array form is the V3 extension
+  // per TKT-025 ticket.
+  if (Array.isArray(opts.pageBreak)) {
+    const arr = opts.pageBreak as unknown[]
+    if (!arr.includes(pageIndex + 1)) return false
+  }
+
+  // showInPage filter — V1 legacy strings + V3 array form.
+  // V1 source: bundle.js 692-704 (BasePrintElement.showInPage).
+  if (Array.isArray(opts.showInPage)) {
+    const arr = opts.showInPage as unknown[]
+    if (!arr.includes(pageIndex + 1)) return false
+  } else if (typeof opts.showInPage === 'string') {
+    const rule = opts.showInPage
+    if (rule === 'none') return false
+    if (rule === 'first' && pageIndex !== 0) return false
+    if (rule === 'last' && pageIndex !== pageCount - 1) return false
+    if (rule === 'odd' && pageIndex % 2 !== 0) return false // V1: page 1 = idx 0 = odd
+    if (rule === 'even' && pageIndex % 2 !== 1) return false
+  }
+
+  // unShowInPage filter — inverse blacklist. V1 source: bundle.js 4396 +
+  // 692-704. Array form (V3) is blacklist of 1-indexed page numbers.
+  if (Array.isArray(opts.unShowInPage)) {
+    const arr = opts.unShowInPage as unknown[]
+    if (arr.includes(pageIndex + 1)) return false
+  } else if (typeof opts.unShowInPage === 'string') {
+    const rule = opts.unShowInPage
+    if (rule === 'first' && pageIndex === 0) return false
+    if (rule === 'last' && pageIndex === pageCount - 1) return false
+  }
+
+  return true
+}
 
 /**
  * Resolve the user-visible value for an element: data via field (nested-safe)

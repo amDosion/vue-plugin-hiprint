@@ -57,3 +57,19 @@ export type { SelectionEvent } from './selection'
 // ---- P16.5 keyboard ----
 export { enableDesignerKeyboard } from './keyboard'
 export type { KeyboardOptions } from './keyboard'
+
+// ---- TKT-027 lock semantics ----
+// Pure-options predicates (call with element.options).
+export {
+  isFullyLocked,
+  isPositionLocked,
+  isSizeLocked,
+  isAnyLocked,
+} from './lock'
+// Store-resolving wrappers (call with canvas store + element id).
+export {
+  isElementFullyLocked,
+  isElementPositionLocked,
+  isElementSizeLocked,
+  isElementAnyLocked,
+} from './lock'

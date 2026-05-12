@@ -20,7 +20,7 @@
 import bwipjs from 'bwip-js/browser'
 import { computed, ref, watch } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { safeNumber, pt } from '@hiprint-v3/internal'
+import { mapBarcodeMode, safeNumber, pt } from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { getElementValue, isTrue, type Opts } from './_helpers'
 
@@ -82,8 +82,16 @@ function render(): void {
     const widthMm = Math.max(0, pt.toMm(widthPt))
     const barAutoWidth = isTrue(opts.barAutoWidth)
 
+    // TKT-023: prefer Path B `barcodeType`; fall back to V1 Path A
+    // `barcodeMode` (CODE128 / EAN13 / ... 18 enum) via compat mapping.
+    const bcid =
+      typeof opts.barcodeType === 'string' && opts.barcodeType
+        ? opts.barcodeType
+        : mapBarcodeMode(
+            typeof opts.barcodeMode === 'string' ? opts.barcodeMode : undefined
+          )
     const svgStr = bwipjs.toSVG({
-      bcid: typeof opts.barcodeType === 'string' ? opts.barcodeType : 'code128',
+      bcid,
       text,
       scale: safeNumber(opts.barWidth, { fallback: 1, min: 1 }),
       width: !barAutoWidth ? Math.floor(widthMm) : ('' as unknown as number),

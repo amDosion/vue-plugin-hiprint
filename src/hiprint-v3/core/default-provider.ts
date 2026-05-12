@@ -204,12 +204,23 @@ function buildECommerceGroup(): PrintElementTypeGroup {
       options: { width: 200, height: 12, fontSize: 10, testData: 'DD20260509001' },
     },
     {
+      // TKT-024: orderDate uses V1 dataType + format pipeline so business
+      // data of any date shape (Date / epoch / ISO string) is consistently
+      // rendered as 'YYYY-MM-DD HH:mm:ss'. Without dataType=datetime the
+      // formatter chain never runs and the field renders as raw input.
       tid: 'defaultModule.orderDate',
       title: '下单日期',
       field: 'orderDate',
       type: 'text',
       icon: 'ep:calendar',
-      options: { width: 160, height: 12, fontSize: 10, testData: '2026-05-09 14:30' },
+      options: {
+        width: 160,
+        height: 12,
+        fontSize: 10,
+        dataType: 'datetime',
+        format: 'YYYY-MM-DD HH:mm:ss',
+        testData: '2026-05-09 14:30',
+      },
     },
     {
       // Sprint 22a-r TKT-008: emit Path B (`type:'barcode'`) — V3 only ships

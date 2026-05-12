@@ -19,16 +19,23 @@
  *  - When `options.formatter` is a function, the formatter output is rendered
  *    via `v-html` (Invariant #2: by-design HTML; business owns escaping).
  */
+// TKT-023: textType dispatch to dedicated barcode/qrcode elements for V1
+// Path A template compatibility (text element with options.textType set).
+// TKT-024: dataType + format pre-conversion through getFormattedValue
+// (order: raw → dataType+format → formatter → DOM).
 import { computed, nextTick, ref } from 'vue'
-import { useCanvasStore } from '@hiprint-v3/stores'
+import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
 import ElementWrapper from './ElementWrapper.vue'
+import BarcodeElement from './BarcodeElement.vue'
+import QrcodeElement from './QrcodeElement.vue'
 import {
   computeDisplayText,
-  getElementValue,
+  getFormattedValue,
   isTrue,
   type Opts,
 } from './_helpers'
 import { coerceText, compileFormatter } from '@hiprint-v3/internal'
+import { isFullyLocked } from '@hiprint-v3/interactions/lock'
 
 const props = withDefaults(
   defineProps<{
@@ -44,6 +51,9 @@ const props = withDefaults(
 )
 
 const canvas = useCanvasStore()
+// TKT-020: history store for inline-edit commit snapshots — Ctrl+Z restores
+// the prior title/testData after a dblclick edit.
+const history = useHistoryStore()
 
 const element = computed(() => {
   for (const panel of canvas.panels) {
@@ -56,8 +66,27 @@ const element = computed(() => {
 const displayText = computed(() => computeDisplayText(element.value, props.data))
 
 /**
+ * TKT-023 — Detect V1 Path A `options.textType`. Returns `'barcode'` /
+ * `'qrcode'` / `null`. When non-null, the template dispatches to
+ * BarcodeElement / QrcodeElement instead of rendering text.
+ *
+ * COMPAT layer for legacy V1 templates. New code should use Path B
+ * (`printElementType.type: 'barcode' | 'qrcode'`) directly.
+ */
+const textTypeDispatch = computed<'barcode' | 'qrcode' | null>(() => {
+  const el = element.value
+  if (!el) return null
+  const tt = (el.options as Opts).textType
+  if (tt === 'barcode' || tt === 'qrcode') return tt
+  return null
+})
+
+/**
  * Formatter output — by-design HTML (Invariant #2). Returns `null` when no
  * formatter is configured, so the template falls back to text interpolation.
+ *
+ * TKT-024 pipeline: raw → dataType+format → formatter → DOM. Formatter
+ * receives the already-converted value (matches V1 bundle.js line 10037).
  */
 const formatterHtml = computed<string | null>(() => {
   const el = element.value
@@ -68,7 +97,8 @@ const formatterHtml = computed<string | null>(() => {
   if (!fn) return null
   try {
     const title = coerceText(opts.title)
-    const value = getElementValue(el, props.data)
+    // TKT-024: pre-convert via dataType+format BEFORE formatter chain.
+    const value = getFormattedValue(el, props.data)
     const out = fn(title, value, opts, props.data)
     return out == null ? '' : String(out)
   } catch (err) {
@@ -86,6 +116,10 @@ const inputEl = ref<HTMLInputElement | null>(null)
 function startEdit(): void {
   if (!props.editable || !element.value) return
   const opts = element.value.options as Opts
+  // TKT-027: block inline edit when the element carries the catch-all `lock`
+  // field. V1 inventory §H.1 line 622: V1 quirk allows positionLocked to
+  // still enter edit mode — we mirror that. Only `lock === true` blocks edit.
+  if (isFullyLocked(opts)) return
   // Title editing is more common than value editing in V1. To keep semantics
   // explicit, we edit options.title when hideTitle=false; otherwise edit the
   // raw `options.testData` (design-time value).
@@ -107,12 +141,20 @@ function commitEdit(): void {
     return
   }
   const opts = element.value.options as Opts
-  const patch: Opts =
+  // TKT-020: capture prior value so we only snapshot when the user actually
+  // changed something. Hitting Enter/blur on an unchanged field shouldn't
+  // burn an undo slot.
+  const isTitleEdit =
     !isTrue(opts.hideTitle) && typeof opts.title === 'string'
-      ? { title: draftValue.value }
-      : { testData: draftValue.value }
+  const prior = String((isTitleEdit ? opts.title : opts.testData) ?? '')
+  const patch: Opts = isTitleEdit
+    ? { title: draftValue.value }
+    : { testData: draftValue.value }
   canvas.updateElement(props.panelId, props.elementId, { options: patch })
   isEditing.value = false
+  // TKT-020: history snapshot on a real edit only. Matches the property
+  // panels' commit-on-blur semantics.
+  if (draftValue.value !== prior) history.pushSnapshot()
 }
 
 function cancelEdit(): void {
@@ -121,7 +163,27 @@ function cancelEdit(): void {
 </script>
 
 <template>
+  <!--
+    TKT-023 — V1 Path A compat: when `options.textType` is barcode / qrcode,
+    delegate to the dedicated element renderer. Same elementId/panelId so
+    the delegate reads the same canvas record and honors the user's options.
+  -->
+  <BarcodeElement
+    v-if="textTypeDispatch === 'barcode'"
+    :element-id="elementId"
+    :panel-id="panelId"
+    :data="data"
+    :interactive="interactive"
+  />
+  <QrcodeElement
+    v-else-if="textTypeDispatch === 'qrcode'"
+    :element-id="elementId"
+    :panel-id="panelId"
+    :data="data"
+    :interactive="interactive"
+  />
   <ElementWrapper
+    v-else
     :element-id="elementId"
     :panel-id="panelId"
     :interactive="interactive"

@@ -47,8 +47,13 @@ import {
   offset,
   shift,
 } from '@floating-ui/vue'
-import { useCanvasStore } from '@hiprint-v3/stores'
+import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
 import { i18n } from '../internal/i18n'
+import {
+  findElement as findLockedElement,
+  isAnyLocked,
+  isFullyLocked,
+} from './lock'
 
 // -----------------------------------------------------------------------------
 // Public types
@@ -350,42 +355,78 @@ export function buildElementContextItems(
   // may have called setActivePinia(). Capturing once here pins every handler
   // to this designer's store.
   const canvas = useCanvasStore()
+  // TKT-020: capture history store at factory time, same rationale as the
+  // canvas pin above. Every mutating menu action pushes a snapshot so undo
+  // can roll back delete / paste / reorder.
+  const history = useHistoryStore()
+
+  // TKT-027: resolve lock state at menu-build time. V1 inventory §7.3 lines
+  // 11525-11540 — the lock menu item's label flips based on current state
+  // ("锁定元素" vs "解锁元素"). Per V1, contextmenu delete DOES respect the
+  // catch-all `lock` (matches the keyboard delete path).
+  const lockedEl = findLockedElement(canvas, elementId)
+  const fullyLocked = isFullyLocked(lockedEl?.options)
+  const anyLocked = isAnyLocked(lockedEl?.options)
+
   return [
     {
       id: 'copy',
       label: i18n.__('复制') || 'Copy',
       shortcut: 'Ctrl+C',
+      // TKT-020: copy is read-only — no history push (V1 parity).
       onClick: () => _copyElement(canvas, elementId),
     },
     {
       id: 'cut',
       label: i18n.__('剪切') || 'Cut',
       shortcut: 'Ctrl+X',
-      onClick: () => _cutElement(canvas, elementId),
+      // TKT-027: cut = copy + delete; if fully locked we cannot delete →
+      // disable. Position-lock alone does NOT disable (V1 quirk: lock granular
+      // fields don't block delete).
+      disabled: fullyLocked,
+      onClick: () => _cutElement(canvas, elementId, history),
     },
     {
       id: 'paste',
       label: i18n.__('粘贴') || 'Paste',
       shortcut: 'Ctrl+V',
-      onClick: () => _pasteElement(canvas),
+      onClick: () => _pasteElement(canvas, history),
     },
     { id: 'sep-1', label: '', divider: true },
     {
       id: 'bring-to-front',
       label: i18n.__('置顶') || 'Bring to Front',
-      onClick: () => _bringToFront(canvas, elementId),
+      onClick: () => _bringToFront(canvas, elementId, history),
     },
     {
       id: 'send-to-back',
       label: i18n.__('置底') || 'Send to Back',
-      onClick: () => _sendToBack(canvas, elementId),
+      onClick: () => _sendToBack(canvas, elementId, history),
+    },
+    { id: 'sep-lock', label: '', divider: true },
+    {
+      // TKT-027: Lock/Unlock toggle. V1 inventory §H.1 line 11533 — lock
+      // sets BOTH positionLocked + sizeLocked; unlock clears positionLocked
+      // only (V1 retains sizeLocked — quirk preserved). We deliberately do
+      // NOT touch the catch-all `lock` field: that's reserved for
+      // template-author intent and round-trips with V1 templates.
+      id: anyLocked ? 'unlock' : 'lock',
+      label: anyLocked
+        ? i18n.__('解锁元素') || 'Unlock'
+        : i18n.__('锁定元素') || 'Lock',
+      icon: anyLocked ? 'unlock' : 'lock',
+      onClick: () => _toggleLock(canvas, elementId, history),
     },
     { id: 'sep-2', label: '', divider: true },
     {
       id: 'delete',
       label: i18n.__('删除') || 'Delete',
       shortcut: 'Delete',
-      onClick: () => _deleteElement(canvas, elementId),
+      // TKT-027: per V1 inventory §7.3 + §8.3, contextmenu delete respects
+      // the catch-all `lock` (same as keyboard). positionLocked alone does
+      // NOT block delete (V1 quirk preserved).
+      disabled: fullyLocked,
+      onClick: () => _deleteElement(canvas, elementId, history),
     },
     { id: 'sep-3', label: '', divider: true },
     {
@@ -418,6 +459,9 @@ export function _getClipboard(): CanvasElement[] {
 
 // Captured store type alias — keep typed without leaking internal store types.
 type CanvasStore = ReturnType<typeof useCanvasStore>
+// TKT-020: history store typed the same way so internal helpers can accept it
+// without exporting the Pinia generic surface.
+type HistoryStore = ReturnType<typeof useHistoryStore>
 
 function _findElement(
   canvas: CanvasStore,
@@ -434,19 +478,34 @@ function _findElement(
 }
 
 function _copyElement(canvas: CanvasStore, elementId: string): void {
+  // TKT-020: read-only — no history push.
   const hit = _findElement(canvas, elementId)
   if (!hit) return
   _setClipboard([hit.el])
 }
 
-function _cutElement(canvas: CanvasStore, elementId: string): void {
+function _cutElement(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
   const hit = _findElement(canvas, elementId)
   if (!hit) return
+  // TKT-027: cut = copy + delete. If fully locked we still won't delete, so
+  // skip the copy too (V1 parity — cut is a single user action). Position-
+  // lock alone does NOT block (V1 quirk preserved).
+  if (isFullyLocked(hit.el.options)) {
+    // eslint-disable-next-line no-console
+    console.warn('[hiprint] cannot cut locked element', elementId)
+    return
+  }
   _setClipboard([hit.el])
   canvas.removeElement(hit.panelId, elementId)
+  // TKT-020: cut mutated state → snapshot.
+  history.pushSnapshot()
 }
 
-function _pasteElement(canvas: CanvasStore): void {
+function _pasteElement(canvas: CanvasStore, history: HistoryStore): void {
   if (_clipboard.length === 0) return
   const activeId = canvas.activePanelId
   if (!activeId) return
@@ -457,15 +516,68 @@ function _pasteElement(canvas: CanvasStore): void {
       printElementType: el.printElementType,
     })
   }
+  // TKT-020: paste added ≥1 element (guarded by _clipboard.length > 0 above)
+  // and activePanelId is non-null → guaranteed mutation → snapshot.
+  history.pushSnapshot()
 }
 
-function _deleteElement(canvas: CanvasStore, elementId: string): void {
+function _deleteElement(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
   const hit = _findElement(canvas, elementId)
   if (!hit) return
+  // TKT-027: defense-in-depth. The menu item is rendered with `disabled` when
+  // fully locked, but a programmatic invocation (custom menu wrapping, e2e
+  // misuse) could bypass that. We re-check here so the contract holds.
+  // Position-lock alone does NOT block (V1 quirk preserved).
+  if (isFullyLocked(hit.el.options)) {
+    // eslint-disable-next-line no-console
+    console.warn('[hiprint] cannot delete locked element', elementId)
+    return
+  }
   canvas.removeElement(hit.panelId, elementId)
+  // TKT-020: removed exactly one element → snapshot.
+  history.pushSnapshot()
 }
 
-function _bringToFront(canvas: CanvasStore, elementId: string): void {
+/**
+ * TKT-027: Lock / Unlock toggle. V1 inventory §7.3 line 11525-11540 + §H.1:
+ *
+ *   - On LOCK: set BOTH `positionLocked = true` AND `sizeLocked = true`.
+ *   - On UNLOCK: clear `positionLocked` (V1 retains `sizeLocked` — quirk).
+ *
+ * We deliberately do NOT touch the catch-all `lock` field: that's reserved
+ * for templates that ship pre-locked via JSON; the interactive toggle uses
+ * the granular fields so V1-saved templates round-trip cleanly.
+ */
+function _toggleLock(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
+  const hit = _findElement(canvas, elementId)
+  if (!hit) return
+  const currentlyLocked = isAnyLocked(hit.el.options)
+  if (currentlyLocked) {
+    // Unlock — clear positionLocked; sizeLocked retained per V1.
+    canvas.updateElement(hit.panelId, elementId, {
+      options: { positionLocked: false },
+    })
+  } else {
+    canvas.updateElement(hit.panelId, elementId, {
+      options: { positionLocked: true, sizeLocked: true },
+    })
+  }
+  history.pushSnapshot()
+}
+
+function _bringToFront(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
   const hit = _findElement(canvas, elementId)
   if (!hit) return
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
@@ -485,9 +597,16 @@ function _bringToFront(canvas: CanvasStore, elementId: string): void {
   nextPanels[pIdx] = { ...panel, printElements: next }
   // canvas.panels is reactive via Pinia; direct assignment triggers diff.
   canvas.panels = nextPanels
+  // TKT-020: z-order changed → snapshot. (Early-returns above guarantee that
+  // reaching this line means the array actually shifted.)
+  history.pushSnapshot()
 }
 
-function _sendToBack(canvas: CanvasStore, elementId: string): void {
+function _sendToBack(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
   const hit = _findElement(canvas, elementId)
   if (!hit) return
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
@@ -503,4 +622,6 @@ function _sendToBack(canvas: CanvasStore, elementId: string): void {
   const nextPanels = canvas.panels.slice()
   nextPanels[pIdx] = { ...panel, printElements: next }
   canvas.panels = nextPanels
+  // TKT-020: z-order changed → snapshot.
+  history.pushSnapshot()
 }

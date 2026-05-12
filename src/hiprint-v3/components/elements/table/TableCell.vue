@@ -25,7 +25,7 @@
  */
 import { computed, ref } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { coerceText, resolveField } from '@hiprint-v3/internal'
+import { coerceText, resolveCellValue, compileFormatter } from '@hiprint-v3/internal'
 import TableInlineEditor from './TableInlineEditor.vue'
 
 const props = withDefaults(
@@ -71,7 +71,9 @@ const canvas = useCanvasStore()
 const rawValue = computed<unknown>(() => {
   const field = typeof props.column.field === 'string' ? props.column.field : undefined
   if (!field) return ''
-  return resolveField(props.row, field, '')
+  // TKT-021 convergence: V1 flat key first, V3 dot-path fallback. Matches
+  // buildTableModel so designer + print paths stay byte-identical.
+  return resolveCellValue(props.row, field)
 })
 
 /**
@@ -82,15 +84,13 @@ const rawValue = computed<unknown>(() => {
  * Invariant #8: a thrown formatter must not crash the cell. We catch + warn.
  */
 const formatterHtml = computed<string | null>(() => {
-  const formatter = props.column.formatter
-  if (typeof formatter !== 'function') return null
+  // TKT-021 convergence: V1 P.11 — formatter may be a string source.
+  // `compileFormatter` accepts both function and string; returns null when
+  // not compilable.
+  const fn = compileFormatter(props.column.formatter)
+  if (!fn) return null
   try {
-    const out = (formatter as (...a: unknown[]) => unknown)(
-      rawValue.value,
-      props.row,
-      props.column,
-      props.tableData
-    )
+    const out = fn(rawValue.value, props.row, props.column, props.tableData)
     return out == null ? '' : String(out)
   } catch (err) {
     console.warn('[hiprint-v3:TableCell] formatter threw:', err)
@@ -112,10 +112,11 @@ interface StylerOutput {
 
 const stylerOut = computed<StylerOutput>(() => {
   const out: StylerOutput = { classNames: [], style: {} }
-  const styler = props.column.styler
-  if (typeof styler !== 'function') return out
+  // TKT-021 convergence: V1 P.11 — styler may be a string source.
+  const fn = compileFormatter(props.column.styler)
+  if (!fn) return out
   try {
-    const r = (styler as (...a: unknown[]) => unknown)(
+    const r = fn(
       rawValue.value,
       props.row,
       props.column,
@@ -244,9 +245,11 @@ function setNestedField(
 </script>
 
 <template>
-  <!-- A merged-away cell is omitted entirely (matches V2 row-merge semantics). -->
+  <!--
+    TKT-021 V1 G.3 parity: a merged-away cell is kept in the DOM with
+    `display:none` (NOT omitted), so cross-page fixMergeSpan can re-anchor.
+  -->
   <td
-    v-if="!hidden"
     :rowspan="rowspan > 1 ? rowspan : undefined"
     :colspan="colspan > 1 ? colspan : undefined"
     :class="['hiprint-printElement-table-td', ...stylerOut.classNames]"
@@ -254,6 +257,7 @@ function setNestedField(
       textAlign: align,
       border: '0.5pt solid #000',
       padding: '2pt 4pt',
+      ...(hidden ? { display: 'none' } : {}),
       ...stylerOut.style,
     }"
     @dblclick="startEdit"

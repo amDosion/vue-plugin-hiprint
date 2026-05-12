@@ -3,9 +3,16 @@
  * LongTextElement.vue — V3 longText etype (P17.1).
  *
  * Renders a (potentially long) text block with first-line indent + CSS
- * `white-space: pre-wrap` so text wraps and overflows visibly. Full V1
- * pagination (BinarySearch + offsetHeight measurement) is intentionally
- * deferred to a later pass — see {@link ../../print/render.ts} block comment.
+ * `white-space: pre-wrap` so text wraps and overflows visibly. In the
+ * designer single-page preview view, this component shows the full text
+ * with overflow clipped — V1's designer also rendered only the first page.
+ *
+ * TKT-026: Full V1 binary-search pagination is now available via the
+ * imperative `paginateLongText` API in @hiprint-v3/internal — this
+ * component exposes a `getPaginatedPages(maxHeightPt, perPageHeightPt)`
+ * method via defineExpose for integration with preview/print pipelines
+ * that need multi-page rendering. Designer preview continues to show
+ * single-page (no pagination).
  *
  * V2 reference: `render.ts` renderLongTextElement (line 279-317).
  *
@@ -16,9 +23,18 @@
  */
 import { computed } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { coerceText, compileFormatter, safeNumber } from '@hiprint-v3/internal'
+import {
+  coerceText,
+  compileFormatter,
+  createDomMeasure,
+  paginateLongText,
+  safeNumber,
+} from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
-import { computeDisplayText, getElementValue, type Opts } from './_helpers'
+// TKT-024: getFormattedValue applies dataType + format conversion before the
+// formatter chain. computeDisplayText already routes through it for the
+// default (no-formatter) path.
+import { computeDisplayText, getFormattedValue, type Opts } from './_helpers'
 
 const props = withDefaults(
   defineProps<{
@@ -57,9 +73,10 @@ const formatterHtml = computed<string | null>(() => {
   const fn = compileFormatter(opts.formatter)
   if (!fn) return null
   try {
+    // TKT-024: pre-convert via dataType+format BEFORE formatter chain.
     const out = fn(
       coerceText(opts.title),
-      getElementValue(el, props.data),
+      getFormattedValue(el, props.data),
       opts,
       props.data
     )
@@ -69,6 +86,78 @@ const formatterHtml = computed<string | null>(() => {
     return ''
   }
 })
+
+/**
+ * TKT-026: Imperative pagination API.
+ *
+ * Computes V1-parity multi-page breakdown of the rendered displayText using
+ * `paginateLongText` + a DOM-backed measure probe.
+ *
+ * Callers (preview iframe, print pipeline) should pass the available height
+ * per page in pt. Returns an array of text chunks, one per page.
+ *
+ * Designer single-page view does NOT call this — it renders the full text
+ * with CSS clipping (matches V1 designer behavior).
+ *
+ * @param maxHeightPt   Available height for the first page (pt).
+ * @param perPageHeightPt  Available height per subsequent page (pt). Default
+ *                         equals maxHeightPt (uniform per-page budget).
+ * @returns Array of strings, one per page. Always at least one entry.
+ */
+function getPaginatedPages(
+  maxHeightPt: number,
+  perPageHeightPt?: number
+): string[] {
+  const el = element.value
+  if (!el) return ['']
+  const opts = el.options as Opts
+  const text = displayText.value
+  const widthPt = safeNumber(opts.width, { min: 1, fallback: 200 })
+  const fontSizePt = safeNumber(opts.fontSize, { fallback: 10.5 })
+  const lineHeightPt = safeNumber(opts.lineHeight, {
+    fallback: fontSizePt * 1.5,
+  })
+  const fontFamily =
+    typeof opts.fontFamily === 'string' && opts.fontFamily
+      ? opts.fontFamily
+      : 'sans-serif'
+  const letterSpacing =
+    opts.letterSpacing != null
+      ? safeNumber(opts.letterSpacing, { fallback: 0 })
+      : undefined
+
+  // SSR / no-DOM environment: return single page (cannot measure).
+  if (typeof document === 'undefined') return [text]
+
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  try {
+    const measure = createDomMeasure(
+      host,
+      fontSizePt,
+      lineHeightPt,
+      fontFamily,
+      widthPt,
+      letterSpacing
+    )
+    const { pages } = paginateLongText({
+      fullText: text,
+      maxHeightPt,
+      perPageHeightPt: perPageHeightPt ?? maxHeightPt,
+      fontSizePt,
+      lineHeightPt,
+      fontFamily,
+      width: widthPt,
+      letterSpacing,
+      measure,
+    })
+    return pages.map((p) => p.text)
+  } finally {
+    if (host.parentNode) host.parentNode.removeChild(host)
+  }
+}
+
+defineExpose({ getPaginatedPages })
 </script>
 
 <template>

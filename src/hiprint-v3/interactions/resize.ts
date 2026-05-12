@@ -30,6 +30,8 @@
 
 import interact from 'interactjs'
 import { px, pt } from '../internal/uom'
+import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
+import { findElement, isSizeLocked } from './lock'
 
 // -----------------------------------------------------------------------------
 // Public types
@@ -145,6 +147,26 @@ export function enableElementResize(
   el: HTMLElement,
   opts: ElementResizeOptions
 ): () => void {
+  // TKT-027: size-lock gate. If the element is size-locked at registration
+  // time we do NOT attach interact.js resizable; this ALSO prevents corner
+  // handles from rendering because the ElementWrapper hides them via the
+  // `.hiprint-element--locked` BEM hook. Per V1 inventory Section H:
+  // `sizeLocked` OR `lock` blocks resize.
+  //
+  // We attempt to read the canvas store; if Pinia is not active (test path
+  // without a designer, or pre-mount call) we fall through to normal
+  // registration — those paths use mock data and bypass real lock state.
+  try {
+    const canvas = useCanvasStore()
+    const elRec = findElement(canvas, opts.elementId)
+    if (elRec && isSizeLocked(elRec.options)) {
+      // No-op cleanup keeps caller lifecycle uniform.
+      return () => undefined
+    }
+  } catch {
+    // No active Pinia — proceed with registration.
+  }
+
   const minWidth = opts.minWidth ?? 5
   const minHeight = opts.minHeight ?? 5
   const gridSize = opts.gridSize ?? 1
@@ -166,6 +188,26 @@ export function enableElementResize(
     forceLock: !!opts.lockAspectRatio,
   }
   ELEMENT_STATE.set(el, state)
+
+  // TKT-020: capture history store at enable-time (multi-designer pinia-pin
+  // pattern — same rationale as drag-drop.ts / keyboard.ts). The captured
+  // ref stays valid for the lifetime of this resizable; resize-end pushes
+  // a snapshot so undo restores the previous geometry.
+  //
+  // Defensive: useHistoryStore() throws when Pinia isn't active (some unit
+  // tests construct resizables outside a Pinia scope to inspect the
+  // interact.js wiring). We swallow that and silently skip the snapshot —
+  // tests that care about history install Pinia.
+  let history: ReturnType<typeof useHistoryStore> | null = null
+  try {
+    history = useHistoryStore()
+  } catch {
+    history = null
+  }
+  // Mirror drag-drop's didMove: a 0-delta resize gesture (handle click, no
+  // drag) shouldn't burn an undo slot. Tracks any move-event with non-zero
+  // px delta on either axis.
+  let didResize = false
 
   // Build modifiers:
   //   1. restrictSize  — min clamp (pt → px).
@@ -196,6 +238,8 @@ export function enableElementResize(
         const rect = event.rect as { width: number; height: number }
         state.startRatio = rect.height > 0 ? rect.width / rect.height : 0
         state.aspectLocked = state.forceLock || !!event.shiftKey
+        // TKT-020: reset per-gesture movement flag.
+        didResize = false
       },
       move: (event: any) => {
         // Dynamic Shift toggle on every move.
@@ -206,6 +250,10 @@ export function enableElementResize(
         const deltaRect = event.deltaRect as
           | { left: number; top: number }
           | undefined
+        // TKT-020: any non-zero delta on either axis counts as a real resize.
+        const dx = deltaRect?.left ?? 0
+        const dy = deltaRect?.top ?? 0
+        if (dx !== 0 || dy !== 0) didResize = true
 
         // event.rect is in px (browser pixel domain). Convert to pt.
         let widthPt = pxToPt(rect.width)
@@ -255,6 +303,18 @@ export function enableElementResize(
           height: parseFloat(el.style.height || '0'),
         }
         safeCall(opts.onEnd, finalRect)
+        // TKT-020: history snapshot on actual resize commit. Caller's onEnd
+        // already pushed the geometry into the canvas store; we record it
+        // here so Ctrl+Z restores the prior size. Skip when the gesture
+        // didn't move (handle clicked without drag).
+        if (didResize && history) {
+          try {
+            history.pushSnapshot()
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[hiprint-v3:resize] history push threw:', err)
+          }
+        }
       },
     },
   })

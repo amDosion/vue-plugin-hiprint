@@ -40,6 +40,7 @@ import {
   type CanvasElement,
 } from '@hiprint-v3/stores'
 import { _getClipboard, _setClipboard } from './context-menu'
+import { isFullyLocked, isPositionLocked } from './lock'
 
 // Captured store types — keep typed to ReturnType so action helpers stay
 // 1:1 with the store interface without exporting internal types.
@@ -105,13 +106,31 @@ function deleteSelection(canvas: CanvasStore): void {
   if (ids.length === 0) return
   // Resolve each id to its panel + remove. Snapshot panels FIRST so the
   // mutation loop sees a stable list.
+  //
+  // TKT-027 lock semantics:
+  //   - V1 quirk preserved (inventory §8.3, line 1568): the catch-all
+  //     `options.lock` blocks keyboard delete; `positionLocked` ALONE does
+  //     NOT — position-locked elements remain delete-able by keyboard.
+  //   - If EVERY selected element is fully-locked → no-op + warn.
+  //   - If selection is MIXED → delete only the non-fully-locked ones.
   const removals: Array<{ panelId: string; elementId: string }> = []
+  let lockedSkipped = 0
   for (const p of canvas.panels) {
     for (const el of p.printElements) {
-      if (canvas.selectedElementIds.has(el.id)) {
-        removals.push({ panelId: p.id, elementId: el.id })
+      if (!canvas.selectedElementIds.has(el.id)) continue
+      if (isFullyLocked(el.options)) {
+        lockedSkipped++
+        continue
       }
+      removals.push({ panelId: p.id, elementId: el.id })
     }
+  }
+  if (removals.length === 0 && lockedSkipped > 0) {
+    // All selected elements are fully locked. Per spec we emit a structured
+    // warn so the host can surface a toast / dev console signal.
+    // eslint-disable-next-line no-console
+    console.warn('[hiprint] cannot delete locked elements')
+    return
   }
   for (const r of removals) {
     canvas.removeElement(r.panelId, r.elementId)
@@ -120,7 +139,40 @@ function deleteSelection(canvas: CanvasStore): void {
 
 function moveSelectionByPt(canvas: CanvasStore, dx: number, dy: number): void {
   if (canvas.selectedElementIds.size === 0) return
-  canvas.moveSelection(dx, dy)
+  // TKT-027: lock semantics for arrow-key nudge.
+  //   - If ALL selected elements are position-locked → no-op (silent — users
+  //     hold arrow keys; a noisy warn would spam the console).
+  //   - If MIXED → move only the non-locked ones (V1 parity: locked elements
+  //     stay in place while the rest of the selection moves).
+  const movable: Array<{ panelId: string; elementId: string }> = []
+  let lockedSkipped = 0
+  for (const p of canvas.panels) {
+    for (const el of p.printElements) {
+      if (!canvas.selectedElementIds.has(el.id)) continue
+      if (isPositionLocked(el.options)) {
+        lockedSkipped++
+        continue
+      }
+      movable.push({ panelId: p.id, elementId: el.id })
+    }
+  }
+  if (movable.length === 0) return
+  if (lockedSkipped === 0) {
+    // Fast path — all selected are movable; use the bulk store action.
+    canvas.moveSelection(dx, dy)
+    return
+  }
+  // Mixed selection — patch only the non-locked subset element-by-element so
+  // locked siblings don't drift.
+  for (const m of movable) {
+    const panel = canvas.panels.find((p) => p.id === m.panelId)
+    const el = panel?.printElements.find((e) => e.id === m.elementId)
+    if (!el) continue
+    const o = el.options as Record<string, unknown>
+    const left = Number(o.left ?? 0) + dx
+    const top = Number(o.top ?? 0) + dy
+    canvas.updateElement(m.panelId, m.elementId, { options: { left, top } })
+  }
 }
 
 function copySelection(canvas: CanvasStore): void {
@@ -253,17 +305,28 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
       // -- Clipboard --
       if (enableClipboard && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === 'c' || e.key === 'C') {
+          // TKT-020: copy is read-only — no history push (V1 parity).
           copySelection(canvas)
           e.preventDefault()
           return
         }
         if (e.key === 'v' || e.key === 'V') {
+          // TKT-020: paste only changes state when there was something on
+          // the clipboard AND an active panel to paste into. Track size
+          // delta on the active panel so we don't snapshot a no-op.
+          const beforeCount = canvas.activePanel?.printElements.length ?? -1
           pasteSelection(canvas)
+          const afterCount = canvas.activePanel?.printElements.length ?? -1
+          if (afterCount > beforeCount) history.pushSnapshot()
           e.preventDefault()
           return
         }
         if (e.key === 'x' || e.key === 'X') {
+          // TKT-020: cut mutates iff something was selected. Empty-selection
+          // Ctrl+X is a no-op.
+          const sizeBefore = canvas.selectedElementIds.size
           cutSelection(canvas)
+          if (sizeBefore > 0) history.pushSnapshot()
           e.preventDefault()
           return
         }
@@ -271,30 +334,44 @@ export function enableDesignerKeyboard(opts?: KeyboardOptions): () => void {
 
       // -- Delete --
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        // TKT-020: snapshot ONLY when we actually removed something. Pressing
+        // Delete on an empty selection is a no-op; we should not consume an
+        // undo slot.
+        const sizeBefore = canvas.selectedElementIds.size
         deleteSelection(canvas)
+        if (sizeBefore > 0) history.pushSnapshot()
         e.preventDefault()
         return
       }
 
       // -- Arrow move --
+      // TKT-020: per-keypress snapshot for arrows (V1-faithful). V1 fills the
+      // 50-cap fast with nudges but that's V1's accepted UX; matrix says
+      // match V1 here. moveSelectionByPt itself early-returns when nothing's
+      // selected, so we mirror that guard before pushing.
       const step = e.shiftKey ? bigMoveStep : moveStep
+      const hasSelection = canvas.selectedElementIds.size > 0
       if (e.key === 'ArrowUp') {
         moveSelectionByPt(canvas, 0, -step)
+        if (hasSelection) history.pushSnapshot()
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowDown') {
         moveSelectionByPt(canvas, 0, step)
+        if (hasSelection) history.pushSnapshot()
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowLeft') {
         moveSelectionByPt(canvas, -step, 0)
+        if (hasSelection) history.pushSnapshot()
         e.preventDefault()
         return
       }
       if (e.key === 'ArrowRight') {
         moveSelectionByPt(canvas, step, 0)
+        if (hasSelection) history.pushSnapshot()
         e.preventDefault()
         return
       }

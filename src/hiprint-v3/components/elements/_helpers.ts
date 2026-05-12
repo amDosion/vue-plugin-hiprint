@@ -17,7 +17,12 @@
  */
 
 import type { CSSProperties } from 'vue'
-import { coerceText, resolveField, safeNumber } from '@hiprint-v3/internal'
+import {
+  coerceText,
+  formatValue,
+  resolveField,
+  safeNumber,
+} from '@hiprint-v3/internal'
 import type { CanvasElement } from '@hiprint-v3/stores'
 
 /** Plain options bag (element.options is `Record<string, unknown>`). */
@@ -182,11 +187,43 @@ export function getElementValue(
   return ''
 }
 
+type FormatLikeOption = string | null | undefined
+
+/**
+ * TKT-024 — Apply V1 dataType + format conversion to a raw element value.
+ *
+ * Pipeline order: raw → dataType+format → formatter → DOM.
+ *
+ * - `options.dataType: 'datetime'` + `options.format` → date pattern.
+ * - `options.dataType: 'boolean'` → trueText / falseText (with V1 'a:b'
+ *   format split fallback).
+ * - default (text / undefined) → `String(raw ?? '')`.
+ *
+ * Used by TextElement / LongTextElement and render.ts text/longText paths.
+ */
+export function getFormattedValue(
+  element: CanvasElement | null | undefined,
+  data: Record<string, unknown> | undefined
+): string {
+  if (!element) return ''
+  const opts = element.options as Opts
+  const raw = getElementValue(element, data)
+  return formatValue(raw, {
+    dataType: opts.dataType as FormatLikeOption,
+    format: opts.format as FormatLikeOption,
+    trueText: opts.trueText as FormatLikeOption,
+    falseText: opts.falseText as FormatLikeOption,
+  })
+}
+
 /**
  * Build the user-visible display text for text-like elements
  * (text / longText): optional title prefix + value, joined by separator.
  *
  * NEVER returns null/undefined — coerces all parts via {@link coerceText}.
+ *
+ * TKT-024: value runs through {@link getFormattedValue} (dataType + format)
+ * BEFORE composition. Formatter chain runs separately in the caller.
  */
 export function computeDisplayText(
   element: CanvasElement | null | undefined,
@@ -194,10 +231,10 @@ export function computeDisplayText(
 ): string {
   if (!element) return ''
   const opts = element.options as Opts
-  const value = getElementValue(element, data)
+  const formatted = getFormattedValue(element, data)
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   const separator = typeof opts.titleSep === 'string' ? opts.titleSep : '：'
-  const valueStr = coerceText(value)
-  return hideTitle || !title ? valueStr : title + separator + valueStr
+  // formatted is already a string (formatValue guarantees); use directly.
+  return hideTitle || !title ? formatted : title + separator + formatted
 }

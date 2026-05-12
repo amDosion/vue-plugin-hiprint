@@ -52,8 +52,9 @@ import type { Interactable } from '@interactjs/types'
 // well-typed at point of construction.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InteractModifier = any
-import { useCanvasStore } from '@hiprint-v3/stores'
+import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
 import { pt, px } from '@hiprint-v3/internal'
+import { isPositionLocked, findElement } from './lock'
 import type {
   ElementDragOptions,
   ElementListSourceOptions,
@@ -142,16 +143,49 @@ export function enableElementDrag(
   // designer apps to mutate the wrong store (panels not found / moves silently
   // dropped). Confirmed via dev-server manual test ("组件拖动到画布都不能正常").
   const canvas = useCanvasStore()
+  // TKT-020: history-store capture for auto-snapshot on drag-end. Mirrors the
+  // multi-designer pinia-pin pattern above so undo/redo binds to the designer
+  // that owns this draggable, not whichever pinia happens to be active when
+  // the drag ends.
+  const history = useHistoryStore()
 
   // Track totals across the full drag so onEnd can deliver final pos.
   let dragStartPosPt: Position = { x: 0, y: 0 }
   let isMultiDrag = false
+  // TKT-020: detect actual movement so we don't push a snapshot for a "click
+  // that registered as drag" (interact.js fires start/end with no move calls
+  // when the pointer barely jitters). Without this guard we'd flood the
+  // 50-entry capacity from harmless clicks.
+  let didMove = false
+  // TKT-027: capture lock state at drag START so subsequent move/end calls
+  // can short-circuit. We re-read from the store on every start (NOT at
+  // registration time) so runtime lock toggles (e.g. context-menu "Lock"
+  // command) take effect immediately without re-registering interact.js.
+  let lockedAtStart = false
 
   const interactable = interact(el).draggable({
     inertia: false,
     listeners: {
-      start: () => {
+      start: (event: { interaction?: { stop?: () => void } } | undefined) => {
         try {
+          // TKT-027 lock gate. Per V1 inventory §8.2 / per-etype Section H:
+          // options.lock || options.positionLocked || options.draggable===false
+          // → element cannot be moved. We re-check on every start so runtime
+          // lock toggles take effect without re-registering interact.js.
+          const lockedEl = findElement(canvas, opts.elementId)
+          lockedAtStart = isPositionLocked(lockedEl?.options)
+          if (lockedAtStart) {
+            // Best-effort cancel: ask interact.js to stop the in-flight
+            // interaction so move/end don't fire. (interact.js may not honor
+            // stop() inside start; the move/end handlers also re-check
+            // `lockedAtStart` to be safe.)
+            try {
+              event?.interaction?.stop?.()
+            } catch {
+              /* interact internals — best-effort only */
+            }
+            return
+          }
           // Cache start position (pt) so onEnd can compute absolute pos.
           // Pull from store rather than DOM to avoid measurement drift.
           const panel = canvas.panels.find((p) => p.id === opts.panelId)
@@ -167,16 +201,25 @@ export function enableElementDrag(
           isMultiDrag =
             canvas.selectedElementIds.size > 1 &&
             canvas.selectedElementIds.has(opts.elementId)
+          // TKT-020: reset movement flag — only flips true when `move` fires.
+          didMove = false
         } catch (err) {
           console.warn('[hiprint] enableElementDrag start handler threw:', err)
         }
       },
 
       move: (event: { dx: number; dy: number }) => {
+        // TKT-027: if drag started on a locked element, ignore move events.
+        // V1 parity — locked elements are immovable.
+        if (lockedAtStart) return
         try {
           const scale = canvas.scale
           const dxPt = screenPxToPt(event.dx, scale)
           const dyPt = screenPxToPt(event.dy, scale)
+          // TKT-020: any non-zero pt delta counts as movement. We track in pt
+          // (post-scale) so micro-jitters at high zoom that round to 0 pt also
+          // skip the snapshot.
+          if (dxPt !== 0 || dyPt !== 0) didMove = true
 
           if (isMultiDrag) {
             // Multi-select: move ALL selected elements together.
@@ -205,6 +248,13 @@ export function enableElementDrag(
       },
 
       end: () => {
+        // TKT-027: locked drags never reach onMove (move is short-circuited),
+        // so there's no state change to commit and no history snapshot to
+        // push. Reset the flag so the next gesture starts fresh.
+        if (lockedAtStart) {
+          lockedAtStart = false
+          return
+        }
         try {
           if (opts.onEnd) {
             const panel = canvas.panels.find((p) => p.id === opts.panelId)
@@ -216,6 +266,13 @@ export function enableElementDrag(
               x: Number(o.left ?? dragStartPosPt.x),
               y: Number(o.top ?? dragStartPosPt.y),
             })
+          }
+          // TKT-020: drag-end snapshot. V1 fires history on every drag commit;
+          // we match that, but only when the element actually moved (didMove)
+          // so a "drag cancelled before movement" or "click registered as
+          // drag" doesn't burn an undo slot.
+          if (didMove) {
+            history.pushSnapshot()
           }
         } catch (err) {
           console.warn('[hiprint] enableElementDrag end handler threw:', err)
@@ -354,6 +411,9 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
   // captured store is safe because Pinia singletons stay stable per pinia
   // instance.
   const canvas = useCanvasStore()
+  // TKT-020: history store captured here too — palette drop and cross-panel
+  // drop both mutate state and need a snapshot for undo/redo.
+  const history = useHistoryStore()
 
   const interactable = interact(el).dropzone({
     accept: '.hiprint-element, .hiprint-list-source',
@@ -383,6 +443,9 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
             options: (base.options as Record<string, unknown>) ?? {},
             ...base,
           })
+          // TKT-020: palette → canvas creates a new element; push a snapshot
+          // so the user can undo a mis-drop.
+          history.pushSnapshot()
           return
         }
 
@@ -396,6 +459,9 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
         }
         if (srcPanelId !== panelId) {
           canvas.moveElementBetweenPanels(srcPanelId, panelId, elementId)
+          // TKT-020: cross-panel reparent counts as a discrete edit. Same-panel
+          // moves are already snapshotted by enableElementDrag's `end` handler.
+          history.pushSnapshot()
         }
         // If srcPanelId === panelId, no-op: same-panel drag already handled
         // by the element's own draggable handler (position patched on move).

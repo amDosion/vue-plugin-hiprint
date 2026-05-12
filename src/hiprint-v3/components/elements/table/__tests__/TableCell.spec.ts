@@ -132,7 +132,7 @@ describe('TableCell', () => {
     expect(td.style.fontWeight).toBeTruthy()
   })
 
-  it('applies rowspan/colspan when > 1; hides cell when 0', () => {
+  it('applies rowspan/colspan when > 1; emits display:none when 0 (V1 G.3)', () => {
     const w1 = mountInTable(TableCell, {
       column: { field: 'name' },
       row: { name: 'X' },
@@ -147,6 +147,9 @@ describe('TableCell', () => {
     expect(td.getAttribute('rowspan')).toBe('3')
     expect(td.getAttribute('colspan')).toBe('2')
 
+    // TKT-021 V1 G.3 parity: when rowspan/colspan is 0 the cell stays in
+    // the DOM with `display:none` (NOT omitted) so cross-page fixMergeSpan
+    // can re-anchor. Previously V3 omitted via `v-if="!hidden"`.
     const wHidden = mountInTable(TableCell, {
       column: { field: 'name' },
       row: { name: 'X' },
@@ -156,7 +159,9 @@ describe('TableCell', () => {
       tableOptions: {},
       rowspan: 0,
     })
-    expect(wHidden.find('td').exists()).toBe(false)
+    const hiddenTd = wHidden.find('td')
+    expect(hiddenTd.exists()).toBe(true)
+    expect((hiddenTd.element as HTMLElement).style.display).toBe('none')
   })
 
   it('dblclick → edit mode → commit patches testData via canvas.updateElement', async () => {
