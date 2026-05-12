@@ -214,3 +214,49 @@ describe('SaveDialog — categoryOptions', () => {
     w.unmount()
   })
 })
+
+// ============ Sprint 22g wave 3 — TKT-333 / TKT-334 ============
+
+describe('SaveDialog — TKT-334 text-opt overrides', () => {
+  it('overrides namePlaceholder + nameRequiredText + button labels', async () => {
+    const w = mountDialog({
+      namePlaceholder: 'Type here',
+      nameRequiredText: 'Required.',
+      confirmText: 'Persist',
+      cancelText: 'Discard',
+    })
+    await flushPromises()
+    // Placeholder applied to the underlying <input> — verifies namePlaceholder.
+    expect(getNameInput().placeholder).toBe('Type here')
+    // Submit with empty → error text uses nameRequiredText override.
+    const okButtons = Array.from(
+      document.querySelectorAll('.ant-modal-footer button')
+    )
+    const persistBtn = okButtons.find((b) => compactText(b).includes('Persist'))
+    const discardBtn = okButtons.find((b) => compactText(b).includes('Discard'))
+    expect(persistBtn).toBeTruthy()
+    expect(discardBtn).toBeTruthy()
+    ;(persistBtn as HTMLElement).click()
+    await flushPromises()
+    const help = document.querySelector('.ant-form-item-explain-error')
+    expect(help?.textContent).toContain('Required.')
+    w.unmount()
+  })
+
+  it('TKT-333 deterministic name input id derives from uid prop', async () => {
+    const w = mountDialog({ uid: 'unit-001' })
+    await flushPromises()
+    expect(document.getElementById('hp-save-name-unit-001')).toBeTruthy()
+    w.unmount()
+  })
+
+  it('TKT-333 errorMessage renders inside a role="alert" surface', async () => {
+    const w = mountDialog({ errorMessage: 'Network down' })
+    await flushPromises()
+    // role=alert may be on our wrapping <div> or on antd's modal — search both.
+    const alerts = Array.from(document.querySelectorAll('[role="alert"]'))
+    const ours = alerts.find((a) => a.textContent?.includes('Network down'))
+    expect(ours).toBeTruthy()
+    w.unmount()
+  })
+})

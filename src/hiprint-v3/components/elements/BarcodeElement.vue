@@ -20,7 +20,12 @@
 import bwipjs from 'bwip-js/browser'
 import { computed, ref, watch } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { mapBarcodeMode, safeNumber, pt } from '@hiprint-v3/internal'
+import {
+  collectBwipPassthrough,
+  mapBarcodeMode,
+  pt,
+  safeNumber,
+} from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { getElementValue, isTrue, type Opts } from './_helpers'
 
@@ -97,7 +102,12 @@ function render(): void {
         : mapBarcodeMode(
             typeof opts.barcodeMode === 'string' ? opts.barcodeMode : undefined
           )
+    // TKT-364: extra bwip-js opts forwarding (bordercolor, addon, textyalign,
+    // backgroundcolor, ...). The passthrough is spread FIRST so the fixed
+    // per-element opts below win on key collision.
+    const passthrough = collectBwipPassthrough(opts as Record<string, unknown>)
     const svgStr = bwipjs.toSVG({
+      ...passthrough,
       bcid,
       text,
       scale: safeNumber(opts.barWidth, { fallback: 1, min: 1 }),

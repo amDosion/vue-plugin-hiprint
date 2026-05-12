@@ -451,6 +451,11 @@ export class PrintTemplate {
    * `getTemplateJson()`; document only the canonical name here.
    */
   public getJsonTid(): TemplateJson {
+    // Sprint 22g wave 3 — destroy-guard sweep: explicit guard for audit
+    // consistency (this.getJson() also guards, but the convention is
+    // "every public method calls assertNotDestroyed directly").
+    if (assertNotDestroyed(this, 'getJsonTid'))
+      return { panels: [] } as unknown as TemplateJson
     return this.getJson()
   }
 
@@ -1754,6 +1759,9 @@ export class PrintTemplate {
    * unchanged. V1 ref: bundle.js line 12904-12906.
    */
   public setFields(fields: Record<string, unknown> | unknown[]): void {
+    // Sprint 22g wave 3 — destroy-guard sweep: explicit guard for audit
+    // consistency (this.setDynamicFields() also guards).
+    if (assertNotDestroyed(this, 'setFields')) return
     this.setDynamicFields(fields)
   }
 

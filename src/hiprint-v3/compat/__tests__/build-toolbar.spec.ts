@@ -981,3 +981,207 @@ describe('toolbarCtrl — Sprint 22g GA V1 parity (21 methods)', () => {
     tpl.destroy()
   })
 })
+
+// ============ Sprint 22g wave 3 — V1 parity backfill (9 tickets) ============
+//
+// Lock the remaining 9 toolbar/shell tickets from REMAINING-GAPS.md §01:
+//   TKT-303/304/305 dialog DOM accessors
+//   TKT-307/308 dialog handler registry
+//   TKT-309 8 setXxxDialogHandler convenience aliases
+//   TKT-311 setButtonVisible / setButtonDisabled
+//   TKT-312 getGroup / getGroups / setGroupVisible
+
+describe('toolbarCtrl — Sprint 22g wave 3 V1 parity (9 tickets)', () => {
+  it('TKT-303 getBusinessDialogElement returns null when destroyed', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    // Dialog not open → null (V3 reactive — DOM not mounted until v-model=true).
+    expect(ctrl.getBusinessDialogElement()).toBeNull()
+    // Inject a stand-in wrap node so the selector matches (validates the lookup
+    // path without bringing up the full ant-design-vue teleport machinery).
+    const wrap = document.createElement('div')
+    wrap.className = 'hiprint-toolbar-business-dialog-wrap'
+    document.body.appendChild(wrap)
+    expect(ctrl.getBusinessDialogElement()).toBe(wrap)
+    document.body.removeChild(wrap)
+    ctrl.destroy()
+    expect(ctrl.getBusinessDialogElement()).toBeNull()
+    tpl.destroy()
+  })
+
+  it('TKT-304 getTemplateDialogElement resolves teleport wrap', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    expect(ctrl.getTemplateDialogElement()).toBeNull()
+    const wrap = document.createElement('div')
+    wrap.className = 'hiprint-toolbar-template-dialog-wrap'
+    document.body.appendChild(wrap)
+    expect(ctrl.getTemplateDialogElement()).toBe(wrap)
+    document.body.removeChild(wrap)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-305 getSaveDialogElement resolves teleport wrap', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    expect(ctrl.getSaveDialogElement()).toBeNull()
+    const wrap = document.createElement('div')
+    wrap.className = 'hiprint-toolbar-save-dialog-wrap'
+    document.body.appendChild(wrap)
+    expect(ctrl.getSaveDialogElement()).toBe(wrap)
+    document.body.removeChild(wrap)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-307/308 setDialogHandler / getDialogHandler round-trip', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    expect(ctrl.getDialogHandler('businessOpen')).toBeNull()
+    const fn = vi.fn()
+    ctrl.setDialogHandler('businessOpen', fn)
+    expect(ctrl.getDialogHandler('businessOpen')).toBe(fn)
+    // Open path consults the registry — `false` return short-circuits the bus.
+    const handler = vi.fn(() => false)
+    ctrl.setDialogHandler('businessOpen', handler)
+    const open = vi.fn()
+    ctrl.on('business-dialog-open', open)
+    ctrl.openBusinessDialog()
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(open).not.toHaveBeenCalled()
+    // Clearing via null removes the registration.
+    ctrl.setDialogHandler('businessOpen', null)
+    expect(ctrl.getDialogHandler('businessOpen')).toBeNull()
+    // Empty key is a defensive no-op (warns but does not throw).
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => ctrl.setDialogHandler('', fn)).not.toThrow()
+    warn.mockRestore()
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-309 setBusinessOpenDialogHandler suppresses open when returning false', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const handler = vi.fn(() => false)
+    ctrl.setBusinessOpenDialogHandler(handler)
+    const open = vi.fn()
+    ctrl.on('business-dialog-open', open)
+    ctrl.openBusinessDialog()
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(open).not.toHaveBeenCalled()
+    // Truthy return → bus fires.
+    handler.mockReturnValue(true)
+    ctrl.openBusinessDialog()
+    expect(open).toHaveBeenCalledTimes(1)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-309 all 8 convenience setters register their canonical key', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const fnOpen = vi.fn()
+    const fnClose = vi.fn()
+    ctrl.setBusinessOpenDialogHandler(fnOpen)
+    ctrl.setBusinessCloseDialogHandler(fnClose)
+    ctrl.setTemplateOpenDialogHandler(fnOpen)
+    ctrl.setTemplateCloseDialogHandler(fnClose)
+    ctrl.setSaveOpenDialogHandler(fnOpen)
+    ctrl.setSaveCloseDialogHandler(fnClose)
+    ctrl.setDeleteConfirmDialogHandler(fnOpen)
+    expect(ctrl.getDialogHandler('businessOpen')).toBe(fnOpen)
+    expect(ctrl.getDialogHandler('businessClose')).toBe(fnClose)
+    expect(ctrl.getDialogHandler('templateOpen')).toBe(fnOpen)
+    expect(ctrl.getDialogHandler('templateClose')).toBe(fnClose)
+    expect(ctrl.getDialogHandler('saveOpen')).toBe(fnOpen)
+    expect(ctrl.getDialogHandler('saveClose')).toBe(fnClose)
+    expect(ctrl.getDialogHandler('deleteConfirm')).toBe(fnOpen)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-311 setButtonVisible(false) hides the DOM node + toggle back', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    // Default Print button is rendered.
+    expect(ctrl.getButton('print')).not.toBeNull()
+    ctrl.setButtonVisible('print', false)
+    await nextTick()
+    expect(ctrl.getButton('print')).toBeNull()
+    // Calling visible=true restores it.
+    ctrl.setButtonVisible('print', true)
+    await nextTick()
+    expect(ctrl.getButton('print')).not.toBeNull()
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-311 setButtonDisabled mirrors enable/disable + isDisabled', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    const btn = ctrl.getButton('save')
+    expect(btn).toBeInstanceOf(HTMLButtonElement)
+    ctrl.setButtonDisabled('save', true)
+    await nextTick()
+    expect((ctrl.getButton('save') as HTMLButtonElement).disabled).toBe(true)
+    ctrl.setButtonDisabled('save', false)
+    await nextTick()
+    expect((ctrl.getButton('save') as HTMLButtonElement).disabled).toBe(false)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-312 getGroup / getGroups expose data-toolbar-group nodes', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    // History group always rendered when undo/redo shown (default true).
+    const history = ctrl.getGroup('history')
+    expect(history).toBeInstanceOf(HTMLElement)
+    expect(history?.getAttribute('data-toolbar-group')).toBe('history')
+    const actions = ctrl.getGroup('actions')
+    expect(actions).toBeInstanceOf(HTMLElement)
+    const groups = ctrl.getGroups()
+    // Expect at minimum these well-known groups.
+    expect(Object.keys(groups)).toEqual(
+      expect.arrayContaining(['history', 'actions', 'paper', 'scale', 'align'])
+    )
+    expect(ctrl.getGroup('nonsense-group')).toBeNull()
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-312 setGroupVisible(false) toggles display:none via v-show', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    const before = ctrl.getGroup('actions')
+    expect(before).toBeInstanceOf(HTMLElement)
+    expect((before as HTMLElement).style.display).not.toBe('none')
+    ctrl.setGroupVisible('actions', false)
+    await nextTick()
+    const after = ctrl.getGroup('actions')
+    expect(after).toBeInstanceOf(HTMLElement)
+    expect((after as HTMLElement).style.display).toBe('none')
+    ctrl.setGroupVisible('actions', true)
+    await nextTick()
+    expect((ctrl.getGroup('actions') as HTMLElement).style.display).not.toBe('none')
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('TKT-307/308 destroy clears the dialog-handler registry', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    ctrl.setDialogHandler('businessOpen', () => undefined)
+    expect(ctrl.getDialogHandler('businessOpen')).not.toBeNull()
+    ctrl.destroy()
+    // Post-destroy: getDialogHandler refuses + returns null.
+    expect(ctrl.getDialogHandler('businessOpen')).toBeNull()
+    tpl.destroy()
+  })
+})

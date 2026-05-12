@@ -11,7 +11,13 @@
 import bwipjs from 'bwip-js/browser'
 import { computed, ref, watch } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
-import { coerceText, mapQrCodeLevel, pt, safeNumber } from '@hiprint-v3/internal'
+import {
+  coerceText,
+  collectBwipPassthrough,
+  mapQrCodeLevel,
+  pt,
+  safeNumber,
+} from '@hiprint-v3/internal'
 import ElementWrapper from './ElementWrapper.vue'
 import { getElementValue, isTrue, type Opts } from './_helpers'
 
@@ -92,7 +98,10 @@ function render(): void {
     // TKT-023: clamp + alias V1 Path A `qrCodeLevel` int via shared helper.
     const ecLevel = (['M', 'L', 'H', 'Q'] as const)[mapQrCodeLevel(opts.qrCodeLevel)]
 
+    // TKT-364: extra bwip-js opts forwarding (Sprint 22g GL).
+    const passthrough = collectBwipPassthrough(opts as Record<string, unknown>)
     const svgStr = bwipjs.toSVG({
+      ...passthrough,
       bcid: typeof opts.qrcodeType === 'string' ? opts.qrcodeType : 'qrcode',
       text,
       scale: 1,

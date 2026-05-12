@@ -17,6 +17,7 @@ import {
   _resetInstance,
   getInstance,
 } from '../registry'
+import type { ElementTypeDef } from '../group'
 
 describe('buildDefaultElementTypeGroups', () => {
   const groups = buildDefaultElementTypeGroups()
@@ -161,6 +162,40 @@ describe('buildDefaultElementTypeGroups', () => {
     const seal = u.printElementTypes.find((e) => e.tid === 'defaultModule.seal')!
     expect((sig.options as { src?: string }).src).toMatch(/^data:image\/svg\+xml/)
     expect((seal.options as { src?: string }).src).toMatch(/^data:image\/svg\+xml/)
+  })
+
+  // TKT-363 (Sprint 22g GL Wave 3) — V1 Path B shape lock for the three
+  // factory presets `trackingNo` / `barcode` / `qrcode`. Sprint 22a-r
+  // migrated them from Path A (type:'text' + textType:'barcode') to Path B
+  // (type:'barcode'); this test pins the shape so future edits cannot
+  // accidentally roll back.
+  it('TKT-363: trackingNo / barcode / qrcode presets ship in V3 Path B shape', () => {
+    const all: ElementTypeDef[] = []
+    groups.forEach((g) => g.printElementTypes.forEach((e) => all.push(e)))
+
+    const trackingNo = all.find((e) => e.tid === 'defaultModule.trackingNo')!
+    expect(trackingNo.type).toBe('barcode')
+    expect(
+      (trackingNo.options as { barcodeType?: string }).barcodeType
+    ).toBe('code128')
+    // Path A leftovers must NOT appear.
+    expect((trackingNo.options as { textType?: string }).textType).toBeUndefined()
+    expect(
+      (trackingNo.options as { barcodeMode?: string }).barcodeMode
+    ).toBeUndefined()
+
+    const barcode = all.find((e) => e.tid === 'defaultModule.barcode')!
+    expect(barcode.type).toBe('barcode')
+    expect((barcode.options as { barcodeType?: string }).barcodeType).toBe(
+      'code128'
+    )
+    expect((barcode.options as { hideTitle?: boolean }).hideTitle).toBe(true)
+
+    const qrcode = all.find((e) => e.tid === 'defaultModule.qrcode')!
+    expect(qrcode.type).toBe('qrcode')
+    // qrCodeLevel is int index (0=M) per V3 contract (mapQrCodeLevel).
+    expect((qrcode.options as { qrCodeLevel?: number }).qrCodeLevel).toBe(0)
+    expect((qrcode.options as { hideTitle?: boolean }).hideTitle).toBe(true)
   })
 
   it('no duplicate tids across all 4 groups', () => {

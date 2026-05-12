@@ -275,6 +275,15 @@ function renderTextElement(
 ): HTMLElement {
   const content = document.createElement('div')
   content.classList.add('hiprint-printElement-text-content')
+  // TKT-340 (Sprint 22g wave 3): textContentWrap CSS class injection. The
+  // parent class `.hiprint-text-content-wrap` activates the per-value rules
+  // shipped in print-lock.css (.hiprint-text-content-wrap-{nowrap,clip,ellipsis}).
+  content.classList.add('hiprint-text-content-wrap')
+  const wrapMode =
+    typeof opts.textContentWrap === 'string' ? opts.textContentWrap.trim() : ''
+  if (wrapMode === 'nowrap' || wrapMode === 'clip' || wrapMode === 'ellipsis') {
+    content.classList.add('hiprint-text-content-wrap-' + wrapMode)
+  }
   content.style.height = '100%'
   content.style.width = '100%'
 
@@ -350,8 +359,28 @@ function renderLongTextElement(
 ): HTMLElement {
   const content = document.createElement('div')
   content.classList.add('hiprint-printElement-longText-content')
+  // TKT-340 (Sprint 22g wave 3): textContentWrap class injection (parity with
+  // text). longText defaults to pre-wrap; the modifier class only affects
+  // overflow/ellipsis semantics when explicitly set.
+  content.classList.add('hiprint-text-content-wrap')
+  const wrapMode =
+    typeof opts.textContentWrap === 'string' ? opts.textContentWrap.trim() : ''
+  if (wrapMode === 'nowrap' || wrapMode === 'clip' || wrapMode === 'ellipsis') {
+    content.classList.add('hiprint-text-content-wrap-' + wrapMode)
+  }
   content.style.height = '100%'
   content.style.width = '100%'
+  // TKT-341 (Sprint 22g wave 3): V1 `lHeight` minimum-line-height. When the
+  // element specifies a positive `lHeight` (alias `minHeight`), set the inner
+  // `min-height` so short content stretches the wrapper up to that floor.
+  // V1 ref: bundle.js 9818-9892 quirk J.9.
+  const lHeightRaw = opts.lHeight ?? opts.minHeight
+  if (lHeightRaw != null) {
+    const lh = safeNumber(lHeightRaw, { min: 0 })
+    if (lh > 0) {
+      content.style.minHeight = lh + 'pt'
+    }
+  }
 
   const raw = getElementValue(element, opts, options)
   // TKT-024: apply dataType + format conversion BEFORE formatter chain.
@@ -709,6 +738,11 @@ function renderTableElement(
     if (typeof f === 'function') mergeFn = f as (...a: unknown[]) => unknown
   }
 
+  // TKT-387 — cascade printElementType.formatter / styler.
+  const elementType =
+    element.printElementType && typeof element.printElementType === 'object'
+      ? (element.printElementType as Record<string, unknown>)
+      : undefined
   const model = buildTableModel({
     options: opts,
     data: options.data,
@@ -717,6 +751,7 @@ function renderTableElement(
     // V1 falls back to `[{}]`. For runtime print we keep the conservative
     // `[]` fallback (no preview row), matching Sprint 22a-r behavior.
     rowsFallbackPlaceholder: false,
+    elementType,
   })
 
   if (model.borderClass) table.classList.add(model.borderClass)
@@ -728,7 +763,16 @@ function renderTableElement(
   }
 
   // ===== thead =====
+  // TKT-385/386 — table-level header style overrides on the <thead> element.
   const thead = document.createElement('thead')
+  if (model.meta.headerRowHeight > 0) {
+    thead.style.height = model.meta.headerRowHeight + 'pt'
+  }
+  if (model.meta.headerBackground) thead.style.background = model.meta.headerBackground
+  if (model.meta.headerFontWeight) thead.style.fontWeight = model.meta.headerFontWeight
+  if (model.meta.headerFontSize > 0) {
+    thead.style.fontSize = model.meta.headerFontSize + 'pt'
+  }
   for (const layer of model.theadRows) {
     const tr = document.createElement('tr')
     for (const cell of layer) {
@@ -736,6 +780,7 @@ function renderTableElement(
       if (cell.colspan && cell.colspan > 1) th.setAttribute('colspan', String(cell.colspan))
       if (cell.rowspan && cell.rowspan > 1) th.setAttribute('rowspan', String(cell.rowspan))
       th.style.textAlign = cell.align || 'center'
+      if (cell.vAlign) th.style.verticalAlign = cell.vAlign
       th.style.border = '0.5pt solid #000'
       th.style.padding = '2pt 4pt'
       // [Invariant #1] header title is user data → textContent
@@ -747,13 +792,57 @@ function renderTableElement(
   table.appendChild(thead)
 
   // ===== tbody =====
+  // TKT-385/386 — bodyFontFamily on tbody.
   const tbody = document.createElement('tbody')
-  for (const row of model.bodyRows) {
+  if (model.meta.bodyFontFamily) tbody.style.fontFamily = model.meta.bodyFontFamily
+
+  // Helper: append a single-row HTML payload (group-header / group-footer).
+  function appendGroupRow(html: string, colspan: number, kind: 'header' | 'footer'): void {
     const tr = document.createElement('tr')
-    // V1 + Vue parity: TableCell emits `hiprint-printElement-table-tr` on
-    // each body <tr> and `hiprint-printElement-table-td` on each <td>.
+    tr.classList.add(
+      kind === 'header'
+        ? 'hiprint-printElement-table-group-header'
+        : 'hiprint-printElement-table-group-footer'
+    )
+    const td = document.createElement('td')
+    if (colspan > 1) td.setAttribute('colspan', String(colspan))
+    td.style.border = '0.5pt solid #000'
+    td.style.padding = '2pt 4pt'
+    if (kind === 'header') {
+      td.style.background = '#f5f5f5'
+    } else {
+      td.style.background = '#fafafa'
+      td.style.fontStyle = 'italic'
+    }
+    const span = document.createElement('span')
+    span.innerHTML = html
+    td.appendChild(span)
+    tr.appendChild(td)
+    tbody.appendChild(tr)
+  }
+
+  // TKT-382 — walk groupedBodyRows so group-header / row / group-footer
+  // entries interleave. Non-grouped tables emit one `row` entry per body row.
+  for (const entry of model.groupedBodyRows) {
+    if (entry.kind === 'group-header') {
+      appendGroupRow(entry.html, entry.colspan, 'header')
+      continue
+    }
+    if (entry.kind === 'group-footer') {
+      appendGroupRow(entry.html, entry.colspan, 'footer')
+      continue
+    }
+    const tr = document.createElement('tr')
     tr.classList.add('hiprint-printElement-table-tr')
-    for (const cell of row.cells) {
+    if (model.meta.bodyRowHeight > 0) {
+      tr.style.height = model.meta.bodyRowHeight + 'pt'
+    }
+    // rowStyler output from model.
+    for (const k of Object.keys(entry.rowStyle)) {
+      const styleProp = entry.rowStyle[k]
+      if (styleProp != null) tr.style.setProperty(k, styleProp)
+    }
+    for (const cell of entry.row.cells) {
       const td = document.createElement('td')
       td.classList.add('hiprint-printElement-table-td')
       // V1 G.3: hidden merged cells keep their DOM slot with display:none.
@@ -761,8 +850,13 @@ function renderTableElement(
       if (cell.rowspan && cell.rowspan > 1) td.setAttribute('rowspan', String(cell.rowspan))
       if (cell.colspan && cell.colspan > 1) td.setAttribute('colspan', String(cell.colspan))
       td.style.textAlign = cell.align
+      if (cell.vAlign) td.style.verticalAlign = cell.vAlign
       td.style.border = '0.5pt solid #000'
-      td.style.padding = '2pt 4pt'
+      // Per-column padding override (V1 config 1817 / 1823). 0 means "not set"
+      // → fall back to V1 default 0/4/0/4pt (print-lock.css 170-187).
+      const padL = cell.paddingLeft > 0 ? cell.paddingLeft : 4
+      const padR = cell.paddingRight > 0 ? cell.paddingRight : 4
+      td.style.padding = '2pt ' + padR + 'pt 2pt ' + padL + 'pt'
       for (const cn of cell.classNames) td.classList.add(cn)
       for (const k of Object.keys(cell.style)) {
         const styleProp = cell.style[k]
@@ -784,11 +878,36 @@ function renderTableElement(
   }
   table.appendChild(tbody)
 
-  // ===== tfoot (gridColumnsFooter + footerFormatter) =====
+  // ===== tfoot (TKT-382 summary + gridColumnsFooter + footerFormatter) =====
+  const hasSummary = model.summaryRow !== null
   const hasFooterRows = model.footerRows.length > 0
   const hasFooterHtml = model.footerHtml !== ''
-  if (hasFooterRows || hasFooterHtml) {
+  if (hasSummary || hasFooterRows || hasFooterHtml) {
     const tfoot = document.createElement('tfoot')
+    // TKT-382 — summary row from column.tableSummary. Hidden (swallowed) cells
+    // are skipped; empty placeholders stay so DOM column count matches body.
+    if (model.summaryRow) {
+      const tr = document.createElement('tr')
+      tr.classList.add('hiprint-printElement-table-summary')
+      for (const scell of model.summaryRow.cells) {
+        if (scell.hidden) continue
+        const td = document.createElement('td')
+        if (scell.colspan > 1) td.setAttribute('colspan', String(scell.colspan))
+        td.style.border = '0.5pt solid #000'
+        td.style.padding = '2pt 4pt'
+        td.style.textAlign = scell.align
+        td.style.fontWeight = scell.summary ? '600' : '400'
+        if (scell.isHtml) {
+          const span = document.createElement('span')
+          span.innerHTML = scell.text
+          td.appendChild(span)
+        } else {
+          td.textContent = scell.text
+        }
+        tr.appendChild(td)
+      }
+      tfoot.appendChild(tr)
+    }
     for (const footRow of model.footerRows) {
       const tr = document.createElement('tr')
       for (const fc of footRow.cells) {

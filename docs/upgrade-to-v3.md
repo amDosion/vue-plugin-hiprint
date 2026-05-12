@@ -962,6 +962,46 @@ These were never documented:
 
 ---
 
+## 8.5 V1 features intentionally deferred to v2.1
+
+The following V1 capabilities are **not** in v2.0.0 and have a documented
+re-entry path captured in their ADRs. They share two traits: (a) no business
+consumer of `vue-admin-main` has filed them as v2.0 blockers, and (b) the V3
+data shape already supports the underlying state — only the legacy UX
+affordance is missing.
+
+| V1 feature | V3 replacement (today) | Re-entry | ADR |
+|---|---|---|---|
+| On-paper drag handle for header/footer line | Property-panel numeric inputs `paperHeader` / `paperFooter` | v2.1 — SVG line inside paper overlay, ~4-6h | [ADR-0036](adr/0036-header-footer-line-drag-deferred.md) |
+| Synthetic `keydown(46)` to programmatically delete selection | `canvas.removeElement(panelId, elementId)` (or iterate `canvas.selectedElementIds`) | v2.1 — 1 file, ~30 LOC | [ADR-0037](adr/0037-synthetic-delete-keydown-deferred.md) |
+| Qiniu `?imageView2/2/w/<width>` auto-resize URL transform on `image.src` (V1 line 4063-4080) | Caller pre-processes the `src` before assigning to `options.src` | Not planned — would couple V3 to a single CDN vendor | TKT-356 / [V3-PARITY-MATRIX 03 §"🔴 MISSING"](V3-PARITY-MATRIX/REMAINING-GAPS.md) |
+| Drag rendered HTML payload via `event.dataTransfer.setData('text/html', ...)` | Single-MIME `application/x-hiprint-element` JSON payload only | Not planned for v2.0; opt-in possible later | [ADR-0038](adr/0038-html-drag-xss-safety.md) |
+| Canvas-based 1D barcode render (V1 Path A `JsBarcode` canvas) | bwip-js → SVG (designer preview + print + PDF) | Not planned; SVG is the V3 contract | [ADR-0039](adr/0039-barcode-svg-render-path.md) |
+
+If your integration depends on any of the above, file an issue tagged
+`v3-migration` + the relevant ADR / ticket number.
+
+### Image src — qiniu pre-processing example
+
+Wrap your data binding in a getter that adds the `?imageView2/2/w/<width>`
+suffix yourself before handing the URL to V3:
+
+```ts
+// vue-admin-main caller
+const printData = computed(() => ({
+  logo: addQiniuResize(rawLogoUrl, 240), // ← width matches options.width
+}))
+function addQiniuResize(url: string, widthPx: number): string {
+  if (!url || url.includes('?imageView2')) return url
+  return `${url}?imageView2/2/w/${widthPx}`
+}
+```
+
+V3 then renders `<img src={url}?imageView2/2/w/240>` verbatim — same on-the-wire
+URL V1 produced via its internal transform.
+
+---
+
 ## 9. Per-version changelog
 
 ### v2.0.0 (next release) — V3 Modern UI

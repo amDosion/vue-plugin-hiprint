@@ -681,6 +681,65 @@ export interface ToolbarController {
    */
   getToolbarElement(): HTMLElement | null
 
+  // ============ Sprint 22g wave 3 — V1 dialog DOM accessors (TKT-303/304/305) =
+  /** Business dialog teleport root, or null when closed/destroyed. V1 14753-14755. */
+  getBusinessDialogElement(): HTMLElement | null
+  /** Template dialog teleport root, or null when closed/destroyed. V1 14762-14764. */
+  getTemplateDialogElement(): HTMLElement | null
+  /** Save dialog teleport root, or null when closed/destroyed. V1 14771-14773. */
+  getSaveDialogElement(): HTMLElement | null
+
+  // ============ Sprint 22g wave 3 — V1 dialog handler registry (TKT-307/308/309) =
+  /** Register / replace / clear a dialog handler. V1 14789-14791. */
+  setDialogHandler(
+    key: string,
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Read back a previously-registered handler; null when unset. V1 14792-14794. */
+  getDialogHandler(key: string): ((...args: unknown[]) => unknown) | null
+  /** Alias for setDialogHandler('businessOpen', fn). V1 14795-14797. */
+  setBusinessOpenDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('businessClose', fn). V1 14798-14800. */
+  setBusinessCloseDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('templateOpen', fn). V1 14801-14803. */
+  setTemplateOpenDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('templateClose', fn). V1 14804-14806. */
+  setTemplateCloseDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('saveOpen', fn). V1 14807-14809. */
+  setSaveOpenDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('saveClose', fn). V1 14810-14812. */
+  setSaveCloseDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+  /** Alias for setDialogHandler('deleteConfirm', fn). V1 14813-14815. */
+  setDeleteConfirmDialogHandler(
+    fn: ((...args: unknown[]) => unknown) | null | undefined
+  ): void
+
+  // ============ Sprint 22g wave 3 — visibility/disabled (TKT-311) =============
+  /** Show/hide a button (forces independent of showXxx). V1 14825-14827. */
+  setButtonVisible(id: string, visible: boolean): void
+  /** Alias for enableButton/disableButton with V1 (id, bool) shape. V1 14828-14830. */
+  setButtonDisabled(id: string, disabled: boolean): void
+
+  // ============ Sprint 22g wave 3 — toolbar groups (TKT-312) =================
+  /** Get a toolbar group root by V1 group key, or null. V1 14837-14839. */
+  getGroup(groupKey: string): HTMLElement | null
+  /** Map of all rendered groups keyed by V1 group name. V1 14840-14842. */
+  getGroups(): Record<string, HTMLElement>
+  /** Show/hide a group via display:none (preserves state + listeners). V1 14843-14845. */
+  setGroupVisible(groupKey: string, visible: boolean): void
+
   // ---- escape hatches ----
   /** Underlying Vue app instance (escape hatch — avoid in business code). */
   readonly _app: App
@@ -793,6 +852,10 @@ export function buildToolbar(
    */
   const extraPositionRef: Ref<'start' | 'end'> = ref(options.extraPosition ?? 'end')
   const disabledButtonIdsRef: Ref<Record<string, boolean>> = ref({})
+  // Sprint 22g wave 3 — TKT-311 force-hidden button registry.
+  const hiddenButtonIdsRef: Ref<Record<string, boolean>> = ref({})
+  // Sprint 22g wave 3 — TKT-312 force-hidden group registry.
+  const hiddenGroupIdsRef: Ref<Record<string, boolean>> = ref({})
   const labelOverridesRef: Ref<Record<string, string>> = ref({})
 
   // ---- Wrap zero-arg legacy handlers (previewHandler / printHandler / saveHandler) ----
@@ -933,6 +996,9 @@ export function buildToolbar(
           extraButtons: extraButtonsRef.value,
           extraPosition: extraPositionRef.value,
           disabledButtonIds: disabledButtonIdsRef.value,
+          // Sprint 22g wave 3 — TKT-311/TKT-312 reactive overrides.
+          hiddenButtonIds: hiddenButtonIdsRef.value,
+          hiddenGroupIds: hiddenGroupIdsRef.value,
           labelOverrides: labelOverridesRef.value,
         })
     },
@@ -1013,6 +1079,21 @@ export function buildToolbar(
   // templateStore is referenced for future dirty-flag subscriptions but
   // currently unused — keep the reference to avoid "declared but never used".
   void templateStore
+
+  // ============ Sprint 22g wave 3 — TKT-307/308/309 dialog-handler registry ===
+  //
+  // V1 14789-14815 stored ad-hoc dialog hooks in a `dialogHandlers` map. The
+  // generic `setDialogHandler(key, fn)` / `getDialogHandler(key)` API + 8
+  // type-specific aliases plug into the open* / close* methods so V1 callers
+  // find their handlers in the same place.
+  //
+  // Known keys honoured by open* / close* methods:
+  //   - 'businessOpen', 'businessClose'
+  //   - 'templateOpen', 'templateClose'
+  //   - 'saveOpen', 'saveClose'
+  //   - 'deleteConfirm'
+  // Unknown keys are stored opaquely (forward-compat).
+  const dialogHandlers: Map<string, (...args: unknown[]) => unknown> = new Map()
 
   // ============ Sprint 22g GA: V1 toolbarCtrl parity state ============
   //
@@ -1179,7 +1260,11 @@ export function buildToolbar(
       }
       extraButtonsRef.value = []
       disabledButtonIdsRef.value = {}
+      // Sprint 22g wave 3 — TKT-311/TKT-312/TKT-307 cleanup.
+      hiddenButtonIdsRef.value = {}
+      hiddenGroupIdsRef.value = {}
       labelOverridesRef.value = {}
+      dialogHandlers.clear()
       this._destroyed = true
     },
 
@@ -1471,6 +1556,16 @@ export function buildToolbar(
         )
         if (result === false) return
       }
+      // Sprint 22g wave 3 — TKT-307/309 imperative dialog-handler registry.
+      const handler = dialogHandlers.get('businessOpen')
+      if (handler) {
+        const result = safeCall(
+          handler as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, items: businessItemsState }],
+          'toolbar.businessOpenDialogHandler'
+        )
+        if (result === false) return
+      }
       bus.trigger('business-dialog-open', { items: businessItemsState })
     },
 
@@ -1485,6 +1580,14 @@ export function buildToolbar(
           options.onBusinessDialogClose as unknown as (...a: unknown[]) => void,
           [{ template }],
           'toolbar.onBusinessDialogClose'
+        )
+      }
+      const handler = dialogHandlers.get('businessClose')
+      if (handler) {
+        safeCall(
+          handler as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.businessCloseDialogHandler'
         )
       }
       bus.trigger('business-dialog-close')
@@ -1579,6 +1682,15 @@ export function buildToolbar(
         )
         if (result === false) return
       }
+      const handler = dialogHandlers.get('templateOpen')
+      if (handler) {
+        const result = safeCall(
+          handler as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, items: templateItemsState }],
+          'toolbar.templateOpenDialogHandler'
+        )
+        if (result === false) return
+      }
       bus.trigger('template-dialog-open', { items: templateItemsState })
     },
 
@@ -1593,6 +1705,14 @@ export function buildToolbar(
           options.onTemplateDialogClose as unknown as (...a: unknown[]) => void,
           [{ template }],
           'toolbar.onTemplateDialogClose'
+        )
+      }
+      const handler = dialogHandlers.get('templateClose')
+      if (handler) {
+        safeCall(
+          handler as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.templateCloseDialogHandler'
         )
       }
       bus.trigger('template-dialog-close')
@@ -1678,6 +1798,15 @@ export function buildToolbar(
         )
         if (result === false) return
       }
+      const handler = dialogHandlers.get('saveOpen')
+      if (handler) {
+        const result = safeCall(
+          handler as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, defaultName }],
+          'toolbar.saveOpenDialogHandler'
+        )
+        if (result === false) return
+      }
       bus.trigger('save-dialog-open', { defaultName })
     },
 
@@ -1690,6 +1819,14 @@ export function buildToolbar(
           options.onSaveDialogClose as unknown as (...a: unknown[]) => void,
           [{ template }],
           'toolbar.onSaveDialogClose'
+        )
+      }
+      const handler = dialogHandlers.get('saveClose')
+      if (handler) {
+        safeCall(
+          handler as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.saveCloseDialogHandler'
         )
       }
       bus.trigger('save-dialog-close')
@@ -1791,6 +1928,179 @@ export function buildToolbar(
       )
         return null
       return target.querySelector<HTMLElement>('.hiprint-toolbar') ?? target
+    },
+
+    // ============ Sprint 22g wave 3 — dialog DOM accessors (TKT-303/304/305) =
+    // V3 dialogs are ant-design-vue Modal SFCs teleported to `document.body`.
+    // We resolve by the deterministic wrap-class names declared in
+    // BusinessDialog/TemplateDialog/SaveDialog SFCs (Sprint 22f BEM bridge
+    // added the `.hiprint-toolbar-*-dialog-wrap` aliases). Returns null when:
+    //   - controller is destroyed
+    //   - dialog is closed (DOM node not mounted)
+    //   - global `document` is missing (SSR safety)
+    getBusinessDialogElement(): HTMLElement | null {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'toolbar.getBusinessDialogElement'
+        )
+      )
+        return null
+      if (typeof document === 'undefined') return null
+      return (
+        document.querySelector<HTMLElement>('.hiprint-toolbar-business-dialog-wrap') ??
+        document.querySelector<HTMLElement>('.hiprint-business-dialog')
+      )
+    },
+
+    getTemplateDialogElement(): HTMLElement | null {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'toolbar.getTemplateDialogElement'
+        )
+      )
+        return null
+      if (typeof document === 'undefined') return null
+      return (
+        document.querySelector<HTMLElement>('.hiprint-toolbar-template-dialog-wrap') ??
+        document.querySelector<HTMLElement>('.hiprint-template-dialog')
+      )
+    },
+
+    getSaveDialogElement(): HTMLElement | null {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'toolbar.getSaveDialogElement'
+        )
+      )
+        return null
+      if (typeof document === 'undefined') return null
+      return (
+        document.querySelector<HTMLElement>('.hiprint-toolbar-save-dialog-wrap') ??
+        document.querySelector<HTMLElement>('.hiprint-save-dialog')
+      )
+    },
+
+    // ============ Sprint 22g wave 3 — dialog handler registry (TKT-307/308/309) ==
+
+    setDialogHandler(
+      key: string,
+      fn: ((...args: unknown[]) => unknown) | null | undefined
+    ): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setDialogHandler')
+      )
+        return
+      if (typeof key !== 'string' || !key) {
+        console.warn('[hiprint] toolbar.setDialogHandler: key required')
+        return
+      }
+      if (typeof fn === 'function') {
+        dialogHandlers.set(key, fn)
+      } else {
+        dialogHandlers.delete(key)
+      }
+    },
+
+    getDialogHandler(key: string): ((...args: unknown[]) => unknown) | null {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getDialogHandler')
+      )
+        return null
+      if (typeof key !== 'string' || !key) return null
+      return dialogHandlers.get(key) ?? null
+    },
+
+    setBusinessOpenDialogHandler(fn): void {
+      this.setDialogHandler('businessOpen', fn)
+    },
+    setBusinessCloseDialogHandler(fn): void {
+      this.setDialogHandler('businessClose', fn)
+    },
+    setTemplateOpenDialogHandler(fn): void {
+      this.setDialogHandler('templateOpen', fn)
+    },
+    setTemplateCloseDialogHandler(fn): void {
+      this.setDialogHandler('templateClose', fn)
+    },
+    setSaveOpenDialogHandler(fn): void {
+      this.setDialogHandler('saveOpen', fn)
+    },
+    setSaveCloseDialogHandler(fn): void {
+      this.setDialogHandler('saveClose', fn)
+    },
+    setDeleteConfirmDialogHandler(fn): void {
+      this.setDialogHandler('deleteConfirm', fn)
+    },
+
+    // ============ Sprint 22g wave 3 — visibility/disabled (TKT-311) ==========
+
+    setButtonVisible(id: string, visible: boolean): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setButtonVisible')
+      )
+        return
+      if (!id) return
+      const next = { ...hiddenButtonIdsRef.value }
+      if (visible === false) {
+        next[id] = true
+      } else {
+        delete next[id]
+      }
+      hiddenButtonIdsRef.value = next
+    },
+
+    setButtonDisabled(id: string, disabled: boolean): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setButtonDisabled')
+      )
+        return
+      if (!id) return
+      if (disabled === false) {
+        this.enableButton(id)
+      } else {
+        this.disableButton(id)
+      }
+    },
+
+    // ============ Sprint 22g wave 3 — toolbar groups (TKT-312) ==============
+
+    getGroup(groupKey: string): HTMLElement | null {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getGroup'))
+        return null
+      if (!groupKey) return null
+      return target.querySelector<HTMLElement>(
+        '[data-toolbar-group="' + CSS.escape(groupKey) + '"]'
+      )
+    },
+
+    getGroups(): Record<string, HTMLElement> {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getGroups'))
+        return {}
+      const out: Record<string, HTMLElement> = {}
+      const nodes = target.querySelectorAll<HTMLElement>('[data-toolbar-group]')
+      nodes.forEach((node) => {
+        const k = node.getAttribute('data-toolbar-group')
+        if (k && !(k in out)) out[k] = node
+      })
+      return out
+    },
+
+    setGroupVisible(groupKey: string, visible: boolean): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setGroupVisible')
+      )
+        return
+      if (!groupKey) return
+      const next = { ...hiddenGroupIdsRef.value }
+      if (visible === false) {
+        next[groupKey] = true
+      } else {
+        delete next[groupKey]
+      }
+      hiddenGroupIdsRef.value = next
     },
   }
   return controller

@@ -28,6 +28,13 @@
  *
  * TKT-006: `options.formatter` now accepts BOTH a function AND a string of
  * JS source (V1 parity via `compileFormatter`).
+ *
+ * TKT-355 (html-side): when the formatter returns `null`/`undefined`, hide
+ * the element wrapper entirely (`mode: 'hidden'`). V1 line 1547-1551
+ * documents the formatter return-null hide contract for image/html. V3
+ * applies it symmetrically — the parent ElementWrapper still occupies its
+ * layout slot but the inner content div is removed so the element is
+ * visually invisible AND has no DOM payload to print.
  */
 import { computed } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
@@ -57,11 +64,14 @@ const element = computed(() => {
 
 /**
  * Render-resolution outcome.
- *  - `mode: 'html'`  — value is rendered via v-html (V1 by-design path).
- *  - `mode: 'text'`  — value is rendered via v-text (XSS-safe; field-binding
- *                      default, TKT-007).
+ *  - `mode: 'html'`   — value is rendered via v-html (V1 by-design path).
+ *  - `mode: 'text'`   — value is rendered via v-text (XSS-safe; field-binding
+ *                       default, TKT-007).
+ *  - `mode: 'hidden'` — formatter returned null/undefined; suppress inner
+ *                       render (TKT-355). Wrapper still occupies the layout
+ *                       box so neighbouring elements do not jump.
  */
-type Resolved = { mode: 'html' | 'text'; value: string }
+type Resolved = { mode: 'html' | 'text' | 'hidden'; value: string }
 
 const resolved = computed<Resolved>(() => {
   const el = element.value
@@ -78,7 +88,9 @@ const resolved = computed<Resolved>(() => {
         opts,
         props.data
       )
-      return { mode: 'html', value: out == null ? '' : String(out) }
+      // TKT-355: explicit null/undefined return → hide.
+      if (out == null) return { mode: 'hidden', value: '' }
+      return { mode: 'html', value: String(out) }
     } catch (err) {
       console.warn('[hiprint-v3:HtmlElement] formatter threw:', err)
       return { mode: 'html', value: '' }
@@ -107,10 +119,11 @@ const resolved = computed<Resolved>(() => {
     :interactive="interactive"
   >
     <!--
-      Two rendering paths, decided by the resolution above:
-      - `html`: V1 by-design innerHTML (formatter / content / opt-in field).
-        Business owns input sanitization (Invariant #2).
-      - `text`: XSS-safe field-binding default (TKT-007).
+      Three rendering paths, decided by the resolution above:
+      - `html`:   V1 by-design innerHTML (formatter / content / opt-in field).
+                  Business owns input sanitization (Invariant #2).
+      - `text`:   XSS-safe field-binding default (TKT-007).
+      - `hidden`: TKT-355 formatter returned null → suppress inner content.
       eslint-disable-next-line vue/no-v-html
     -->
     <div
@@ -120,10 +133,17 @@ const resolved = computed<Resolved>(() => {
       v-html="resolved.value"
     />
     <div
-      v-else
+      v-else-if="resolved.mode === 'text'"
       class="hiprint-printElement-html-content"
       style="height: 100%; width: 100%"
       v-text="resolved.value"
+    />
+    <!-- TKT-355: mode='hidden' — no inner content, layout box preserved. -->
+    <div
+      v-else
+      class="hiprint-printElement-html-content hiprint-printElement-html-hidden"
+      style="height: 100%; width: 100%; visibility: hidden"
+      aria-hidden="true"
     />
   </ElementWrapper>
 </template>

@@ -27,8 +27,17 @@ const props = withDefaults(
   defineProps<{
     /** Current value. Two-way binding via `v-model`. */
     modelValue: string
-    /** Editor flavor. Default 'text'. */
-    type?: 'text' | 'select'
+    /**
+     * Editor flavor. Default 'text'. TKT-383 (Sprint 22g wave 3):
+     *  - `text` — single-line `<input type="text">` (V1 default).
+     *  - `select` — native `<select>` driven by `options`.
+     *  - `number` — `<input type="number">` (V1 numeric column editor).
+     *  - `date` — `<input type="date">` (V1 date column editor; emits
+     *    ISO-yyyy-mm-dd string per native control contract).
+     *  - `textarea` — multi-line `<textarea>` with Enter-without-shift commit
+     *    semantics (V1 long-string column editor; shift+Enter inserts newline).
+     */
+    type?: 'text' | 'select' | 'number' | 'date' | 'textarea'
     /**
      * Options for `type === 'select'`. Each entry's `value` is what the
      * editor commits; `label` is the user-visible text.
@@ -43,6 +52,12 @@ const props = withDefaults(
     placeholder?: string
     /** Auto-select all on focus. Default true. Matches V2 TextInlineEditor. */
     selectOnFocus?: boolean
+    /** Minimum value for `type === 'number'` (passed to native control). */
+    min?: number | string
+    /** Maximum value for `type === 'number'` (passed to native control). */
+    max?: number | string
+    /** Step for `type === 'number'` (passed to native control). */
+    step?: number | string
   }>(),
   { type: 'text', placeholder: '', selectOnFocus: true }
 )
@@ -58,6 +73,7 @@ const emit = defineEmits<{
 
 const inputEl = ref<HTMLInputElement | null>(null)
 const selectEl = ref<HTMLSelectElement | null>(null)
+const textareaEl = ref<HTMLTextAreaElement | null>(null)
 
 /**
  * Local draft. We mirror props.modelValue at mount so a parent `v-if` toggle
@@ -74,6 +90,15 @@ onMounted(() => {
   queueMicrotask(() => {
     if (props.type === 'select') {
       selectEl.value?.focus()
+    } else if (props.type === 'textarea') {
+      textareaEl.value?.focus()
+      if (props.selectOnFocus) {
+        try {
+          textareaEl.value?.select()
+        } catch {
+          /* happy-dom may not support .select() on detached textarea */
+        }
+      }
     } else {
       inputEl.value?.focus()
       if (props.selectOnFocus) {
@@ -88,7 +113,7 @@ onMounted(() => {
 })
 
 function onInput(e: Event): void {
-  const t = e.target as HTMLInputElement | null
+  const t = e.target as HTMLInputElement | HTMLTextAreaElement | null
   if (!t) return
   draft.value = t.value
   emit('update:modelValue', draft.value)
@@ -114,6 +139,9 @@ function cancel(): void {
 
 function onKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Enter') {
+    // TKT-383: textarea allows Shift+Enter for newline insertion; plain Enter
+    // commits (V1 long-text editor convention).
+    if (props.type === 'textarea' && e.shiftKey) return
     e.preventDefault()
     commit()
   } else if (e.key === 'Escape') {
@@ -140,6 +168,49 @@ function onKeyDown(e: KeyboardEvent): void {
       :value="opt.value"
     >{{ opt.label }}</option>
   </select>
+
+  <!-- TKT-383: textarea (multi-line). Shift+Enter inserts newline; plain Enter
+       commits. Blur commits. -->
+  <textarea
+    v-else-if="type === 'textarea'"
+    ref="textareaEl"
+    class="hiprint-cell-editor hiprint-cell-textarea"
+    rows="3"
+    :value="draft"
+    :placeholder="placeholder"
+    @input="onInput"
+    @blur="commit"
+    @keydown="onKeyDown"
+  />
+
+  <!-- TKT-383: native number input. Browser-enforced numeric pattern + spinner. -->
+  <input
+    v-else-if="type === 'number'"
+    ref="inputEl"
+    type="number"
+    class="hiprint-cell-editor hiprint-cell-editor-number"
+    :value="draft"
+    :placeholder="placeholder"
+    :min="min as string | number | undefined"
+    :max="max as string | number | undefined"
+    :step="step as string | number | undefined"
+    @input="onInput"
+    @blur="commit"
+    @keydown="onKeyDown"
+  />
+
+  <!-- TKT-383: native date picker. Commits ISO `yyyy-mm-dd` per HTML spec. -->
+  <input
+    v-else-if="type === 'date'"
+    ref="inputEl"
+    type="date"
+    class="hiprint-cell-editor hiprint-cell-editor-date"
+    :value="draft"
+    :placeholder="placeholder"
+    @input="onInput"
+    @blur="commit"
+    @keydown="onKeyDown"
+  />
 
   <!-- Default: single-line <input>. v-model would be fine but explicit @input
        lets us emit both update + commit cleanly. -->
@@ -168,5 +239,9 @@ function onKeyDown(e: KeyboardEvent): void {
   color: inherit;
   background: white;
   box-sizing: border-box;
+}
+.hiprint-cell-textarea {
+  resize: vertical;
+  min-height: 36px;
 }
 </style>

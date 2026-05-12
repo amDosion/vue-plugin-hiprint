@@ -79,6 +79,18 @@ const tableOptions = computed<Record<string, unknown>>(
 )
 
 /**
+ * TKT-387 cascade tail: wrap the live printElementType into the tableOptions
+ * bag as `__printElementType` so TableCell can read it without changing its
+ * prop signature. Read-only by design.
+ */
+const tableOptionsWithType = computed<Record<string, unknown>>(() => {
+  const opts = tableOptions.value
+  const et = element.value?.printElementType
+  if (!et) return opts
+  return { ...opts, __printElementType: et }
+})
+
+/**
  * Resolve `options.rowsColumnsMerge` source (string or function) to a Function,
  * applying the V2 `evalCap` security cap (5000 chars) when it's a string.
  *
@@ -110,6 +122,9 @@ const model = computed(() =>
     data: props.data,
     rowsColumnsMerge: rowsColumnsMergeFn.value,
     rowsFallbackPlaceholder: false,
+    elementType: (element.value?.printElementType ?? undefined) as
+      | Record<string, unknown>
+      | undefined,
   })
 )
 
@@ -120,6 +135,42 @@ const rows = computed(() => model.value.rows)
 const footerRows = computed(() => model.value.footerRows)
 const footerHtml = computed(() => model.value.footerHtml)
 const borderClass = computed(() => model.value.borderClass)
+/** TKT-382 — grouped body entries (group-header / group-footer / row interleaved). */
+const groupedBodyRows = computed(() => model.value.groupedBodyRows)
+/** TKT-382 — summary row (V1 `<tfoot><tr>` from `column.tableSummary`). */
+const summaryRow = computed(() => model.value.summaryRow)
+/** TKT-385/386 — table-level style overrides (header/body sizing + style props). */
+const meta = computed(() => model.value.meta)
+
+/**
+ * TKT-385/386 — `<thead>` inline style. Empty values omitted so V1 defaults
+ * (print-lock.css 161-164) still apply.
+ */
+const theadStyle = computed<Record<string, string>>(() => {
+  const s: Record<string, string> = {}
+  const m = meta.value
+  if (m.headerRowHeight > 0) s.height = m.headerRowHeight + 'pt'
+  if (m.headerBackground) s.background = m.headerBackground
+  if (m.headerFontWeight) s.fontWeight = m.headerFontWeight
+  if (m.headerFontSize > 0) s.fontSize = m.headerFontSize + 'pt'
+  return s
+})
+
+/** TKT-386 — `<tbody>` inline style (bodyFontFamily). */
+const tbodyStyle = computed<Record<string, string>>(() => {
+  const s: Record<string, string> = {}
+  const m = meta.value
+  if (m.bodyFontFamily) s.fontFamily = m.bodyFontFamily
+  return s
+})
+
+/** TKT-385 — per body `<tr>` inline style (bodyRowHeight). */
+const tbodyRowStyle = computed<Record<string, string>>(() => {
+  const s: Record<string, string> = {}
+  const m = meta.value
+  if (m.bodyRowHeight > 0) s.height = m.bodyRowHeight + 'pt'
+  return s
+})
 
 /**
  * TKT-107 (Sprint 22c) — right-click thead context menu.
@@ -263,7 +314,9 @@ function isDropTargetColumn(layerIdx: number, columnIdx: number): boolean {
           (V1 P.9: right-click only on thead — body-cell right-click stays
           browser-default so end users can copy data).
         -->
-        <thead>
+        <!-- TKT-385/386 — thead style overrides (headerRowHeight / headerBackground /
+             headerFontWeight / headerFontSize). Empty values keep V1 defaults. -->
+        <thead :style="theadStyle">
           <tr v-for="(layer, layerIdx) in theadRows" :key="`h-${layerIdx}`">
             <th
               v-for="(cell, colIdx) in layer"
@@ -272,6 +325,7 @@ function isDropTargetColumn(layerIdx: number, columnIdx: number): boolean {
               :rowspan="cell.rowspan && cell.rowspan > 1 ? cell.rowspan : undefined"
               :style="{
                 textAlign: cell.align || 'center',
+                ...(cell.vAlign ? { verticalAlign: cell.vAlign } : {}),
                 border: '0.5pt solid #000',
                 padding: '2pt 4pt',
               }"
@@ -293,35 +347,107 @@ function isDropTargetColumn(layerIdx: number, columnIdx: number): boolean {
         </thead>
 
         <!-- tbody — TableCell receives the original row + the model-resolved
-             column. It re-runs its own resolveField for inline-edit write-back
-             paths but the produced DOM matches what buildTableModel already
-             computed (same compileFormatter/applyCellStyler path). -->
-        <tbody>
-          <tr
-            v-for="(_bodyRow, rIdx) in bodyRows"
-            :key="`r-${rIdx}`"
-            class="hiprint-printElement-table-tr"
+             column. Same compileFormatter/applyCellStyler path as render.ts.
+
+             TKT-382 (Sprint 22g wave 3): iterate `groupedBodyRows` so group-
+             header / group-footer entries interleave with `row` entries when
+             groupFields is set. Non-grouped tables emit one `row` entry per
+             body row (no semantic change). -->
+        <tbody :style="tbodyStyle">
+          <template
+            v-for="(entry, eIdx) in groupedBodyRows"
+            :key="`be-${eIdx}`"
           >
-            <TableCell
-              v-for="(col, cIdx) in leafColumns"
-              :key="`r-${rIdx}-c-${cIdx}`"
-              :column="col"
-              :row="rows[rIdx] || {}"
-              :row-index="rIdx"
-              :column-index="cIdx"
-              :table-data="rows"
-              :table-options="tableOptions"
-              :rowspan="bodyRows[rIdx]?.cells[cIdx]?.rowspan ?? 1"
-              :colspan="bodyRows[rIdx]?.cells[cIdx]?.colspan ?? 1"
-              :editable="editable"
-              :panel-id="panelId"
-              :element-id="elementId"
-            />
-          </tr>
+            <!-- TKT-382 — group header row. -->
+            <tr
+              v-if="entry.kind === 'group-header'"
+              class="hiprint-printElement-table-group-header"
+            >
+              <td
+                :colspan="entry.colspan > 1 ? entry.colspan : undefined"
+                :style="{
+                  border: '0.5pt solid #000',
+                  padding: '2pt 4pt',
+                  background: '#f5f5f5',
+                }"
+              >
+                <!-- [Invariant #2] group-header HTML is formatter output. -->
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <span v-html="entry.html" />
+              </td>
+            </tr>
+            <!-- TKT-382 — group footer row. -->
+            <tr
+              v-else-if="entry.kind === 'group-footer'"
+              class="hiprint-printElement-table-group-footer"
+            >
+              <td
+                :colspan="entry.colspan > 1 ? entry.colspan : undefined"
+                :style="{
+                  border: '0.5pt solid #000',
+                  padding: '2pt 4pt',
+                  background: '#fafafa',
+                  fontStyle: 'italic',
+                }"
+              >
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <span v-html="entry.html" />
+              </td>
+            </tr>
+            <!-- Default body row. -->
+            <tr
+              v-else
+              class="hiprint-printElement-table-tr"
+              :style="{ ...tbodyRowStyle, ...entry.rowStyle }"
+            >
+              <TableCell
+                v-for="(col, cIdx) in leafColumns"
+                :key="`r-${eIdx}-c-${cIdx}`"
+                :column="col"
+                :row="rows[bodyRows.indexOf(entry.row)] || {}"
+                :row-index="bodyRows.indexOf(entry.row)"
+                :column-index="cIdx"
+                :table-data="rows"
+                :table-options="tableOptionsWithType"
+                :rowspan="entry.row.cells[cIdx]?.rowspan ?? 1"
+                :colspan="entry.row.cells[cIdx]?.colspan ?? 1"
+                :editable="editable"
+                :panel-id="panelId"
+                :element-id="elementId"
+              />
+            </tr>
+          </template>
         </tbody>
 
-        <!-- tfoot (gridColumnsFooter + footerFormatter) -->
-        <tfoot v-if="footerRows.length || footerHtml">
+        <!-- tfoot (TKT-382 summary row + gridColumnsFooter + footerFormatter) -->
+        <tfoot v-if="summaryRow || footerRows.length || footerHtml">
+          <!-- TKT-382 — summary row from `column.tableSummary`. Hidden cells
+               (swallowed by previous colspan) are not emitted; empty placeholders
+               stay so DOM column count matches the body row. -->
+          <tr
+            v-if="summaryRow"
+            class="hiprint-printElement-table-summary"
+          >
+            <template
+              v-for="(scell, sIdx) in summaryRow.cells"
+              :key="`s-${sIdx}`"
+            >
+              <td
+                v-if="!scell.hidden"
+                :colspan="scell.colspan > 1 ? scell.colspan : undefined"
+                :style="{
+                  border: '0.5pt solid #000',
+                  padding: '2pt 4pt',
+                  textAlign: scell.align,
+                  fontWeight: scell.summary ? 600 : 400,
+                }"
+              >
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <span v-if="scell.isHtml" v-html="scell.text" />
+                <template v-else>{{ scell.text }}</template>
+              </td>
+            </template>
+          </tr>
           <tr v-for="(footRow, fIdx) in footerRows" :key="`f-${fIdx}`">
             <td
               v-for="(fcell, cIdx) in footRow.cells"

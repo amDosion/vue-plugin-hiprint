@@ -401,6 +401,24 @@ function onPaperPointerLeave(): void {
 const smartPreviews = ref<readonly SmartGuidePreview[]>([])
 let unsubscribeSmartGuide: (() => void) | null = null
 
+/**
+ * TKT-391 — Format a pt coordinate for the live smart-guide badge.
+ *
+ * V1 reference: bundle.js line 1380-1451 (HilightLine helper) + 7538-7691
+ * (snap render path). V1 displays the pt offset of each active snap as a
+ * small numeric overlay so designers see the exact coordinate the drag/resize
+ * is snapping to. We round to 1 decimal place — V1 displays integers but a
+ * half-pt grid snap is common enough to warrant the extra precision.
+ *
+ * Returns the rendered string (also exposed via `data-pt` for tests).
+ */
+function ptLabel(pos: number): string {
+  if (!Number.isFinite(pos)) return '0'
+  // Round to 1 decimal place, strip a trailing ".0" so integer snaps stay clean.
+  const rounded = Math.round(pos * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
 onMounted(() => {
   unsubscribeSmartGuide = onSmartGuidePreviewChange((next) => {
     smartPreviews.value = next
@@ -586,7 +604,22 @@ onBeforeUnmount(() => {
                   : { left: p.pos + 'pt', top: '0', bottom: '0', width: '0' }
               "
               :data-smart-guide-kind="p.kind"
-            />
+            >
+              <!-- TKT-391 — pt coordinate label next to each smart-guide line.
+                   V1 reference: bundle.js line 1380-1451 + 7538-7691 — V1 renders
+                   a small numeric badge near the snap line so the user knows
+                   the exact coordinate the snap landed on. We mirror that as a
+                   `data-pt` attribute (test surface) + a visible `<span>` label
+                   so designers can confirm alignment without measuring.
+                   - Horizontal guide → label sits at left=4pt offset on the line.
+                   - Vertical guide → label sits at top=4pt offset on the line.
+                   - Coordinate is rounded to 1 decimal (V1 uses no decimals at
+                     low precision; 0.1 keeps half-pt snaps readable). -->
+              <span
+                class="hiprint-smart-guide__label"
+                :data-pt="ptLabel(p.pos)"
+              >{{ ptLabel(p.pos) }}pt</span>
+            </div>
           </div>
         </template>
         <component
@@ -695,5 +728,33 @@ onBeforeUnmount(() => {
 }
 .hiprint-smart-guide--v {
   border-left: 1px dashed var(--hiprint-smart-guide, #fa8c16);
+}
+/* TKT-391 — pt coordinate badge on each smart-guide line. Sits flush against
+   the guide so the user reads it without losing the alignment context. We use
+   a tiny corner offset so the badge doesn't overlap the dashed line itself. */
+.hiprint-smart-guide__label {
+  position: absolute;
+  background: var(--hiprint-smart-guide, #fa8c16);
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: var(--hiprint-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.hiprint-smart-guide--h .hiprint-smart-guide__label {
+  /* Horizontal line at y=pos — badge floats just above the line, near the
+     left edge of the paper so it stays in-frame across panel widths. */
+  left: 4pt;
+  top: 2px;
+}
+.hiprint-smart-guide--v .hiprint-smart-guide__label {
+  /* Vertical line at x=pos — badge floats just right of the line, near the
+     top of the paper. */
+  left: 2px;
+  top: 4pt;
 }
 </style>

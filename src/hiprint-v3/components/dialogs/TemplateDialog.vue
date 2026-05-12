@@ -61,8 +61,17 @@ interface Props {
   /** Show edit/delete actions per row. Default false (business code wires). */
   allowEdit?: boolean
   allowDelete?: boolean
+  /**
+   * Sprint 22g wave 3 — TKT-336. Show per-card "预览" preview action.
+   * Default false (opt-in). When true emits `preview` on click.
+   */
+  allowPreview?: boolean
   /** Modal width in px. Default 800. */
   width?: number
+  /** Sprint 22g wave 3 — TKT-334 dialog-text opts (V1 13377-13379). */
+  emptyText?: string
+  loadingText?: string
+  errorText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -73,17 +82,43 @@ const props = withDefaults(defineProps<Props>(), {
   showPreview: true,
   allowEdit: false,
   allowDelete: false,
+  allowPreview: false,
   width: 800,
+  emptyText: '暂无模板',
+  loadingText: '加载中...',
+  errorText: '模板加载失败',
 })
 
 const emit = defineEmits<{
   'update:open': [open: boolean]
-  /** User selected a template — emit item + close. */
-  select: [item: TemplateItem]
+  /**
+   * User selected a template.
+   * Sprint 22g wave 3 TKT-337 — V1 4-arg signature `(item, json, template, api)`.
+   * `json` defaults to `item.data` when present; `template`/`api` left
+   * undefined (parent business code injects when wrapping the emit).
+   */
+  select: [
+    item: TemplateItem,
+    json?: TemplateJson,
+    template?: unknown,
+    api?: unknown,
+  ]
   /** User clicked edit on a row — parent handles edit UI. */
   edit: [item: TemplateItem]
-  /** User clicked delete on a row. */
-  delete: [item: TemplateItem]
+  /**
+   * User clicked delete on a row.
+   * TKT-337 — V1 4-arg signature for parity with `onTemplateDelete`.
+   */
+  delete: [
+    item: TemplateItem,
+    json?: TemplateJson,
+    template?: unknown,
+    api?: unknown,
+  ]
+  /**
+   * TKT-336 — preview action emit. Parent typically opens a preview window.
+   */
+  preview: [item: TemplateItem]
   /** User clicked refresh — parent re-loads items. */
   refresh: []
   /** Modal closed without selection. */
@@ -119,7 +154,13 @@ function handleOpenChange(v: boolean): void {
 }
 
 function pickItem(item: TemplateItem): void {
-  safeCall(() => emit('select', item), [], 'TemplateDialog.onSelect')
+  // TKT-337 — V1 4-arg signature `(item, json, template, api)`. Parent
+  // business code typically wraps to inject template/api on the way through.
+  safeCall(
+    () => emit('select', item, item.data, undefined, undefined),
+    [],
+    'TemplateDialog.onSelect'
+  )
   emit('update:open', false)
 }
 
@@ -130,7 +171,20 @@ function onEdit(item: TemplateItem, e?: Event): void {
 
 function onDelete(item: TemplateItem, e?: Event): void {
   e?.stopPropagation()
-  safeCall(() => emit('delete', item), [], 'TemplateDialog.onDelete')
+  safeCall(
+    () => emit('delete', item, item.data, undefined, undefined),
+    [],
+    'TemplateDialog.onDelete'
+  )
+}
+
+/**
+ * TKT-336 — preview action handler. Stops propagation so the card click
+ * doesn't fire `select` as well.
+ */
+function onPreview(item: TemplateItem, e?: Event): void {
+  e?.stopPropagation()
+  safeCall(() => emit('preview', item), [], 'TemplateDialog.onPreview')
 }
 
 function onRefresh(): void {
@@ -141,7 +195,6 @@ function onRefresh(): void {
 <template>
   <AModal
     :open="open"
-    :title="title"
     :width="width"
     :footer="null"
     :mask-closable="true"
@@ -151,6 +204,18 @@ function onRefresh(): void {
     @update:open="handleOpenChange"
     @cancel="close"
   >
+    <!--
+      TKT-415 — surface V1 dialog title vocabulary
+      (`.hiprint-toolbar-template-title`). AntDesignVue's `:title` renders
+      inside `.ant-modal-title`; using the named slot lets us hang the V1
+      legacy class onto a reliable DOM node so E2E suites keyed to V1
+      selectors keep matching.
+    -->
+    <template #title>
+      <span
+        class="hiprint-template-dialog__title hiprint-toolbar-template-title"
+      >{{ title }}</span>
+    </template>
     <div
       class="hiprint-template-dialog__body hiprint-toolbar-template-body"
       :class="{
@@ -171,13 +236,13 @@ function onRefresh(): void {
         <AButton :loading="loading" @click="onRefresh">刷新</AButton>
       </div>
 
-      <ASpin :spinning="loading">
+      <ASpin :spinning="loading" :tip="loadingText">
         <div
           v-if="filteredItems.length === 0"
           class="hiprint-template-dialog__empty hiprint-toolbar-template-state empty"
           role="status"
         >
-          {{ searchQuery ? '无匹配模板' : '暂无模板' }}
+          {{ searchQuery ? '无匹配模板' : emptyText }}
         </div>
 
         <AList
@@ -208,16 +273,24 @@ function onRefresh(): void {
                   :title="(item as TemplateItem).name"
                   :description="(item as TemplateItem).category"
                 />
-                <template v-if="allowEdit || allowDelete" #actions>
+                <template v-if="allowPreview || allowEdit || allowDelete" #actions>
+                  <a
+                    v-if="allowPreview"
+                    class="hiprint-template-dialog__preview"
+                    data-action="preview"
+                    @click="onPreview(item as TemplateItem, $event)"
+                  >预览</a>
                   <a
                     v-if="allowEdit"
                     class="hiprint-template-dialog__edit"
+                    data-action="edit"
                     @click="onEdit(item as TemplateItem, $event)"
                   >编辑</a>
                   <a
                     v-if="allowDelete"
                     class="hiprint-template-dialog__delete"
                     style="color: #f5222d"
+                    data-action="delete"
                     @click="onDelete(item as TemplateItem, $event)"
                   >删除</a>
                 </template>

@@ -645,7 +645,9 @@ function aggregateColumn(
   const values = rows.map((r) => resolveCellValue(r, field))
   switch (kind) {
     case 'count':
-      return values.filter((v) => v != null && v !== '' && v !== false).length
+      // V1 bundle line 1989-1990: `tSumData.filter(i => i).length` — truthy
+      // filter, so 0 / '' / false / null / undefined are all rejected.
+      return values.filter((v) => Boolean(v)).length
     case 'sum': {
       let total = 0
       for (const v of values) {

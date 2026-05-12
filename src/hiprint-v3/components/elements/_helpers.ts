@@ -142,6 +142,29 @@ export function computeBorderStyle(opts: Opts): CSSProperties {
   return style
 }
 
+/**
+ * TKT-340 (Sprint 22g wave 3) — Compute CSS classes for `textContentWrap`
+ * option used by text + longText elements.
+ *
+ * V1 ref: bundle.js 4837-4844 — V1 added a class `.hiprint-text-content-wrap-<val>`
+ * to the inner content wrapper. The actual CSS rule mapping to each value was
+ * shipped in V1's `hiprint.css`:
+ *   - `nowrap`  → `white-space: nowrap; overflow: hidden;`
+ *   - `clip`    → `overflow: hidden; text-overflow: clip; white-space: nowrap;`
+ *   - `ellipsis`→ `overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`
+ *
+ * V3 ships the matching CSS in `src/hiprint/css/print-lock.css` (re-exported as
+ * `vue-plugin-hiprint/print-lock.css`). Returns an empty array for unknown /
+ * default values so the caller can spread without conditional logic.
+ */
+export function computeTextWrapClasses(opts: Opts): readonly string[] {
+  const v = typeof opts.textContentWrap === 'string' ? opts.textContentWrap.trim() : ''
+  if (v === 'nowrap' || v === 'clip' || v === 'ellipsis') {
+    return ['hiprint-text-content-wrap-' + v]
+  }
+  return []
+}
+
 /** Compute padding style. Same logic as render.ts applyPadding. */
 export function computePaddingStyle(opts: Opts): CSSProperties {
   const style: CSSProperties = {}

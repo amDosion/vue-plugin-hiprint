@@ -24,6 +24,14 @@
  *
  * Wave 2 integration — dispatched from HiprintPropertyPanel.vue when
  * `elementType === 'image'`. Multi-select keeps the generic editor.
+ *
+ * Sprint 22g wave 3 (Stream GL) additions:
+ *   - TKT-361: a "Pick file" button next to the Source URL input lets the
+ *     designer attach a local image. The FileReader returns a `data:image/*`
+ *     dataURL which is written into `options.src` directly — V1 inventory
+ *     §B.1 (image src can be dataURL) and §F.3 (getData passes through raw
+ *     dataURL). The file picker is the panel-side counterpart to wave-2
+ *     TKT-359/358 render-path work.
  */
 import { computed } from 'vue'
 import {
@@ -56,6 +64,39 @@ function onSrc(ev: Event): void {
   const target = ev.target as HTMLInputElement | null
   if (!target) return
   patch({ src: String(target.value) }, true)
+}
+
+/**
+ * TKT-361 — read a local image file as a data: URL and write to options.src.
+ *
+ * V1 inventory §B.1 / §F.3 confirms `<img src>` accepts dataURL verbatim.
+ * V1 had a "上传" file input (line 3770-3861) — this is the V3 counterpart.
+ * Non-image MIME types are silently rejected because the renderer's
+ * SAFE_PROTOCOLS allow-list filters out anything other than http(s)/data/blob.
+ */
+function onFile(ev: Event): void {
+  const target = ev.target as HTMLInputElement | null
+  if (!target || !target.files || target.files.length === 0) return
+  const file = target.files[0]
+  if (!file) return
+  if (typeof file.type === 'string' && !file.type.startsWith('image/')) {
+    console.warn('[hiprint-v3:ImagePropertyPanel] non-image file rejected:', file.type)
+    target.value = ''
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const result = reader.result
+    if (typeof result === 'string' && result.startsWith('data:')) {
+      patch({ src: result }, true)
+    }
+    target.value = ''
+  }
+  reader.onerror = () => {
+    console.warn('[hiprint-v3:ImagePropertyPanel] file read failed:', reader.error)
+    target.value = ''
+  }
+  reader.readAsDataURL(file)
 }
 
 function onObjectFit(ev: Event): void {
@@ -126,6 +167,16 @@ function commit(): void {
           :value="String(opts.src ?? '')"
           placeholder="https://… or data:image/…"
           @change="onSrc"
+        />
+      </label>
+      <!-- TKT-361 — local file picker → dataURL into options.src. -->
+      <label class="inline">
+        <span>Pick file</span>
+        <input
+          type="file"
+          class="img-file-pick"
+          accept="image/*"
+          @change="onFile"
         />
       </label>
       <label>

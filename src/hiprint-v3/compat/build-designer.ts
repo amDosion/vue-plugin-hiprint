@@ -569,15 +569,45 @@ export function buildDesigner(
       }
     },
 
+    // Sprint 22g wave 3 — destroy-guard sweep: route every public method
+    // through `assertNotDestroyed` (logs + typed fallback) instead of the
+    // bare `if (this._destroyed)` check used before. Previously the bare
+    // check returned silently — the new behavior matches PrintTemplate and
+    // ToolbarController invariants (caller can see post-destroy diagnostics
+    // in console.warn). See destroy-guard-audit.spec.ts.
     getTemplate(): TemplateJson {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.getTemplate'
+        )
+      ) {
+        return { panels: [] } as unknown as TemplateJson
+      }
       return this.getJson()
     },
 
     getTpl(): PrintTemplate {
+      // Escape-hatch — returns the inner template ref regardless of destroy
+      // state. PrintTemplate itself wraps every method in assertNotDestroyed,
+      // so calls land safely. We still log + return the same ref so callers
+      // can do introspection in cleanup hooks.
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'designer.getTpl')
+      ) {
+        return tpl
+      }
       return tpl
     },
 
     setComponentPanelSlot(slotOptions): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.setComponentPanelSlot'
+        )
+      )
+        return
       // TKT-323 — see ADR-0031 (slot-options now driven by Vue slots).
       if (slotOptions) {
         console.warn(
@@ -587,10 +617,24 @@ export function buildDesigner(
     },
 
     clearComponentPanelSlot(): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.clearComponentPanelSlot'
+        )
+      )
+        return
       /* no-op in V3 — see ADR-0031. */
     },
 
     rebuildComponentPanel(moduleName, _slotOptions): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.rebuildComponentPanel'
+        )
+      )
+        return
       // TKT-323 — see ADR-0031. Element list is reactive; no rebuild required.
       if (moduleName) {
         console.warn(
@@ -600,10 +644,16 @@ export function buildDesigner(
     },
 
     setPaginationVisible(visible: boolean): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.setPaginationVisible'
+        )
+      )
+        return
       // TKT-327 (Sprint 22g wave 2): toggle the panel-manager / pagination
       // group at runtime by mutating the reactive `toolbarShowPanelManager`
       // prop. The HiprintToolbar v-if on the chip/select group reads this.
-      if (this._destroyed) return
       designerProps.toolbarShowPanelManager = visible
     },
 
@@ -614,17 +664,35 @@ export function buildDesigner(
     // V3 returns the matching `.hiprint-designer__*` element under our
     // container, or null when not mounted.
     getComponentContainer(): HTMLElement | null {
-      if (this._destroyed) return null
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.getComponentContainer'
+        )
+      )
+        return null
       return target.querySelector<HTMLElement>('.hiprint-designer__element-list')
     },
 
     getTemplateContainer(): HTMLElement | null {
-      if (this._destroyed) return null
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.getTemplateContainer'
+        )
+      )
+        return null
       return target.querySelector<HTMLElement>('.hiprint-designer__canvas')
     },
 
     getSettingContainer(): HTMLElement | null {
-      if (this._destroyed) return null
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.getSettingContainer'
+        )
+      )
+        return null
       return target.querySelector<HTMLElement>('.hiprint-designer__property-panel')
     },
 
@@ -635,7 +703,13 @@ export function buildDesigner(
     // SFC reads on mount AND by clicking the matching edge-toggle button when
     // the SFC is already mounted. Reading state inspects the DOM class.
     setLeftCollapsed(collapsed: boolean): void {
-      if (this._destroyed) return
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.setLeftCollapsed'
+        )
+      )
+        return
       const node = target.querySelector<HTMLElement>(
         '.hiprint-designer__element-list'
       )
@@ -651,7 +725,13 @@ export function buildDesigner(
     },
 
     setRightCollapsed(collapsed: boolean): void {
-      if (this._destroyed) return
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.setRightCollapsed'
+        )
+      )
+        return
       const node = target.querySelector<HTMLElement>(
         '.hiprint-designer__property-panel'
       )
@@ -667,7 +747,13 @@ export function buildDesigner(
     },
 
     isLeftCollapsed(): boolean {
-      if (this._destroyed) return false
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.isLeftCollapsed'
+        )
+      )
+        return false
       const node = target.querySelector<HTMLElement>(
         '.hiprint-designer__element-list'
       )
@@ -677,7 +763,13 @@ export function buildDesigner(
     },
 
     isRightCollapsed(): boolean {
-      if (this._destroyed) return false
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'designer.isRightCollapsed'
+        )
+      )
+        return false
       const node = target.querySelector<HTMLElement>(
         '.hiprint-designer__property-panel'
       )

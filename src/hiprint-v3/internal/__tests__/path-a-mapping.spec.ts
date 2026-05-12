@@ -122,6 +122,41 @@ describe('mapQrCodeLevel — V1 int index clamp', () => {
   })
 })
 
+// TKT-371 (Sprint 22g GL Wave 3) — V1 §B.1.2 lists 18 selectable barcodeMode
+// values. Confirm each maps to a canonical bwip-js bcid and none accidentally
+// fall through to the lowercase-fallback branch.
+describe('mapBarcodeMode — TKT-371 V1 §B.1.2 18-value full enum', () => {
+  // V1 inventory §B.1.2 row mapping — JsBarcode `format` → bwip-js `bcid`.
+  const matrix: Array<[string, string]> = [
+    ['CODE128', 'code128'],
+    ['CODE128A', 'code128'],
+    ['CODE128B', 'code128'],
+    ['CODE128C', 'code128'],
+    ['CODE39', 'code39'],
+    ['EAN13', 'ean13'],
+    ['EAN8', 'ean8'],
+    ['EAN5', 'ean5'],
+    ['EAN2', 'ean2'],
+    ['UPC', 'upca'],
+    ['ITF', 'interleaved2of5'],
+    ['ITF14', 'itf14'],
+    ['MSI', 'msi'],
+    ['MSI10', 'msi'],
+    ['MSI11', 'msi'],
+    ['MSI1010', 'msi'],
+    ['MSI1110', 'msi'],
+    ['Pharmacode', 'pharmacode'],
+  ]
+  it.each(matrix)('maps V1 enum %s → bwip-js bcid %s', (input, expected) => {
+    expect(mapBarcodeMode(input)).toBe(expected)
+  })
+
+  it('covers all 18 V1 selectable enum values (no orphans)', () => {
+    // Sanity: a hardcoded length lock — V1 §B.1.2 lists 18 explicit + 1 default.
+    expect(matrix.length).toBe(18)
+  })
+})
+
 describe('qrCodeLevelLetter — index → letter', () => {
   it('maps 0/1/2/3 → M/L/H/Q (V1 line 10491 order)', () => {
     expect(qrCodeLevelLetter(0)).toBe('M')

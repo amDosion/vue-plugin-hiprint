@@ -229,20 +229,16 @@ describe('TablePropertyPanel — header / footer handlers (V1-faithful)', () => 
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    // The headerType select is the third <select> in the Header / Footer
-    // fieldset (col-align selects appear first, then table-header-repeat,
-    // table-footer-repeat). Match by absence of all the more-specific
-    // classes to find it.
-    const headerSelect = w
-      .findAll('select')
-      .find(
-        (s) =>
-          !s.classes('col-align') &&
-          !s.classes('table-header-repeat') &&
-          !s.classes('table-footer-repeat')
-      )
-    expect(headerSelect).toBeDefined()
-    await headerSelect!.setValue('group')
+    // Sprint 22g wave 3: many <select>s now exist. Find headerType select by
+    // its parent <label> text — robust against new column/table-level selects.
+    const labels = w.findAll('label')
+    const headerLabel = labels.find((l) =>
+      (l.text() || '').trim().startsWith('Header type')
+    )
+    expect(headerLabel).toBeDefined()
+    const headerSelect = headerLabel!.find('select')
+    expect(headerSelect.exists()).toBe(true)
+    await headerSelect.setValue('group')
     expect(getOptions(getElement()).headerType).toBe('group')
     w.unmount()
   })
@@ -306,10 +302,12 @@ describe('TablePropertyPanel — TKT-009 rollback (invented options are gone)', 
     const { getElement } = seedTable()
     const w = mount(TablePropertyPanel, { props: { element: getElement()! } })
     await w.vm.$nextTick()
-    // Only the V1-faithful footerFormatter textarea should remain.
-    const tas = w.findAll('textarea')
-    expect(tas.length).toBe(1)
-    expect(tas[0]!.classes('footer-formatter')).toBe(true)
+    // Sprint 22g wave 3: the panel now exposes additional function-source
+    // textareas (rowStyler / rowsColumnsMerge / groupFormatter / per-column
+    // formatter2 / styler2 / etc.). The invented raw-HTML `footer` textarea
+    // (TKT-009 rollback) must STILL be absent — verify by class name.
+    expect(w.find('textarea.footer').exists()).toBe(false)
+    expect(w.find('textarea.footer-formatter').exists()).toBe(true)
     w.unmount()
   })
 })

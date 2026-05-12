@@ -204,3 +204,89 @@ describe('TableCell', () => {
     expect(parsed[0]?.name).toBe('new-value')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Sprint 22g wave 3 (Stream GL) — table-cell barcode / qrcode renderer wiring.
+// V1 inventory §J.13/J.14/J.28 reference.
+// ---------------------------------------------------------------------------
+
+describe('TableCell — Sprint 22g GL Wave 3: tableTextType barcode/qrcode', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('renders an inline SVG when column.tableTextType="barcode"', () => {
+    const wrapper = mountInTable(TableCell, {
+      column: {
+        field: 'sku',
+        tableTextType: 'barcode',
+        tableBarcodeMode: 'CODE128',
+        tableColumnHeight: 30,
+      },
+      row: { sku: 'ABC123' },
+      rowIndex: 0,
+      columnIndex: 0,
+      tableData: [{ sku: 'ABC123' }],
+      tableOptions: {},
+    })
+    const svg = wrapper.find('.hiprint-printElement-table-code-svg svg')
+    expect(svg.exists()).toBe(true)
+    // No text title by default (showCodeTitle absent).
+    expect(
+      wrapper.find('.hiprint-printElement-table-code-title').exists()
+    ).toBe(false)
+  })
+
+  it('renders title text below SVG when showCodeTitle=true (V1 §J.28)', () => {
+    const wrapper = mountInTable(TableCell, {
+      column: {
+        field: 'sku',
+        tableTextType: 'barcode',
+        tableBarcodeMode: 'CODE128',
+        showCodeTitle: true,
+      },
+      row: { sku: 'XYZ' },
+      rowIndex: 0,
+      columnIndex: 0,
+      tableData: [{ sku: 'XYZ' }],
+      tableOptions: {},
+    })
+    const title = wrapper.find('.hiprint-printElement-table-code-title')
+    expect(title.exists()).toBe(true)
+    expect(title.text()).toBe('XYZ')
+  })
+
+  it('renders an SVG when column.tableTextType="qrcode" + tableQRCodeLevel', () => {
+    const wrapper = mountInTable(TableCell, {
+      column: {
+        field: 'url',
+        tableTextType: 'qrcode',
+        tableQRCodeLevel: 2,
+        tableColumnHeight: 40,
+      },
+      row: { url: 'https://example.com' },
+      rowIndex: 0,
+      columnIndex: 0,
+      tableData: [{ url: 'https://example.com' }],
+      tableOptions: {},
+    })
+    const svg = wrapper.find('.hiprint-printElement-table-code-svg svg')
+    expect(svg.exists()).toBe(true)
+  })
+
+  it('plain text path remains when tableTextType is missing', () => {
+    const wrapper = mountInTable(TableCell, {
+      column: { field: 'name' },
+      row: { name: 'plain' },
+      rowIndex: 0,
+      columnIndex: 0,
+      tableData: [{ name: 'plain' }],
+      tableOptions: {},
+    })
+    // The code-cell wrapper should not appear.
+    expect(wrapper.find('.hiprint-printElement-table-code-svg').exists()).toBe(
+      false
+    )
+    expect(wrapper.find('td').text()).toBe('plain')
+  })
+})

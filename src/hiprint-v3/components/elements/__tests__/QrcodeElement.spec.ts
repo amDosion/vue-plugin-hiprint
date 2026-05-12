@@ -80,6 +80,67 @@ describe('QrcodeElement', () => {
     w.unmount()
   })
 
+  // TKT-364 + TKT-366 — Sprint 22g GL Wave 3.
+  it('TKT-364: forwards backgroundColor/borderColor/textMargin to bwip-js', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.qrcode',
+      printElementType: { type: 'qrcode' },
+      options: {
+        testData: 'X',
+        hideTitle: true,
+        backgroundColor: '#eeeeee',
+        borderColor: '#0000aa',
+        textMargin: 0,
+      },
+    })
+    const w = mount(QrcodeElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const callOpts = vi.mocked(bwipjs.toSVG).mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(callOpts.backgroundcolor).toBe('eeeeee')
+    expect(callOpts.bordercolor).toBe('0000aa')
+    expect(callOpts.textmargin).toBe(0)
+    // Core fixed opts must NOT be overridden by passthrough.
+    expect(callOpts.bcid).toBe('qrcode')
+    expect(callOpts.text).toBe('X')
+    w.unmount()
+  })
+
+  it('TKT-366: renders embedded title <span> above QR when title set + hideTitle off', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.qrcode',
+      printElementType: { type: 'qrcode' },
+      options: {
+        testData: 'TRACK',
+        hideTitle: false,
+      },
+    })
+    const w = mount(QrcodeElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+      attachTo: document.body,
+    })
+    await nextTick()
+    // The QrcodeElement renders a sibling `.hiprint-printElement-qrcode-content-title`
+    // node that carries the (XSS-safe escaped) text below the SVG. That node
+    // is the V1 §B.3 "title prepend" — V1 §J.18 noted XSS risk; V3 escapes
+    // via `{{ coerceText(...) }}` which is `textContent`-safe.
+    const titleEl = w.find('.hiprint-printElement-qrcode-content-title')
+    expect(titleEl.exists()).toBe(true)
+    expect(titleEl.text()).toBe('TRACK')
+    w.unmount()
+  })
+
   it('hideTitle suppresses the title block', async () => {
     const canvas = useCanvasStore()
     canvas.addPanel({ id: 'p1', width: 200, height: 200 })

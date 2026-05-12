@@ -69,6 +69,78 @@ describe('ImageElement', () => {
     w.unmount()
   })
 
+  // TKT-351 (Sprint 22g GL Wave 3) — full CSS transform string passthrough.
+  // V1 §B.1 documents `transform` as a rotation-only number, but real V1
+  // templates also carry raw CSS transform strings (rotate / scale / skew /
+  // matrix). _helpers.computeGeometryStyle passes them through verbatim.
+  it('TKT-351: full CSS transform string (scale/skew) passes through to wrapper', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.image',
+      printElementType: { type: 'image' },
+      options: {
+        src: 'x.png',
+        transform: 'rotate(15deg) scaleX(-1) skewY(5deg)',
+      },
+    })
+    const w = mount(ImageElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+    })
+    // The transform string is applied to the ElementWrapper outer div.
+    const wrapper = w.find('.hiprint-printElement')
+    expect(wrapper.exists()).toBe(true)
+    const transform = (wrapper.element as HTMLElement).style.transform
+    expect(transform).toContain('rotate(15deg)')
+    expect(transform).toContain('scaleX(-1)')
+    expect(transform).toContain('skewY(5deg)')
+    w.unmount()
+  })
+
+  // TKT-355 (image side, verify Wave 2) — formatter returning null → 1×1
+  // transparent fallback (effectively hidden).
+  it('TKT-355: formatter returning null falls back to transparent 1×1 PNG', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.image',
+      printElementType: { type: 'image' },
+      options: {
+        src: 'https://example.com/should-not-show.png',
+        formatter: () => null,
+      },
+    })
+    const w = mount(ImageElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+    })
+    const src = w.find('img').attributes('src') ?? ''
+    expect(src.startsWith('data:image/png;base64,')).toBe(true)
+    w.unmount()
+  })
+
+  // TKT-359 / sanitizeSrc protocol-allow-list (Wave 2 implementation lock).
+  it('rejects javascript: src and falls back to transparent PNG (XSS defence)', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.image',
+      printElementType: { type: 'image' },
+      // eslint-disable-next-line no-script-url
+      options: { src: 'javascript:alert(1)' },
+    })
+    const w = mount(ImageElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+    })
+    const src = w.find('img').attributes('src') ?? ''
+    // The element wrapper writes the transparent 1×1 PNG, never the unsafe URL.
+    expect(src).not.toContain('javascript:')
+    expect(src.startsWith('data:image/png;base64,')).toBe(true)
+    w.unmount()
+  })
+
   it('swaps in fallback src on @error', async () => {
     const canvas = useCanvasStore()
     canvas.addPanel({ id: 'p1', width: 200, height: 200 })

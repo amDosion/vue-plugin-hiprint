@@ -95,16 +95,16 @@ describe('BarcodePropertyPanel — bindings', () => {
     const values = w
       .findAll('select.bc-barcode-type option')
       .map((o) => o.attributes('value'))
-    // All lowercase + matches bwip-js bcid vocabulary.
-    expect(values).toEqual([
-      'code128',
-      'ean13',
-      'ean8',
-      'upca',
-      'interleaved2of5',
-      'code39',
-      'code93',
-    ])
+    // TKT-367 (Sprint 22g GL) widened the option set from 7 to the full
+    // 84-value V1 vocabulary via cascader-style <optgroup>s. Just assert the
+    // popular subset is present + every value is lowercase.
+    expect(values).toContain('code128')
+    expect(values).toContain('ean13')
+    expect(values).toContain('ean8')
+    expect(values).toContain('upca')
+    expect(values).toContain('interleaved2of5')
+    expect(values).toContain('code39')
+    expect(values).toContain('code93')
     // Uppercase or JsBarcode-style names must not appear.
     values.forEach((v) => {
       expect(v).toBe(String(v).toLowerCase())
@@ -215,16 +215,186 @@ describe('BarcodePropertyPanel — field changes (renderer keys)', () => {
 })
 
 describe('BarcodePropertyPanel — dropped legacy fields', () => {
-  it('does NOT render padding / color / backgroundColor inputs', async () => {
+  it('does NOT render padding / color / lineColor inputs (TKT-002 rollback)', async () => {
     const { getElement } = seedBarcode()
     const w = mount(BarcodePropertyPanel, {
       props: { element: getElement()! },
     })
     await w.vm.$nextTick()
+    // These three V1 panel keys are unread by the renderer; TKT-002 dropped
+    // them. backgroundColor is restored in Sprint 22g GL TKT-367 because the
+    // element wrapper paints it via computeFontStyle() AND it forwards to
+    // bwip-js via TKT-364 collectBwipPassthrough.
     expect(w.find('input.bc-padding').exists()).toBe(false)
     expect(w.find('input.bc-line-color').exists()).toBe(false)
     expect(w.find('input.bc-color').exists()).toBe(false)
-    expect(w.find('input.bc-background-color').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Sprint 22g wave 3 (Stream GL) — TKT-367 full-field parity tests.
+// ---------------------------------------------------------------------------
+
+describe('BarcodePropertyPanel — TKT-367 9-field parity', () => {
+  it('renders barWidth select with 1/2/3/4 values', async () => {
+    const { getElement } = seedBarcode({ barWidth: 2 })
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.bc-bar-width')
+    expect(sel.exists()).toBe(true)
+    expect((sel.element as HTMLSelectElement).value).toBe('2')
+    const values = w.findAll('select.bc-bar-width option').map((o) => o.attributes('value'))
+    expect(values).toEqual(['1', '2', '3', '4'])
+    w.unmount()
+  })
+
+  it('barWidth select patches options.barWidth (number, immediate commit)', async () => {
+    const { getElement, history } = seedBarcode()
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const before = history.canUndo
+    await w.find('select.bc-bar-width').setValue('3')
+    expect(getOpts(getElement()).barWidth).toBe(3)
+    expect(history.canUndo).not.toBe(before)
+    w.unmount()
+  })
+
+  it('renders barAutoWidth select with 默认/自动/不自动 (V1 §J.23 string enum)', async () => {
+    const { getElement } = seedBarcode({ barAutoWidth: 'true' })
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.bc-bar-auto-width')
+    expect(sel.exists()).toBe(true)
+    expect((sel.element as HTMLSelectElement).value).toBe('true')
+    const values = w.findAll('select.bc-bar-auto-width option').map((o) => o.attributes('value'))
+    expect(values).toEqual(['', 'true', 'false'])
+    w.unmount()
+  })
+
+  it('barAutoWidth select writes STRING form (round-trip with V1 §J.23)', async () => {
+    const { getElement } = seedBarcode()
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    await w.find('select.bc-bar-auto-width').setValue('false')
+    // Must persist the string 'false' (NOT boolean) so V1 ingest works.
+    expect(getOpts(getElement()).barAutoWidth).toBe('false')
+    await w.find('select.bc-bar-auto-width').setValue('true')
+    expect(getOpts(getElement()).barAutoWidth).toBe('true')
+    await w.find('select.bc-bar-auto-width').setValue('')
+    expect(getOpts(getElement()).barAutoWidth).toBe('')
+    w.unmount()
+  })
+
+  it('renders barTextMode select with 默认/单独文本/SVG enum (V1 §B.1.1)', async () => {
+    const { getElement } = seedBarcode({ barTextMode: 'text' })
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.bc-bar-text-mode')
+    expect(sel.exists()).toBe(true)
+    expect((sel.element as HTMLSelectElement).value).toBe('text')
+    w.unmount()
+  })
+
+  it('barTextMode select patches options.barTextMode (immediate commit)', async () => {
+    const { getElement, history } = seedBarcode()
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const before = history.canUndo
+    await w.find('select.bc-bar-text-mode').setValue('svg')
+    expect(getOpts(getElement()).barTextMode).toBe('svg')
+    expect(history.canUndo).not.toBe(before)
+    w.unmount()
+  })
+
+  it('renders textAlign select left/center/right', async () => {
+    const { getElement } = seedBarcode({ textAlign: 'right' })
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.bc-text-align')
+    expect(sel.exists()).toBe(true)
+    expect((sel.element as HTMLSelectElement).value).toBe('right')
+    w.unmount()
+  })
+
+  it('textAlign select patches options.textAlign', async () => {
+    const { getElement } = seedBarcode()
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    await w.find('select.bc-text-align').setValue('center')
+    expect(getOpts(getElement()).textAlign).toBe('center')
+    w.unmount()
+  })
+
+  it('renders backgroundColor input + writes options.backgroundColor', async () => {
+    const { getElement } = seedBarcode({ backgroundColor: '#fffff0' })
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const bg = w.find('input.bc-background-color')
+    expect(bg.exists()).toBe(true)
+    expect((bg.element as HTMLInputElement).value).toBe('#fffff0')
+    ;(bg.element as HTMLInputElement).value = '#222222'
+    await bg.trigger('change')
+    expect(getOpts(getElement()).backgroundColor).toBe('#222222')
+    w.unmount()
+  })
+
+  it('renders V1 cascader optgroups for 84-value barcodeType (TKT-367)', async () => {
+    const { getElement } = seedBarcode()
+    const w = mount(BarcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    // optgroup-based "cascader" UI per V1 §B.2.1 / §D.2.
+    const groups = w
+      .findAll('select.bc-barcode-type optgroup')
+      .map((g) => g.attributes('label'))
+    // V1 inventory §B.2.1 lists 11 logical groups. Sprint 22g GL merges
+    // 默认 + 条形码 into one group ("默认 / 条形码") to avoid happy-dom
+    // select-binding collision on the duplicate code128 option value.
+    expect(groups).toContain('默认 / 条形码')
+    expect(groups).toContain('商品条码')
+    expect(groups).toContain('物流')
+    expect(groups).toContain('GS1 DataBar')
+    expect(groups).toContain('邮政和快递编码')
+    expect(groups).toContain('医疗产品编码')
+    expect(groups).toContain('不常用编码')
+    expect(groups).toContain('GS1 复合编码')
+    expect(groups).toContain('附加组件')
+    expect(groups).toContain('实验编码')
+    // ≥ 80 selectable bcid options across all groups (target 84 per V1).
+    const allOptions = w
+      .findAll('select.bc-barcode-type option')
+      .map((o) => o.attributes('value'))
+    expect(allOptions.length).toBeGreaterThanOrEqual(80)
+    // Every option value is lowercase (bwip-js bcid convention).
+    for (const v of allOptions) {
+      expect(v).toBe(String(v).toLowerCase())
+    }
+    // Sanity: ensure the most common bcids are present.
+    expect(allOptions).toContain('code128')
+    expect(allOptions).toContain('ean13')
+    expect(allOptions).toContain('itf14')
+    expect(allOptions).toContain('pharmacode')
+    expect(allOptions).toContain('maxicode')
     w.unmount()
   })
 })

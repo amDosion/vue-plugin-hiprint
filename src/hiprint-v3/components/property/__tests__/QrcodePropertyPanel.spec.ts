@@ -178,16 +178,168 @@ describe('QrcodePropertyPanel — field changes (renderer keys)', () => {
   })
 })
 
-describe('QrcodePropertyPanel — dropped legacy fields', () => {
-  it('does NOT render padding / color / backgroundColor inputs', async () => {
+describe('QrcodePropertyPanel — dropped legacy field names', () => {
+  it('does NOT render legacy color key as `qr-color` (TKT-003 rollback)', async () => {
     const { getElement } = seedQrcode()
     const w = mount(QrcodePropertyPanel, {
       props: { element: getElement()! },
     })
     await w.vm.$nextTick()
-    expect(w.find('input.qr-padding').exists()).toBe(false)
+    // The legacy V3 panel wrote `options.color`; renderer never read it.
+    // TKT-003 dropped that field. Wave 3 TKT-372 reintroduces `padding`
+    // (renderer reads via computePaddingStyle) and TKT-367 sibling adds
+    // backgroundColor (wrapper paints it). Only the dead `color` stays out.
     expect(w.find('input.qr-color').exists()).toBe(false)
-    expect(w.find('input.qr-background-color').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Sprint 22g wave 3 (Stream GL) — TKT-366/367/368/372 panel parity tests.
+// ---------------------------------------------------------------------------
+
+describe('QrcodePropertyPanel — TKT-367 sibling: 19-value qrcodeType select', () => {
+  it('renders the V1 §B.3.1 19-code qrcodeType select', async () => {
+    const { getElement } = seedQrcode({ qrcodeType: 'datamatrix' })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.qr-qrcode-type')
+    expect(sel.exists()).toBe(true)
+    expect((sel.element as HTMLSelectElement).value).toBe('datamatrix')
+    const values = w
+      .findAll('select.qr-qrcode-type option')
+      .map((o) => o.attributes('value'))
+    // 19-value V1 vocabulary (matrix TKT-367 reference target).
+    expect(values).toContain('qrcode')
+    expect(values).toContain('microqrcode')
+    expect(values).toContain('swissqrcode')
+    expect(values).toContain('azteccode')
+    expect(values).toContain('datamatrix')
+    expect(values).toContain('pdf417')
+    expect(values).toContain('hibcqrcode')
+    expect(values).toContain('hanxin')
+    expect(values.length).toBeGreaterThanOrEqual(19)
+    // No optgroup; flat list per V1.
+    expect(w.findAll('select.qr-qrcode-type optgroup').length).toBe(0)
+    w.unmount()
+  })
+
+  it('qrcodeType select patches options.qrcodeType (immediate commit)', async () => {
+    const { getElement, history } = seedQrcode()
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const before = history.canUndo
+    await w.find('select.qr-qrcode-type').setValue('azteccode')
+    expect(getOpts(getElement()).qrcodeType).toBe('azteccode')
+    expect(history.canUndo).not.toBe(before)
+    w.unmount()
+  })
+})
+
+describe('QrcodePropertyPanel — TKT-366 show-title checkbox', () => {
+  it('"Show title" checkbox starts checked when hideTitle absent', async () => {
+    const { getElement } = seedQrcode()
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const cb = w.find('input.qr-show-title')
+    expect(cb.exists()).toBe(true)
+    expect((cb.element as HTMLInputElement).checked).toBe(true)
+    w.unmount()
+  })
+
+  it('"Show title" checkbox unchecked when hideTitle=true', async () => {
+    const { getElement } = seedQrcode({ hideTitle: true })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const cb = w.find('input.qr-show-title')
+    expect((cb.element as HTMLInputElement).checked).toBe(false)
+    w.unmount()
+  })
+
+  it('toggling "Show title" writes BOTH hideTitle and displayValue (TKT-368)', async () => {
+    const { getElement } = seedQrcode({ hideTitle: false })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const cb = w.find('input.qr-show-title')
+    ;(cb.element as HTMLInputElement).checked = false
+    await cb.trigger('change')
+    expect(getOpts(getElement()).hideTitle).toBe(true)
+    expect(getOpts(getElement()).displayValue).toBe(false)
+    ;(cb.element as HTMLInputElement).checked = true
+    await cb.trigger('change')
+    expect(getOpts(getElement()).hideTitle).toBe(false)
+    expect(getOpts(getElement()).displayValue).toBe(true)
+    w.unmount()
+  })
+
+  it('TKT-368: pre-existing displayValue:true wins over hideTitle:true (round-trip)', async () => {
+    const { getElement } = seedQrcode({
+      hideTitle: true,
+      displayValue: true,
+    })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const cb = w.find('input.qr-show-title')
+    expect((cb.element as HTMLInputElement).checked).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('QrcodePropertyPanel — TKT-372 padding (quiet zone)', () => {
+  it('renders padding number input', async () => {
+    const { getElement } = seedQrcode({ padding: 8 })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const inp = w.find('input.qr-padding')
+    expect(inp.exists()).toBe(true)
+    expect((inp.element as HTMLInputElement).value).toBe('8')
+    w.unmount()
+  })
+
+  it('padding input writes options.padding number', async () => {
+    const { getElement, history } = seedQrcode()
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const inp = w.find('input.qr-padding')
+    ;(inp.element as HTMLInputElement).value = '12'
+    await inp.trigger('input')
+    expect(getOpts(getElement()).padding).toBe(12)
+    const before = history.canUndo
+    await inp.trigger('change')
+    expect(history.canUndo).not.toBe(before)
+    w.unmount()
+  })
+})
+
+describe('QrcodePropertyPanel — backgroundColor (TKT-367 sibling)', () => {
+  it('renders qr-background-color + writes options.backgroundColor', async () => {
+    const { getElement } = seedQrcode({ backgroundColor: '#f7f7f7' })
+    const w = mount(QrcodePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const bg = w.find('input.qr-background-color')
+    expect(bg.exists()).toBe(true)
+    expect((bg.element as HTMLInputElement).value).toBe('#f7f7f7')
+    ;(bg.element as HTMLInputElement).value = '#abcdef'
+    await bg.trigger('change')
+    expect(getOpts(getElement()).backgroundColor).toBe('#abcdef')
     w.unmount()
   })
 })

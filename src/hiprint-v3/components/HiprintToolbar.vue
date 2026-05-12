@@ -215,6 +215,18 @@ interface Props {
    */
   disabledButtonIds?: Readonly<Record<string, boolean>>
   /**
+   * Sprint 22g wave 3 — TKT-311. Map of button id → boolean. When `true`,
+   * the corresponding button is force-hidden regardless of `showXxx` flags.
+   * Drives `toolbarCtrl.setButtonVisible(id, false)`. V1 14825-14827.
+   */
+  hiddenButtonIds?: Readonly<Record<string, boolean>>
+  /**
+   * Sprint 22g wave 3 — TKT-312. Map of group key → boolean. When `true`,
+   * the corresponding group root is force-hidden via `display:none`. Drives
+   * `toolbarCtrl.setGroupVisible(key, false)`. V1 14843-14845.
+   */
+  hiddenGroupIds?: Readonly<Record<string, boolean>>
+  /**
    * Map of button id → label string. Replaces the default label for that
    * button. Drives `toolbarCtrl.setButtonText(id, text)`.
    * The string is rendered as plain text (XSS-safe — no v-html).
@@ -357,6 +369,9 @@ const props = withDefaults(defineProps<Props>(), {
   // Sprint 22c TKT-042/043 imperative overrides — empty by default so V3
   // reactive consumers see no behaviour change.
   disabledButtonIds: () => ({}),
+  // Sprint 22g wave 3 — TKT-311 / TKT-312 (button + group visibility overrides).
+  hiddenButtonIds: () => ({}),
+  hiddenGroupIds: () => ({}),
   labelOverrides: () => ({}),
   // Sprint 22c TKT-100 V1 button-text opts — undefined means "use default".
   saveButtonText: undefined,
@@ -514,6 +529,8 @@ function showFlagFor(key: ToolbarButtonId): boolean {
 }
 
 function isShown(id: ToolbarButtonId): boolean {
+  // Sprint 22g wave 3 — TKT-311: imperative setButtonVisible(id, false) wins.
+  if (props.hiddenButtonIds && props.hiddenButtonIds[id]) return false
   // templateSelect / businessSelect / addPanel / removePanel are opt-in via
   // showXxx alone (not in default `buttons` list) — match V1 buildToolbar
   // semantics where showPanelManager/showTemplateSelect/showBusinessSelect
@@ -525,6 +542,16 @@ function isShown(id: ToolbarButtonId): boolean {
     id === 'removePanel'
   if (!isOptIn && !explicitButtons.value.has(id)) return false
   return showFlagFor(id)
+}
+
+/**
+ * Sprint 22g wave 3 — TKT-312. Compute the v-show flag for a toolbar group.
+ * Group keys: 'history', 'actions', 'paper', 'panel', 'scale', 'align',
+ * 'templateBusiness', 'extras'. Returns true when `setGroupVisible(key, false)`
+ * was called.
+ */
+function isGroupHidden(groupKey: string): boolean {
+  return !!(props.hiddenGroupIds && props.hiddenGroupIds[groupKey])
 }
 
 function isDisabled(id: ToolbarButtonId): boolean {
@@ -998,7 +1025,12 @@ defineExpose({
   >
     <!-- Extra buttons (start position) -->
     <template v-if="extraPosition === 'start'">
-      <span class="hiprint-toolbar-group hiprint-toolbar-extra" role="group">
+      <span
+        v-show="!isGroupHidden('extras')"
+        class="hiprint-toolbar-group hiprint-toolbar-extra"
+        role="group"
+        data-toolbar-group="extras"
+      >
         <button
           v-for="btn in orderedExtraButtons"
           :key="'extra-start-' + btn.key"
@@ -1024,8 +1056,10 @@ defineExpose({
     <!-- TKT-410 group wrapper: history (undo / redo) -->
     <span
       v-if="isShown('undo') || isShown('redo')"
+      v-show="!isGroupHidden('history')"
       class="hiprint-toolbar-group hiprint-toolbar-history"
       role="group"
+      data-toolbar-group="history"
     >
       <button
         v-if="isShown('undo')"
@@ -1056,8 +1090,10 @@ defineExpose({
     <!-- TKT-410 group wrapper: template/business selectors -->
     <span
       v-if="isShown('templateSelect') || isShown('businessSelect')"
+      v-show="!isGroupHidden('templateBusiness')"
       class="hiprint-toolbar-group hiprint-toolbar-template-select hiprint-toolbar-business-select"
       role="group"
+      data-toolbar-group="templateBusiness"
     >
       <button
         v-if="isShown('templateSelect')"
@@ -1084,7 +1120,12 @@ defineExpose({
     </span>
 
     <!-- TKT-410/TKT-411 group wrapper: primary actions (save/preview/print/pdf/clear) -->
-    <span class="hiprint-toolbar-group hiprint-toolbar-actions" role="group">
+    <span
+      v-show="!isGroupHidden('actions')"
+      class="hiprint-toolbar-group hiprint-toolbar-actions"
+      role="group"
+      data-toolbar-group="actions"
+    >
       <button
         v-if="isShown('save')"
         type="button"
@@ -1144,7 +1185,12 @@ defineExpose({
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <label v-if="isShown('paper')" class="hiprint-toolbar-paper hiprint-toolbar-group">
+    <label
+      v-if="isShown('paper')"
+      v-show="!isGroupHidden('paper')"
+      class="hiprint-toolbar-paper hiprint-toolbar-group"
+      data-toolbar-group="paper"
+    >
       <span class="hiprint-toolbar-label">Paper</span>
       <select
         class="hiprint-toolbar-select hiprint-toolbar-input"
@@ -1201,9 +1247,11 @@ defineExpose({
          dropdown instead (compact for many-panel docs). -->
     <span
       v-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'chips'"
+      v-show="!isGroupHidden('panel')"
       class="hiprint-toolbar-panel-chips hiprint-toolbar-group"
       role="group"
       :aria-label="ariaFor('activePanel')"
+      data-toolbar-group="panel"
     >
       <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
         {{ panelManagerLabel }}
@@ -1229,7 +1277,9 @@ defineExpose({
          deterministically (handleSwitchPanel takes an index). -->
     <label
       v-else-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'select'"
+      v-show="!isGroupHidden('panel')"
       class="hiprint-toolbar-panel-manager hiprint-toolbar-group"
+      data-toolbar-group="panel"
     >
       <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
         {{ panelManagerLabel }}
@@ -1287,8 +1337,10 @@ defineExpose({
     <!-- TKT-410 group wrapper: scale (zoom out / reset / in) -->
     <span
       v-if="isShown('zoomOut') || isShown('zoomReset') || isShown('zoomIn')"
+      v-show="!isGroupHidden('scale')"
       class="hiprint-toolbar-group hiprint-toolbar-scale"
       role="group"
+      data-toolbar-group="scale"
     >
       <button
         v-if="isShown('zoomOut')"
@@ -1329,8 +1381,10 @@ defineExpose({
          aides, not the V1 6-button align array which lives in contextmenu) -->
     <span
       v-if="isShown('gridToggle') || isShown('rulerToggle')"
+      v-show="!isGroupHidden('align')"
       class="hiprint-toolbar-group hiprint-toolbar-align"
       role="group"
+      data-toolbar-group="align"
     >
       <button
         v-if="isShown('gridToggle')"
@@ -1369,7 +1423,12 @@ defineExpose({
     <!-- Extra buttons (end position; default) -->
     <template v-if="extraPosition !== 'start' && orderedExtraButtons.length > 0">
       <span class="hiprint-toolbar-sep" aria-hidden="true" />
-      <span class="hiprint-toolbar-group hiprint-toolbar-extra" role="group">
+      <span
+        v-show="!isGroupHidden('extras')"
+        class="hiprint-toolbar-group hiprint-toolbar-extra"
+        role="group"
+        data-toolbar-group="extras"
+      >
         <button
           v-for="btn in orderedExtraButtons"
           :key="'extra-end-' + btn.key"

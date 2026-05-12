@@ -16,7 +16,7 @@
  * Locked invariants:
  *   #8: every user-input emit is wrapped via safeCall.
  */
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   Modal as AModal,
   Form,
@@ -56,6 +56,23 @@ interface Props {
   title?: string
   /** Modal width in px. Default 500. */
   width?: number
+  /**
+   * Sprint 22g wave 3 — TKT-334 dialog-text opts (V1 13371-13375).
+   */
+  nameLabel?: string
+  namePlaceholder?: string
+  nameRequiredText?: string
+  confirmText?: string
+  cancelText?: string
+  /**
+   * Sprint 22g wave 3 — TKT-333. Unique uid → derives `hp-save-name-<uid>`.
+   */
+  uid?: string
+  /**
+   * Sprint 22g wave 3 — TKT-333. External save-failure indicator (renders
+   * role="alert" message inside the form).
+   */
+  errorMessage?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -65,6 +82,13 @@ const props = withDefaults(defineProps<Props>(), {
   saving: false,
   title: '保存模板',
   width: 500,
+  nameLabel: '模板名称',
+  namePlaceholder: '请输入模板名称',
+  nameRequiredText: '请输入模板名称',
+  confirmText: '保存',
+  cancelText: '取消',
+  uid: '',
+  errorMessage: '',
 })
 
 const emit = defineEmits<{
@@ -114,7 +138,7 @@ watch(
 function validateName(): boolean {
   const trimmed = formState.name.trim()
   if (!trimmed) {
-    nameError.value = '请输入模板名称'
+    nameError.value = props.nameRequiredText || '请输入模板名称'
     return false
   }
   if (trimmed.length > 64) {
@@ -124,6 +148,11 @@ function validateName(): boolean {
   nameError.value = ''
   return true
 }
+
+// Sprint 22g wave 3 — TKT-333 deterministic ARIA id for the name input.
+const nameInputId = computed<string>(
+  () => 'hp-save-name-' + (props.uid || 'default')
+)
 
 // ============ Handlers ============
 
@@ -155,14 +184,14 @@ function onSubmit(): void {
 <template>
   <AModal
     :open="open"
-    :title="title"
     :width="width"
     :mask-closable="!saving"
     :closable="!saving"
     :confirm-loading="saving"
     :ok-button-props="{ disabled: saving }"
-    ok-text="保存"
-    cancel-text="取消"
+    :ok-text="confirmText"
+    :cancel-text="cancelText"
+    :aria-busy="saving"
     class="hiprint-save-dialog hiprint-toolbar-save"
     wrap-class-name="hiprint-toolbar-save-dialog-wrap hiprint-toolbar-save-wrap"
     mask-class-name="hiprint-toolbar-save-mask"
@@ -170,21 +199,39 @@ function onSubmit(): void {
     @ok="onSubmit"
     @cancel="onCancel"
   >
+    <!--
+      TKT-415 — surface V1 dialog title vocabulary on the projected slot
+      node. `hiprint-toolbar-save-title` is the V1 namespaced selector;
+      `hiprint-toolbar-template-title` is the shared family selector V1 E2E
+      suites use to reach any "toolbar dialog" title regardless of variant.
+    -->
+    <template #title>
+      <span
+        class="hiprint-save-dialog__title hiprint-toolbar-save-title hiprint-toolbar-template-title"
+      >{{ title }}</span>
+    </template>
     <AForm layout="vertical" class="hiprint-save-dialog__form">
       <AFormItem
-        label="模板名称"
+        :label="nameLabel"
         required
         :validate-status="nameError ? 'error' : ''"
         :help="nameError || undefined"
       >
         <AInput
+          :id="nameInputId"
           v-model:value="formState.name"
-          placeholder="请输入模板名称"
+          :placeholder="namePlaceholder"
           :maxlength="64"
           class="hiprint-save-dialog__name"
           @blur="validateName"
         />
       </AFormItem>
+      <!-- TKT-333 — external save error surface (role=alert for AT announcement). -->
+      <div
+        v-if="errorMessage"
+        class="hiprint-save-dialog__error"
+        role="alert"
+      >{{ errorMessage }}</div>
 
       <AFormItem label="分类">
         <ASelect
@@ -234,5 +281,12 @@ function onSubmit(): void {
 <style scoped>
 .hiprint-save-dialog__form {
   padding: 8px 0;
+}
+
+.hiprint-save-dialog__error {
+  color: #f5222d;
+  font-size: 12px;
+  margin-top: -4px;
+  margin-bottom: 8px;
 }
 </style>

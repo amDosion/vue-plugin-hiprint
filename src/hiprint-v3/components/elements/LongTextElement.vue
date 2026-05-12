@@ -34,7 +34,16 @@ import ElementWrapper from './ElementWrapper.vue'
 // TKT-024: getFormattedValue applies dataType + format conversion before the
 // formatter chain. computeDisplayText already routes through it for the
 // default (no-formatter) path.
-import { computeDisplayText, getFormattedValue, type Opts } from './_helpers'
+// TKT-340: computeTextWrapClasses for textContentWrap CSS class injection.
+// TKT-341: V1 `lHeight` (minimum element height) — when render output is
+// shorter than lHeight, the wrapper stretches to lHeight so consecutive
+// longText blocks keep aligned baselines (V1 quirk J.9).
+import {
+  computeDisplayText,
+  computeTextWrapClasses,
+  getFormattedValue,
+  type Opts,
+} from './_helpers'
 
 const props = withDefaults(
   defineProps<{
@@ -63,6 +72,58 @@ const indentPt = computed<number>(() => {
   const el = element.value
   if (!el) return 0
   return safeNumber((el.options as Opts).longTextIndent, { min: 0 })
+})
+
+/**
+ * TKT-341 (Sprint 22g wave 3) — V1 `lHeight` minimum-line-height.
+ *
+ * V1 ref: bundle.js 9818-9892 quirk J.9. When a longText element has
+ * `lHeight: N` set and the rendered content is shorter than N pt, V1
+ * stretched the wrapper to N pt so subsequent longText elements stayed
+ * baseline-aligned. TextPropertyPanel writes `lHeight` directly;
+ * LongTextPropertyPanel also accepts `minHeight` as a panel-friendly alias
+ * (see LongTextPropertyPanel.vue:121). V1 canonical key wins on collision.
+ *
+ * Returns 0 when no lHeight set, when value < 0, or when not a number.
+ */
+const minHeightPt = computed<number>(() => {
+  const el = element.value
+  if (!el) return 0
+  const opts = el.options as Opts
+  const raw = opts.lHeight ?? opts.minHeight
+  if (raw == null) return 0
+  return safeNumber(raw, { min: 0 })
+})
+
+/**
+ * TKT-340 (Sprint 22g wave 3) — CSS classes for textContentWrap on inner
+ * content div. Same machinery as TextElement. For longText, wrap behaviors
+ * mostly affect overflow/ellipsis semantics; default stays `pre-wrap`.
+ * V1 ref: bundle.js 4837-4844.
+ */
+const contentClassList = computed<string[]>(() => {
+  const el = element.value
+  if (!el) return ['hiprint-printElement-longText-content']
+  const wrap = computeTextWrapClasses(el.options as Opts)
+  return [
+    'hiprint-printElement-longText-content',
+    'hiprint-text-content-wrap',
+    ...wrap,
+  ]
+})
+
+/** Inline style: pre-wrap + optional minHeight floor (TKT-341). */
+const contentStyle = computed(() => {
+  const style: Record<string, string> = {
+    height: '100%',
+    width: '100%',
+    'white-space': 'pre-wrap',
+    overflow: 'hidden',
+  }
+  if (minHeightPt.value > 0) {
+    style.minHeight = minHeightPt.value + 'pt'
+  }
+  return style
 })
 
 const formatterHtml = computed<string | null>(() => {
@@ -167,8 +228,8 @@ defineExpose({ getPaginatedPages })
     :interactive="interactive"
   >
     <div
-      class="hiprint-printElement-longText-content"
-      style="height: 100%; width: 100%; white-space: pre-wrap; overflow: hidden;"
+      :class="contentClassList"
+      :style="contentStyle"
     >
       <span
         v-if="indentPt > 0"

@@ -97,4 +97,47 @@ describe('HtmlElement — by-design innerHTML (Invariant #2)', () => {
     expect(w.find('span.losing').exists()).toBe(false)
     w.unmount()
   })
+
+  // TKT-355 (html-side) — Sprint 22g GL Wave 3.
+  it('TKT-355: formatter returning null hides the inner content', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.html',
+      printElementType: { type: 'html' },
+      options: {
+        content: '<span class="should-not-render">x</span>',
+        formatter: () => null,
+      },
+    })
+    const w = mount(HtmlElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+    })
+    // The formatter returned null → element is hidden (visibility:hidden),
+    // and no content node (.should-not-render) leaks into the DOM.
+    expect(w.find('span.should-not-render').exists()).toBe(false)
+    const hidden = w.find('.hiprint-printElement-html-hidden')
+    expect(hidden.exists()).toBe(true)
+    expect((hidden.element as HTMLElement).getAttribute('aria-hidden')).toBe(
+      'true'
+    )
+    w.unmount()
+  })
+
+  it('TKT-355: formatter returning undefined also hides the element', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.html',
+      printElementType: { type: 'html' },
+      options: { formatter: () => undefined },
+    })
+    const w = mount(HtmlElement, {
+      props: { elementId: 'e1', panelId: 'p1', interactive: false },
+    })
+    expect(w.find('.hiprint-printElement-html-hidden').exists()).toBe(true)
+    w.unmount()
+  })
 })

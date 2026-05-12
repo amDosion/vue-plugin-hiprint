@@ -58,6 +58,10 @@ interface Props {
   title?: string
   /** Modal width in px. Default 700. */
   width?: number
+  /** Sprint 22g wave 3 — TKT-334 dialog-text opts (V1 13343-13345). */
+  emptyText?: string
+  loadingText?: string
+  errorText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -67,12 +71,24 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   title: '业务场景选择',
   width: 700,
+  emptyText: '暂无业务场景',
+  loadingText: '加载中...',
+  errorText: '业务场景加载失败',
 })
 
 const emit = defineEmits<{
   'update:open': [open: boolean]
-  /** User picked a business scenario. */
-  select: [item: BusinessItem]
+  /**
+   * User picked a business scenario.
+   * Sprint 22g wave 3 TKT-337 — V1 4-arg signature `(item, data, template, api)`.
+   * `data` defaults to `item.data` when present.
+   */
+  select: [
+    item: BusinessItem,
+    data?: unknown,
+    template?: unknown,
+    api?: unknown,
+  ]
   /** User clicked refresh. */
   refresh: []
   /** Closed without selection. */
@@ -128,7 +144,12 @@ function close(): void {
 }
 
 function pickItem(item: BusinessItem): void {
-  safeCall(() => emit('select', item), [], 'BusinessDialog.onSelect')
+  // TKT-337 — V1 4-arg emit signature `(item, data, template, api)`.
+  safeCall(
+    () => emit('select', item, item.data, undefined, undefined),
+    [],
+    'BusinessDialog.onSelect'
+  )
   emit('update:open', false)
 }
 
@@ -140,7 +161,6 @@ function onRefresh(): void {
 <template>
   <AModal
     :open="open"
-    :title="title"
     :width="width"
     :footer="null"
     :mask-closable="true"
@@ -150,6 +170,17 @@ function onRefresh(): void {
     @update:open="handleOpenChange"
     @cancel="close"
   >
+    <!--
+      TKT-415 — surface V1 title selector vocabulary on the projected slot
+      node. `hiprint-toolbar-business-title` is the V1 namespaced selector;
+      `hiprint-toolbar-template-title` is the shared family selector V1 E2E
+      suites use to reach any "toolbar dialog" title regardless of variant.
+    -->
+    <template #title>
+      <span
+        class="hiprint-business-dialog__title hiprint-toolbar-business-title hiprint-toolbar-template-title"
+      >{{ title }}</span>
+    </template>
     <div
       class="hiprint-business-dialog__body hiprint-toolbar-business-body hiprint-toolbar-template-body"
       :class="{
@@ -170,13 +201,13 @@ function onRefresh(): void {
         <AButton :loading="loading" @click="onRefresh">刷新</AButton>
       </div>
 
-      <ASpin :spinning="loading">
+      <ASpin :spinning="loading" :tip="loadingText">
         <div
           v-if="filteredItems.length === 0"
           class="hiprint-business-dialog__empty hiprint-toolbar-business-state hiprint-toolbar-template-state empty"
           role="status"
         >
-          {{ searchQuery ? '无匹配场景' : '暂无业务场景' }}
+          {{ searchQuery ? '无匹配场景' : emptyText }}
         </div>
 
         <!-- Grouped mode -->

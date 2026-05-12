@@ -30,6 +30,7 @@ import BarcodeElement from './BarcodeElement.vue'
 import QrcodeElement from './QrcodeElement.vue'
 import {
   computeDisplayText,
+  computeTextWrapClasses,
   getFormattedValue,
   isTrue,
   type Opts,
@@ -64,6 +65,19 @@ const element = computed(() => {
 })
 
 const displayText = computed(() => computeDisplayText(element.value, props.data))
+
+/**
+ * TKT-340 (Sprint 22g wave 3) — CSS class list for the inner content div.
+ * Always emits parent `.hiprint-text-content-wrap` so print-lock.css rules
+ * scope correctly; appends `.hiprint-text-content-wrap-{nowrap|clip|ellipsis}`
+ * when `options.textContentWrap` is set. V1 ref: bundle.js 4837-4844.
+ */
+const contentClassList = computed<string[]>(() => {
+  const el = element.value
+  if (!el) return ['hiprint-printElement-text-content']
+  const wrap = computeTextWrapClasses(el.options as Opts)
+  return ['hiprint-printElement-text-content', 'hiprint-text-content-wrap', ...wrap]
+})
 
 /**
  * TKT-023 — Detect V1 Path A `options.textType`. Returns `'barcode'` /
@@ -222,7 +236,7 @@ function cancelEdit(): void {
   >
     <template #default>
       <div
-        class="hiprint-printElement-text-content"
+        :class="contentClassList"
         style="height: 100%; width: 100%"
         @dblclick="startEdit"
       >

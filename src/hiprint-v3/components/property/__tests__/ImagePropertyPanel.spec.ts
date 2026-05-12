@@ -122,6 +122,81 @@ describe('ImagePropertyPanel — field changes', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Sprint 22g wave 3 (Stream GL) — TKT-361 file picker tests.
+// ---------------------------------------------------------------------------
+
+describe('ImagePropertyPanel — TKT-361 file picker', () => {
+  it('renders the file picker <input type=file accept=image/*>', async () => {
+    const { getElement } = seedImage()
+    const w = mount(ImagePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const picker = w.find('input.img-file-pick')
+    expect(picker.exists()).toBe(true)
+    expect((picker.element as HTMLInputElement).type).toBe('file')
+    expect(picker.attributes('accept')).toBe('image/*')
+    w.unmount()
+  })
+
+  it('reads a picked image as data: URL and writes to options.src', async () => {
+    const { getElement } = seedImage()
+    const w = mount(ImagePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+
+    // Build a fake image File. happy-dom's FileReader returns a real
+    // data: URL synchronously after the onload event.
+    const file = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47])],
+      'logo.png',
+      { type: 'image/png' }
+    )
+    const picker = w.find('input.img-file-pick')
+    // Patch the file-picker element's files property + trigger change.
+    Object.defineProperty(picker.element, 'files', {
+      configurable: true,
+      get: () => [file] as unknown as FileList,
+    })
+    await picker.trigger('change')
+
+    // Wait one macrotask for FileReader to fire its async onload.
+    await new Promise((r) => setTimeout(r, 50))
+
+    const next = getOpts(getElement()).src
+    expect(typeof next).toBe('string')
+    expect(String(next).startsWith('data:image/png')).toBe(true)
+    w.unmount()
+  })
+
+  it('rejects non-image MIME types without writing options.src', async () => {
+    const { getElement } = seedImage()
+    const w = mount(ImagePropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const initialSrc = getOpts(getElement()).src
+
+    // PDF file: should be rejected upstream of the FileReader.
+    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], 'doc.pdf', {
+      type: 'application/pdf',
+    })
+    const picker = w.find('input.img-file-pick')
+    Object.defineProperty(picker.element, 'files', {
+      configurable: true,
+      get: () => [file] as unknown as FileList,
+    })
+    await picker.trigger('change')
+    await new Promise((r) => setTimeout(r, 25))
+
+    // Source URL untouched.
+    expect(getOpts(getElement()).src).toBe(initialSrc)
+    w.unmount()
+  })
+})
+
 describe('ImagePropertyPanel — aspect ratio lock', () => {
   it('width change rescales height when aspectRatioLock=true', async () => {
     const { getElement } = seedImage({

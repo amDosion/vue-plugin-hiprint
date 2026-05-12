@@ -184,3 +184,80 @@ describe('TemplateDialog — refresh + empty', () => {
     w.unmount()
   })
 })
+
+// ============ Sprint 22g wave 3 — TKT-334/336/337 ============
+
+describe('TemplateDialog — TKT-336 preview action', () => {
+  it('emits `preview` when allowPreview=true and preview action clicked', async () => {
+    const w = mountDialog({
+      items: [{ id: 1, name: 'Sample' }],
+      allowPreview: true,
+    })
+    await flushPromises()
+    const previewBtn = document.querySelector(
+      '[data-action="preview"]'
+    ) as HTMLElement
+    expect(previewBtn).toBeTruthy()
+    previewBtn.click()
+    await flushPromises()
+    expect(w.emitted('preview')).toBeTruthy()
+    expect((w.emitted('preview') as unknown[][])[0]?.[0]).toMatchObject({
+      id: 1,
+      name: 'Sample',
+    })
+    // Card click should NOT have fired select (propagation stopped).
+    expect(w.emitted('select')).toBeFalsy()
+    w.unmount()
+  })
+
+  it('hides preview action when allowPreview=false (default)', async () => {
+    const w = mountDialog({
+      items: [{ id: 1, name: 'Sample' }],
+      allowEdit: true,
+    })
+    await flushPromises()
+    expect(document.querySelector('[data-action="preview"]')).toBeNull()
+    expect(document.querySelector('[data-action="edit"]')).toBeTruthy()
+    w.unmount()
+  })
+})
+
+describe('TemplateDialog — TKT-337 select emit V1 4-arg signature', () => {
+  it('forwards (item, json, undefined, undefined)', async () => {
+    const w = mountDialog({
+      items: [
+        {
+          id: 1,
+          name: 'Sample',
+          data: { panels: [{ index: 0, width: 0, height: 0, printElements: [] }] },
+        },
+      ],
+    })
+    await flushPromises()
+    // Click card → emits select with V1 4-arg shape.
+    const card = document.querySelector(
+      '.hiprint-template-dialog__card'
+    ) as HTMLElement
+    card.click()
+    await flushPromises()
+    const events = w.emitted('select') as unknown[][]
+    expect(events).toBeTruthy()
+    const args = events[0] as unknown[]
+    expect(args.length).toBe(4)
+    expect(args[0]).toMatchObject({ id: 1, name: 'Sample' })
+    expect(args[1]).toMatchObject({ panels: expect.any(Array) })
+    expect(args[2]).toBeUndefined()
+    expect(args[3]).toBeUndefined()
+    w.unmount()
+  })
+})
+
+describe('TemplateDialog — TKT-334 emptyText / loadingText overrides', () => {
+  it('overrides empty text via emptyText prop', async () => {
+    const w = mountDialog({ items: [], emptyText: 'No templates yet' })
+    await flushPromises()
+    const empty = document.querySelector('.hiprint-template-dialog__empty')
+    expect(empty?.textContent).toContain('No templates yet')
+    w.unmount()
+  })
+})
