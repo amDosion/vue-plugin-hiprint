@@ -349,10 +349,22 @@ defineExpose({
         :key="el.id"
         class="hiprint-el-list-row"
         :class="{
+          /* TKT-250 — co-emit BEM + V1 legacy state classes so business CSS
+             keyed to either selector vocabulary still fires. V1 inventory
+             §1.8 line 1856: `.hiprint-el-list-row.selected-el`. The V1
+             `.selected` shorthand is also co-emitted for callers that
+             override generic state-class CSS at the element level. */
           'selected-el': selectedIds.has(el.id),
+          selected: selectedIds.has(el.id),
           'hidden-el': isHidden(el),
+          /* V1 inventory §1.16 line 4180: `.alwaysHide` is the V1 legacy
+             name for hidden elements. Mirrored here so caller .alwaysHide
+             overrides still apply to list rows. */
+          alwaysHide: isHidden(el),
           'is-dragging': draggingId === el.id,
+          dragging: draggingId === el.id,
           'is-drop-target': dropTargetId === el.id && draggingId !== el.id,
+          /* `.is-drop-target` has no V1 equivalent (V3-only). */
         }"
         :data-element-id="el.id"
         draggable="true"
@@ -400,10 +412,10 @@ defineExpose({
   left: 10px;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  background: #409eff;
+  border-radius: var(--hiprint-radius-circle, 50%);
+  background: var(--hiprint-selection-outline, #409eff);
   color: #fff;
-  border: 1px solid #2080d6;
+  border: 1px solid var(--hiprint-selected-row-border, #2080d6);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -414,7 +426,7 @@ defineExpose({
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 .hiprint-el-list-toggle:hover {
-  background: #2080d6;
+  filter: brightness(0.92);
 }
 
 .hiprint-el-list-panel {
@@ -425,13 +437,13 @@ defineExpose({
   max-height: calc(100% - 20px);
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid #d6d6d6;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background: var(--hiprint-bg, #fff);
+  border: 1px solid var(--hiprint-border, #d6d6d6);
+  border-radius: var(--hiprint-radius, 4px);
+  box-shadow: var(--hiprint-shadow, 0 2px 8px rgba(0, 0, 0, 0.12));
   z-index: 50;
   font-size: 12px;
-  color: #222;
+  color: var(--hiprint-fg, #222);
 }
 
 .hiprint-el-list-panel-header {
@@ -439,11 +451,11 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--hiprint-border-soft, #eee);
   font-weight: 600;
-  background: #fafafa;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+  background: var(--hiprint-bg-toolbar, #fafafa);
+  border-top-left-radius: var(--hiprint-radius, 4px);
+  border-top-right-radius: var(--hiprint-radius, 4px);
 }
 
 .hiprint-el-list-panel-title {
@@ -452,8 +464,8 @@ defineExpose({
 
 .el-count {
   flex: 0 0 auto;
-  background: #eee;
-  color: #555;
+  background: var(--hiprint-border-soft, #eee);
+  color: var(--hiprint-fg-label, #555);
   border-radius: 10px;
   padding: 1px 6px;
   font-size: 11px;
@@ -469,16 +481,16 @@ defineExpose({
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
-  color: #666;
+  color: var(--hiprint-fg-muted, #666);
 }
 .hiprint-el-list-panel-close:hover {
-  color: #f56c6c;
+  color: var(--hiprint-danger, #f56c6c);
 }
 
 .hiprint-el-list-empty {
   padding: 16px;
   text-align: center;
-  color: #999;
+  color: var(--hiprint-fg-disabled, #999);
 }
 
 .hiprint-el-list-panel-body {
@@ -497,21 +509,30 @@ defineExpose({
   user-select: none;
 }
 .hiprint-el-list-row:hover {
-  background: #f5f7fa;
+  background: var(--hiprint-bg-row-hover, #f5f7fa);
 }
-.hiprint-el-list-row.selected-el {
-  background: #e3f2fd;
-  border-left-color: #2196f3;
+/* TKT-250 / TKT-251 — co-emit V1 `.selected` shorthand and use design tokens.
+ * V1 inventory §1.8 line 1856: `.hiprint-el-list-row.selected-el`. We co-emit
+ * `.selected` so caller CSS that targets the element-level selection class
+ * fires here too. */
+.hiprint-el-list-row.selected-el,
+.hiprint-el-list-row.selected {
+  background: var(--hiprint-selected-row-bg, #e3f2fd);
+  border-left-color: var(--hiprint-selected-row-border, #2196f3);
 }
-.hiprint-el-list-row.hidden-el {
+/* TKT-250 — co-emit V1 legacy `.alwaysHide` (bundle.js:4180). */
+.hiprint-el-list-row.hidden-el,
+.hiprint-el-list-row.alwaysHide {
   opacity: 0.5;
 }
-.hiprint-el-list-row.is-dragging {
+/* TKT-250 — match both BEM + V1 legacy state classes (see :class binding). */
+.hiprint-el-list-row.is-dragging,
+.hiprint-el-list-row.dragging {
   opacity: 0.35;
 }
 .hiprint-el-list-row.is-drop-target {
-  background: #fff8e1;
-  border-top: 1px dashed #f59e0b;
+  background: var(--hiprint-drop-target-bg, #fff8e1);
+  border-top: 1px dashed var(--hiprint-drop-target-border, #f59e0b);
 }
 
 .hiprint-el-list-row-title {

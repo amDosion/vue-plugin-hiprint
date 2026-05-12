@@ -146,6 +146,7 @@ function onRefresh(): void {
     :footer="null"
     :mask-closable="true"
     class="hiprint-template-dialog"
+    wrap-class-name="hiprint-toolbar-template-dialog-wrap"
     @update:open="handleOpenChange"
     @cancel="close"
   >

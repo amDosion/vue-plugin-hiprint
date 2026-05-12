@@ -194,6 +194,16 @@ interface Props {
   // ---- Panel manager opts ----
   panelManagerLabel?: string
   addPanelButtonText?: string
+  /**
+   * TKT-254 — V1 parity option: choose between V3's chip switcher (default)
+   * and V1's classic `<select>` dropdown. Set to `'select'` for documents
+   * with many panels where chips overflow horizontally.
+   *
+   * - `'chips'` (default, V3): rounded-pill buttons, `aria-pressed` reflects
+   *   active. Cleanest for ≤ 8 panels.
+   * - `'select'` (V1): single `<select>` dropdown. Compact, scales to N panels.
+   */
+  panelManagerMode?: 'chips' | 'select'
   // ---- Extra buttons ----
   extraButtons?: readonly ToolbarExtraButton[]
   extraPosition?: 'start' | 'end'
@@ -296,6 +306,7 @@ const props = withDefaults(defineProps<Props>(), {
   onBusinessSelectClick: undefined,
   panelManagerLabel: '',
   addPanelButtonText: '+',
+  panelManagerMode: 'chips',
   extraButtons: () => [],
   extraPosition: 'end',
   // Sprint 22c TKT-042/043 imperative overrides — empty by default so V3
@@ -983,9 +994,11 @@ defineExpose({
 
     <!-- TB-003: Panel manager chip list (replaces the V3 P21 <select>) — each
          chip is a button with aria-pressed reflecting active state for AT
-         users. Renders only when at least one panel exists. -->
+         users. Renders only when at least one panel exists.
+         TKT-254: when panelManagerMode='select', render the V1-style <select>
+         dropdown instead (compact for many-panel docs). -->
     <span
-      v-if="showPanelManager && canvas.panels.length > 0"
+      v-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'chips'"
       class="hiprint-toolbar-panel-chips"
       role="group"
       aria-label="Active panel"
@@ -998,13 +1011,46 @@ defineExpose({
         :key="p.id"
         type="button"
         class="hiprint-toolbar-chip"
-        :class="{ 'is-active': p.id === canvas.activePanelId }"
+        :class="{
+          'is-active': p.id === canvas.activePanelId,
+          active: p.id === canvas.activePanelId,
+        }"
         :aria-pressed="p.id === canvas.activePanelId"
         @click="handleSwitchPanel(i)"
       >
         {{ p.name || (i + 1) }}
       </button>
     </span>
+    <!-- TKT-254 — V1-parity <select> panel switcher. Single dropdown with
+         all panels; selecting an option switches the active panel. Uses the
+         panel index as option value so the @change handler can look it up
+         deterministically (handleSwitchPanel takes an index). -->
+    <label
+      v-else-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'select'"
+      class="hiprint-toolbar-panel-manager"
+    >
+      <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
+        {{ panelManagerLabel }}
+      </span>
+      <select
+        class="hiprint-toolbar-select hiprint-toolbar-panel-select"
+        aria-label="Active panel"
+        :value="canvas.panels.findIndex((p) => p.id === canvas.activePanelId)"
+        @change="
+          handleSwitchPanel(
+            Number(($event.target as HTMLSelectElement).value)
+          )
+        "
+      >
+        <option
+          v-for="(p, i) in canvas.panels"
+          :key="p.id"
+          :value="i"
+        >
+          {{ p.name || (i + 1) }}
+        </option>
+      </select>
+    </label>
 
     <!-- Sprint 22a-r TKT-012: TB-006 inline pagination bar removed. V1 has no
          toolbar pagination — panel chip switcher (TB-003 above) is the only
@@ -1074,7 +1120,7 @@ defineExpose({
       v-if="isShown('gridToggle')"
       type="button"
       class="hiprint-toolbar-btn"
-      :class="{ 'is-active': gridVisible }"
+      :class="{ 'is-active': gridVisible, active: gridVisible }"
       :aria-pressed="gridVisible"
       aria-label="Toggle grid"
       @click="handleToggleGrid"
@@ -1086,7 +1132,7 @@ defineExpose({
       v-if="isShown('rulerToggle')"
       type="button"
       class="hiprint-toolbar-btn"
-      :class="{ 'is-active': rulerVisible }"
+      :class="{ 'is-active': rulerVisible, active: rulerVisible }"
       :aria-pressed="rulerVisible"
       aria-label="Toggle ruler"
       @click="handleToggleRuler"
@@ -1131,8 +1177,8 @@ defineExpose({
   align-items: center;
   gap: 4px;
   padding: 8px;
-  background: #fafafa;
-  border-bottom: 1px solid #e5e5e5;
+  background: var(--hiprint-bg-toolbar, #fafafa);
+  border-bottom: 1px solid var(--hiprint-divider, #e5e5e5);
   font-size: 12px;
   user-select: none;
 }
@@ -1143,10 +1189,10 @@ defineExpose({
   gap: 4px;
   padding: 4px 8px;
   height: 28px;
-  background: #fff;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  color: #333;
+  background: var(--hiprint-bg, #fff);
+  border: 1px solid var(--hiprint-border, #d9d9d9);
+  border-radius: var(--hiprint-radius, 4px);
+  color: var(--hiprint-fg, #333);
   cursor: pointer;
   font: inherit;
   line-height: 1;
@@ -1154,12 +1200,12 @@ defineExpose({
 }
 
 .hiprint-toolbar-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-  border-color: #b3b3b3;
+  background: var(--hiprint-bg-hover, #f0f0f0);
+  border-color: var(--hiprint-border-hover, #b3b3b3);
 }
 
 .hiprint-toolbar-btn:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
   outline-offset: 1px;
 }
 
@@ -1168,17 +1214,46 @@ defineExpose({
   cursor: not-allowed;
 }
 
-.hiprint-toolbar-btn.is-active {
-  background: #e6f4ff;
-  border-color: #409eff;
-  color: #1677ff;
+/* TKT-250 / TKT-251 — active-state co-emits both `.is-active` (BEM-style)
+ * and `.active` (V1 legacy) so business CSS keyed to either selector still
+ * fires. See V1-INVENTORY/styles.md §1.7 + parity matrix §G. */
+.hiprint-toolbar-btn.is-active,
+.hiprint-toolbar-btn.active {
+  background: var(--hiprint-selection-bg, #e6f4ff);
+  border-color: var(--hiprint-selection-outline, #409eff);
+  color: var(--hiprint-primary, #1677ff);
+}
+
+/* TKT-258 — primary / danger button variants (V1 §1.7). Caller can flip a
+ * toolbar button into primary or danger styling via `className` on extra
+ * buttons — these classes are public-API and stable. */
+.hiprint-toolbar-btn-primary,
+.hiprint-toolbar-btn.hiprint-toolbar-btn-primary {
+  background: var(--hiprint-primary, #1677ff);
+  border-color: var(--hiprint-primary, #1677ff);
+  color: #fff;
+}
+.hiprint-toolbar-btn-primary:hover:not(:disabled),
+.hiprint-toolbar-btn.hiprint-toolbar-btn-primary:hover:not(:disabled) {
+  background: var(--hiprint-primary-hover, #4096ff);
+  border-color: var(--hiprint-primary-hover, #4096ff);
+}
+.hiprint-toolbar-btn-danger,
+.hiprint-toolbar-btn.hiprint-toolbar-btn-danger {
+  background: var(--hiprint-danger, #ff4d4f);
+  border-color: var(--hiprint-danger, #ff4d4f);
+  color: #fff;
+}
+.hiprint-toolbar-btn-danger:hover:not(:disabled),
+.hiprint-toolbar-btn.hiprint-toolbar-btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 .hiprint-toolbar-sep {
   display: inline-block;
   width: 1px;
   height: 18px;
-  background: #d9d9d9;
+  background: var(--hiprint-border, #d9d9d9);
   margin: 0 4px;
 }
 
@@ -1205,45 +1280,47 @@ defineExpose({
 
 .hiprint-toolbar-chip {
   padding: 2px 10px;
-  border: 1px solid #d9d9d9;
-  background: #fff;
+  border: 1px solid var(--hiprint-border, #d9d9d9);
+  background: var(--hiprint-bg, #fff);
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: var(--hiprint-radius-chip, 12px);
   font: inherit;
-  color: #333;
+  color: var(--hiprint-fg, #333);
   line-height: 1.6;
 }
 
 .hiprint-toolbar-chip:hover {
-  background: #f0f0f0;
+  background: var(--hiprint-bg-hover, #f0f0f0);
 }
 
 .hiprint-toolbar-chip:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
   outline-offset: 1px;
 }
 
-.hiprint-toolbar-chip.is-active {
-  background: #1677ff;
+/* TKT-250 — co-emit BEM (`.is-active`) and V1 legacy (`.active`). */
+.hiprint-toolbar-chip.is-active,
+.hiprint-toolbar-chip.active {
+  background: var(--hiprint-primary, #1677ff);
   color: #fff;
-  border-color: #1677ff;
+  border-color: var(--hiprint-primary, #1677ff);
 }
 
 .hiprint-toolbar-label {
-  color: #666;
+  color: var(--hiprint-fg-muted, #666);
 }
 
 .hiprint-toolbar-select {
   height: 28px;
   padding: 0 6px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  background: #fff;
+  border: 1px solid var(--hiprint-border, #d9d9d9);
+  border-radius: var(--hiprint-radius, 4px);
+  background: var(--hiprint-bg, #fff);
   font: inherit;
 }
 
 .hiprint-toolbar-select:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
   outline-offset: 1px;
 }
 </style>

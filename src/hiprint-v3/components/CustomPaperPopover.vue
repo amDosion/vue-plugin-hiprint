@@ -66,7 +66,7 @@ function close(): void {
 <template>
   <div
     v-if="open"
-    class="hiprint-custom-paper-popover"
+    class="hiprint-custom-paper-popover hiprint-toolbar-custom-paper-dialog-wrap"
     role="dialog"
     aria-label="Custom paper size"
     @click.stop

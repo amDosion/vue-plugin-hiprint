@@ -418,6 +418,12 @@ export interface BuildToolbarOptions {
   panelManagerLabel?: string | undefined
   /** Add-page button text. V1 13359 default `'+'`. */
   addPanelButtonText?: string | undefined
+  /**
+   * TKT-254 — Choose panel switcher rendering.
+   * - `'chips'` (default, V3): rounded-pill button list with aria-pressed.
+   * - `'select'` (V1 classic): single `<select>` dropdown, compact for many panels.
+   */
+  panelManagerMode?: 'chips' | 'select' | undefined
 
   // ============ Section I: extras + buttons override (V1 13387-13388, 14368) ============
 
@@ -774,6 +780,8 @@ export function buildToolbar(
     templateButtonText: options.templateButtonText,
     panelManagerLabel: options.panelManagerLabel,
     addPanelButtonText: options.addPanelButtonText,
+    // TKT-254: panel switcher mode passes through to the SFC.
+    panelManagerMode: options.panelManagerMode,
     // Sprint 22d TKT-158: alignItems retained on options for V1 compat but
     // no longer forwarded to the SFC.
   } as const

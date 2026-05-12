@@ -20,6 +20,13 @@
  * @see docs/adr/0011-v3-modern-ui-architecture.md
  */
 
+// TKT-251 / TKT-252 — install design-token CSS variables + V1 theme override.
+// Side-effect import keeps the variables in the bundle so any V3 SFC using
+// `var(--hiprint-...)` resolves regardless of import order.
+import './styles'
+
+export { V1_THEME_CLASS, THEME_DATA_ATTR } from './styles'
+
 export const V3_VERSION = '0.1.0-alpha.0' as const
 
 export type V3PhaseStatus = {

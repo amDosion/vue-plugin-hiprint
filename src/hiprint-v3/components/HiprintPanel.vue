@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
   margin: 8pt;
 }
 .hiprint-printPanel--active .hiprint-printPaper {
-  outline: 1px solid #409eff;
+  outline: 1px solid var(--hiprint-selection-outline, #409eff);
   outline-offset: 2pt;
 }
 .hiprint-printPanel--readonly .hiprint-printPaper {
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
   bottom: 4pt;
   right: 4pt;
   font-size: 9pt;
-  color: #999;
+  color: var(--hiprint-fg-disabled, #999);
   pointer-events: none;
   user-select: none;
   line-height: 1;

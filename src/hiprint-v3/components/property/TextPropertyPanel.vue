@@ -558,7 +558,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-italic"
-          :class="{ 'is-active': opts.fontStyle === 'italic' }"
+          :class="{ 'is-active': opts.fontStyle === 'italic', active: opts.fontStyle === 'italic' }"
           :aria-pressed="opts.fontStyle === 'italic'"
           @click="toggleItalic"
         >
@@ -567,7 +567,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-underline"
-          :class="{ 'is-active': opts.textDecoration === 'underline' }"
+          :class="{ 'is-active': opts.textDecoration === 'underline', active: opts.textDecoration === 'underline' }"
           :aria-pressed="opts.textDecoration === 'underline'"
           @click="toggleUnderline"
         >
@@ -583,7 +583,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-align-left"
-          :class="{ 'is-active': opts.textAlign === 'left' }"
+          :class="{ 'is-active': opts.textAlign === 'left', active: opts.textAlign === 'left' }"
           @click="onTextAlign('left')"
         >
           ⊣ L
@@ -591,7 +591,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-align-center"
-          :class="{ 'is-active': opts.textAlign === 'center' }"
+          :class="{ 'is-active': opts.textAlign === 'center', active: opts.textAlign === 'center' }"
           @click="onTextAlign('center')"
         >
           ☰ C
@@ -599,7 +599,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-align-right"
-          :class="{ 'is-active': opts.textAlign === 'right' }"
+          :class="{ 'is-active': opts.textAlign === 'right', active: opts.textAlign === 'right' }"
           @click="onTextAlign('right')"
         >
           ⊢ R
@@ -607,7 +607,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-align-justify"
-          :class="{ 'is-active': opts.textAlign === 'justify' }"
+          :class="{ 'is-active': opts.textAlign === 'justify', active: opts.textAlign === 'justify' }"
           @click="onTextAlign('justify')"
         >
           ≡ J
@@ -617,7 +617,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-valign-top"
-          :class="{ 'is-active': opts.textContentVerticalAlign === 'top' }"
+          :class="{ 'is-active': opts.textContentVerticalAlign === 'top', active: opts.textContentVerticalAlign === 'top' }"
           @click="onVAlign('top')"
         >
           ⊤ T
@@ -625,7 +625,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-valign-middle"
-          :class="{ 'is-active': opts.textContentVerticalAlign === 'middle' }"
+          :class="{ 'is-active': opts.textContentVerticalAlign === 'middle', active: opts.textContentVerticalAlign === 'middle' }"
           @click="onVAlign('middle')"
         >
           ☱ M
@@ -633,7 +633,7 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
         <button
           type="button"
           class="hiprint-property-toggle tx-valign-bottom"
-          :class="{ 'is-active': opts.textContentVerticalAlign === 'bottom' }"
+          :class="{ 'is-active': opts.textContentVerticalAlign === 'bottom', active: opts.textContentVerticalAlign === 'bottom' }"
           @click="onVAlign('bottom')"
         >
           ⊥ B
@@ -1184,9 +1184,11 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
   outline: 2px solid #409eff;
   outline-offset: 1px;
 }
-.hiprint-property-toggle.is-active {
-  background: #e6f4ff;
-  border-color: #409eff;
-  color: #1677ff;
+/* TKT-250 / TKT-251 — co-emit V1 `.active` and use design tokens. */
+.hiprint-property-toggle.is-active,
+.hiprint-property-toggle.active {
+  background: var(--hiprint-selection-bg, #e6f4ff);
+  border-color: var(--hiprint-selection-outline, #409eff);
+  color: var(--hiprint-primary, #1677ff);
 }
 </style>

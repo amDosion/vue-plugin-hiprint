@@ -539,7 +539,7 @@ function onDraggable(ev: Event): void {
         <button
           type="button"
           class="hiprint-property-toggle lt-align-left"
-          :class="{ 'is-active': opts.textAlign === 'left' }"
+          :class="{ 'is-active': opts.textAlign === 'left', active: opts.textAlign === 'left' }"
           @click="onTextAlign('left')"
         >
           ⊣ L
@@ -547,7 +547,7 @@ function onDraggable(ev: Event): void {
         <button
           type="button"
           class="hiprint-property-toggle lt-align-center"
-          :class="{ 'is-active': opts.textAlign === 'center' }"
+          :class="{ 'is-active': opts.textAlign === 'center', active: opts.textAlign === 'center' }"
           @click="onTextAlign('center')"
         >
           ☰ C
@@ -555,7 +555,7 @@ function onDraggable(ev: Event): void {
         <button
           type="button"
           class="hiprint-property-toggle lt-align-right"
-          :class="{ 'is-active': opts.textAlign === 'right' }"
+          :class="{ 'is-active': opts.textAlign === 'right', active: opts.textAlign === 'right' }"
           @click="onTextAlign('right')"
         >
           ⊢ R
@@ -563,7 +563,7 @@ function onDraggable(ev: Event): void {
         <button
           type="button"
           class="hiprint-property-toggle lt-align-justify"
-          :class="{ 'is-active': opts.textAlign === 'justify' }"
+          :class="{ 'is-active': opts.textAlign === 'justify', active: opts.textAlign === 'justify' }"
           @click="onTextAlign('justify')"
         >
           ≡ J
@@ -990,9 +990,11 @@ function onDraggable(ev: Event): void {
   outline: 2px solid #409eff;
   outline-offset: 1px;
 }
-.hiprint-property-toggle.is-active {
-  background: #e6f4ff;
-  border-color: #409eff;
-  color: #1677ff;
+/* TKT-250 / TKT-251 — co-emit V1 `.active` and use design tokens. */
+.hiprint-property-toggle.is-active,
+.hiprint-property-toggle.active {
+  background: var(--hiprint-selection-bg, #e6f4ff);
+  border-color: var(--hiprint-selection-outline, #409eff);
+  color: var(--hiprint-primary, #1677ff);
 }
 </style>

@@ -231,7 +231,7 @@ function cancelEdit(): void {
           v-if="isEditing"
           ref="inputEl"
           v-model="draftValue"
-          class="hiprint-text-inline-edit"
+          class="hiprint-text-inline-edit is-editing editing"
           @blur="commitEdit"
           @keydown.enter.prevent="commitEdit"
           @keydown.esc.prevent="cancelEdit"
@@ -247,10 +247,15 @@ function cancelEdit(): void {
 </template>
 
 <style scoped>
-.hiprint-text-inline-edit {
+/* TKT-250 / TKT-251 — inline editor; co-emit V1 legacy `.editing` (V1
+ * inventory §1.16 line 764) on top of BEM `.is-editing`. Color uses the
+ * design token for theme compatibility. */
+.hiprint-text-inline-edit,
+.hiprint-text-inline-edit.is-editing,
+.hiprint-text-inline-edit.editing {
   width: 100%;
   height: 100%;
-  border: 1px solid #409eff;
+  border: 1px solid var(--hiprint-selection-outline, #409eff);
   outline: none;
   padding: 0 2px;
   font: inherit;

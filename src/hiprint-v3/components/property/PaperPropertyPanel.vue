@@ -259,7 +259,7 @@ function onNameCommit(): void {
         <button
           type="button"
           class="hiprint-property-toggle"
-          :class="{ 'is-active': !isLandscape }"
+          :class="{ 'is-active': !isLandscape, active: !isLandscape }"
           @click="onOrientation('portrait')"
         >
           Portrait
@@ -267,7 +267,7 @@ function onNameCommit(): void {
         <button
           type="button"
           class="hiprint-property-toggle"
-          :class="{ 'is-active': isLandscape }"
+          :class="{ 'is-active': isLandscape, active: isLandscape }"
           @click="onOrientation('landscape')"
         >
           Landscape
@@ -543,9 +543,11 @@ function onNameCommit(): void {
   font: inherit;
   color: #333;
 }
-.hiprint-property-toggle.is-active {
-  background: #e6f4ff;
-  border-color: #409eff;
-  color: #1677ff;
+/* TKT-250 / TKT-251 — co-emit V1 `.active` and use design tokens. */
+.hiprint-property-toggle.is-active,
+.hiprint-property-toggle.active {
+  background: var(--hiprint-selection-bg, #e6f4ff);
+  border-color: var(--hiprint-selection-outline, #409eff);
+  color: var(--hiprint-primary, #1677ff);
 }
 </style>

@@ -361,6 +361,8 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             'hiprint-property-toggle',
             'layer-tab',
             li === safeActiveLayerIdx ? 'is-active' : null,
+            // TKT-250 — co-emit V1 legacy `.active` for caller CSS.
+            li === safeActiveLayerIdx ? 'active' : null,
           ]"
           @click="setActiveLayer(li)"
         >
@@ -671,8 +673,10 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
   align-items: center;
   gap: 4px;
 }
-.hiprint-table-layer-tabs .layer-tab.is-active {
-  background: #e6f7ff;
+/* TKT-250 — co-emit V1 `.active` alongside BEM `.is-active`. */
+.hiprint-table-layer-tabs .layer-tab.is-active,
+.hiprint-table-layer-tabs .layer-tab.active {
+  background: var(--hiprint-selection-bg, #e6f7ff);
   border-color: #91d5ff;
   font-weight: 600;
 }

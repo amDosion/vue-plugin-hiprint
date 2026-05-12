@@ -54,6 +54,51 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 > - 如需提交 PR 请前往 github 合并后可自动发布 npm 包并同步代码到 gitee
 > - vue-plugin-hiprint 包不包含 UI 界面,需要自行处理。如果想更快速引入请查看 [sv-print 组件库](https://www.ibujian.cn/svp/)
 
+## 快速开始 (Quick Start)
+
+> 5 分钟跑通最小 demo。完整文档见 [docs/QUICK-START.md](./docs/QUICK-START.md)。
+> 从 v1.x 升级到 v2.0.0(V3) 看 [docs/upgrade-to-v3.md](./docs/upgrade-to-v3.md)。
+
+```bash
+npm install vue-plugin-hiprint
+```
+
+最小 V3 reactive 设计器:
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import {
+  HiprintDesigner,
+  useHiprintRuntime,
+  defaultElementTypeProvider,
+} from 'vue-plugin-hiprint/v3'
+
+useHiprintRuntime({
+  providers: [new defaultElementTypeProvider()],
+  autoInit: true,
+})
+
+const templateJson = ref({
+  panels: [{ width: 210, height: 297, paperType: 'A4', printElements: [] }],
+})
+</script>
+
+<template>
+  <HiprintDesigner :template="templateJson" :history="true" />
+</template>
+```
+
+贡献者本地启动:
+
+```bash
+# macOS / Linux / Git Bash
+./setup.sh
+
+# Windows PowerShell
+./setup.ps1
+```
+
 ## 安装使用
 
 ```

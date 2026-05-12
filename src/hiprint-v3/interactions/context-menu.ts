@@ -136,6 +136,10 @@ const HiprintContextMenu = defineComponent<MenuComponentProps>({
       position: 'absolute',
       top: '0px',
       left: '0px',
+      // TKT-253: ensure z-index is set from initial render — even before
+      // computePosition resolves the menu is already in the correct stacking
+      // tier in case anything inspects it synchronously after mount.
+      zIndex: String(CONTEXT_MENU_Z_INDEX),
       visibility: 'hidden',
     })
 
@@ -168,6 +172,9 @@ const HiprintContextMenu = defineComponent<MenuComponentProps>({
           position: 'absolute',
           top: `${y}px`,
           left: `${x}px`,
+          // TKT-253: pin z-index 10000 so the menu always stacks above
+          // ant-design Modal / Popover / Drawer (default 1000-1030).
+          zIndex: String(CONTEXT_MENU_Z_INDEX),
           visibility: 'visible',
         }
       } catch (err) {
@@ -178,6 +185,7 @@ const HiprintContextMenu = defineComponent<MenuComponentProps>({
           position: 'absolute',
           top: `${props.anchorPoint.y}px`,
           left: `${props.anchorPoint.x}px`,
+          zIndex: String(CONTEXT_MENU_Z_INDEX),
           visibility: 'visible',
         }
       }
@@ -232,7 +240,11 @@ const HiprintContextMenu = defineComponent<MenuComponentProps>({
             key: item.id,
             class: [
               'hiprint-context-menu-item',
+              // TKT-250 — co-emit BEM `.is-disabled` AND V1 legacy `.disabled`
+              // so business CSS keyed to either selector still applies (V1
+              // inventory §1.10 line 200 used `.hiprint-ctx-menu-item.disabled`).
               item.disabled ? 'is-disabled' : null,
+              item.disabled ? 'disabled' : null,
               item.icon ? `has-icon icon-${item.icon}` : null,
             ],
             // P14 R3: safeCall via parent (onPick wraps onClick + onSelect).
@@ -278,12 +290,30 @@ const HiprintContextMenu = defineComponent<MenuComponentProps>({
  * Open a context menu anchored to a screen point (e.g. mouse coords).
  * Returns a controller; call `controller.close()` to dismiss.
  */
+/**
+ * TKT-253 — V1 parity: V1 set the context menu z-index to 10000 so it always
+ * stacked above ant-design Modal (z=1000), Popover (z=1030), and other
+ * overlays. V3's @floating-ui/vue body-portal otherwise relies on natural
+ * stacking order and silently goes UNDER modals.
+ *
+ * We pin both the portal root AND the inner menu via inline style so neither
+ * a host stylesheet nor scoped CSS specificity can knock it back down.
+ */
+const CONTEXT_MENU_Z_INDEX = 10000
+
 export function openContextMenu(
   anchorPoint: { x: number; y: number },
   options: ContextMenuOptions
 ): ContextMenuController {
   const portal = document.createElement('div')
   portal.className = 'hiprint-context-menu-portal'
+  // TKT-253: force z-index on the portal root. The menu DOM lives inside; the
+  // portal itself is the stacking context anchor — pin both via inline style
+  // for defense-in-depth (CSS rule below covers external authors too).
+  portal.style.position = 'absolute'
+  portal.style.top = '0'
+  portal.style.left = '0'
+  portal.style.zIndex = String(CONTEXT_MENU_Z_INDEX)
   document.body.appendChild(portal)
 
   let app: App | null = null

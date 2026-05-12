@@ -1,0 +1,105 @@
+/**
+ * tokens.css — V3 design-token system (TKT-251).
+ *
+ * Defines all colors / radii / spacing as CSS variables on `:root` and on the
+ * `.hiprint-designer` root so hosts can override at either scope. V3 SFCs use
+ * `var(--hiprint-...)` everywhere instead of hard-coded hex literals so a
+ * theme override is a one-import drop-in (no recompile / rebuild required).
+ *
+ * Default palette: Ant Design defaults (see V3-PARITY-MATRIX/08-styles.md
+ * section U). For V1 Material parity see ./theme-v1.css and apply the
+ * `.hiprint-theme-v1` class or `[data-hiprint-theme='v1']` attribute on the
+ * designer root.
+ *
+ * Variable naming convention:
+ *   --hiprint-<role>             primary / canvas-bg / fg-muted ...
+ *   --hiprint-<role>-<modifier>  primary-hover / primary-active ...
+ *
+ * Roles are stable; values follow `theme-v1` / `theme-v3` swap.
+ */
+
+:root,
+.hiprint-designer {
+  /* ============ Primary palette (Ant Design defaults) ============ */
+  --hiprint-primary: #1677ff;
+  --hiprint-primary-hover: #4096ff;
+  --hiprint-primary-active: #0958d9;
+  --hiprint-success: #52c41a;
+  --hiprint-warning: #faad14;
+  --hiprint-danger: #ff4d4f;
+
+  /* ============ Neutral palette ============ */
+  --hiprint-bg: #fff;
+  --hiprint-bg-canvas: #f5f5f5;
+  --hiprint-bg-preview: #fafafa;
+  --hiprint-bg-hover: #f0f0f0;
+  --hiprint-bg-row-hover: #f5f7fa;
+  --hiprint-bg-toolbar: #fafafa;
+  --hiprint-fg: #333;
+  --hiprint-fg-muted: #666;
+  --hiprint-fg-disabled: #999;
+  --hiprint-fg-label: #555;
+  --hiprint-divider: #e5e5e5;
+  --hiprint-border: #d9d9d9;
+  --hiprint-border-hover: #b3b3b3;
+  --hiprint-border-soft: #eee;
+
+  /* ============ State / selection ============ */
+  --hiprint-selection-outline: #409eff;
+  --hiprint-selection-bg: #e6f4ff;
+  --hiprint-handle-bg: #fff;
+  --hiprint-handle-border: var(--hiprint-primary);
+  --hiprint-grid-color: rgba(0, 0, 0, 0.06);
+  --hiprint-ruler-bg: #fafafa;
+  --hiprint-ruler-fg: #555;
+  --hiprint-guide-line: var(--hiprint-primary);
+  --hiprint-smart-guide: #faad14;
+  --hiprint-drop-target-bg: #fff8e1;
+  --hiprint-drop-target-border: #f59e0b;
+  --hiprint-locked-tint: rgba(255, 77, 79, 0.1);
+  --hiprint-selected-row-bg: #e6f4ff;
+  --hiprint-selected-row-border: var(--hiprint-primary);
+
+  /* ============ Sizes / radii / spacing ============ */
+  --hiprint-radius: 4px;
+  --hiprint-radius-chip: 12px;
+  --hiprint-radius-circle: 50%;
+  --hiprint-spacing-xs: 4px;
+  --hiprint-spacing-sm: 6px;
+  --hiprint-spacing: 8px;
+  --hiprint-spacing-lg: 12px;
+  --hiprint-spacing-xl: 16px;
+
+  /* ============ Shadows ============ */
+  --hiprint-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --hiprint-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --hiprint-shadow-paper: 0 0 8px rgba(0, 0, 0, 0.12);
+
+  /* ============ Type-color tags (V1 inventory §1.8) ============ */
+  --hiprint-tag-text: #409eff;
+  --hiprint-tag-longText: #67c23a;
+  --hiprint-tag-image: #e6a23c;
+  --hiprint-tag-html: #909399;
+  --hiprint-tag-barcode: #f56c6c;
+  --hiprint-tag-qrcode: #c0c4cc;
+  --hiprint-tag-hline: #95d475;
+  --hiprint-tag-vline: #b88230;
+  --hiprint-tag-rect: #66a182;
+  --hiprint-tag-oval: #a37ec0;
+  --hiprint-tag-table: #1677ff;
+  --hiprint-tag-tableCustomCell: #6699aa;
+
+  /* ============ Backwards-compat aliases ============
+   * Used by HiprintDesigner.vue scoped styles since P18.3. New code should
+   * prefer the unprefixed tokens above. These remain so existing SFC
+   * fallbacks `var(--hiprint-designer-bg, #f5f5f5)` resolve consistently
+   * when only the new tokens are overridden. */
+  --hiprint-designer-bg: var(--hiprint-bg-canvas);
+  --hiprint-designer-fg: var(--hiprint-fg);
+  --hiprint-designer-divider: var(--hiprint-divider);
+  --hiprint-designer-divider-active: var(--hiprint-border-hover);
+  --hiprint-designer-canvas-bg: #e8e8e8;
+  --hiprint-designer-preview-bg: var(--hiprint-bg-preview);
+  --hiprint-designer-pin-bg: var(--hiprint-bg);
+  --hiprint-designer-pin-fg: var(--hiprint-fg-label);
+}

@@ -25,6 +25,7 @@
     },
     "./dist/vue-plugin-hiprint.css": "./dist/vue-plugin-hiprint.css",
     "./dist/print-lock.css": "./dist/print-lock.css",
+    "./print-lock.css": "./src/hiprint/css/print-lock.css",
     "./package.json": "./package.json"
   },
   "sideEffects": [

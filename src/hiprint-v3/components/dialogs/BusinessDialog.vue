@@ -145,6 +145,7 @@ function onRefresh(): void {
     :footer="null"
     :mask-closable="true"
     class="hiprint-business-dialog"
+    wrap-class-name="hiprint-toolbar-business-dialog-wrap"
     @update:open="handleOpenChange"
     @cancel="close"
   >

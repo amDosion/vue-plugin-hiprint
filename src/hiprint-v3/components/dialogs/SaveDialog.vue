@@ -164,6 +164,7 @@ function onSubmit(): void {
     ok-text="保存"
     cancel-text="取消"
     class="hiprint-save-dialog"
+    wrap-class-name="hiprint-toolbar-save-dialog-wrap"
     @update:open="handleOpenChange"
     @ok="onSubmit"
     @cancel="onCancel"

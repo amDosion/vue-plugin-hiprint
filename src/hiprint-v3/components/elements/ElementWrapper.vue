@@ -121,12 +121,18 @@ const wrapperClass = computed(() => {
     'hiprint-element',
     'hiprint-printElement',
     'hiprint-printElement-' + type,
-    { 'hiprint-element--selected': isSelected.value },
+    // TKT-250 — co-emit BEM (`.hiprint-element--<state>`) AND V1 legacy state
+    // class names so business CSS keyed to the V1 selector vocabulary
+    // (`.selected`, `.locked`, `.alwaysHide`) continues to fire alongside
+    // V3's BEM rules. See `docs/V1-INVENTORY/styles.md` §1.16 + parity
+    // matrix §Z1.
+    { 'hiprint-element--selected': isSelected.value, selected: isSelected.value },
     // TKT-027: visual hook for locked elements (any lock). Panel CSS uses
     // this to hide resize handles + show a lock cursor.
-    { 'hiprint-element--locked': isLocked.value },
+    { 'hiprint-element--locked': isLocked.value, locked: isLocked.value },
     // TKT-101: visual hook for hidden elements (eye toggle in element-list).
-    { 'hiprint-element--hidden': isHidden.value },
+    // V1 legacy name is `.alwaysHide` (bundle.js:4180).
+    { 'hiprint-element--hidden': isHidden.value, alwaysHide: isHidden.value },
   ]
 })
 
@@ -404,8 +410,13 @@ onBeforeUnmount(() => {
   cursor: move;
   user-select: none;
 }
-.hiprint-element--selected {
-  outline: 1px dashed #409eff;
+/* TKT-250 / TKT-251 — selected-state visual. Legacy `.selected` co-emitted by
+ * wrapperClass (V1 inventory §1.16). Outline color uses the design token so
+ * `.hiprint-theme-v1` and host overrides can swap palette without
+ * recompiling the SFC. */
+.hiprint-element--selected,
+.hiprint-element.selected {
+  outline: 1px dashed var(--hiprint-selection-outline, #409eff);
   outline-offset: -1px;
 }
 /* TKT-027 — locked element visuals.
@@ -413,7 +424,8 @@ onBeforeUnmount(() => {
  * 164, per-etype §H.2 line 1010). V3 puts the badge on the wrapper root so it
  * stays visible even when the element is unselected.
  */
-.hiprint-element--locked {
+.hiprint-element--locked,
+.hiprint-element.locked {
   /* Lock cursor instead of `move` so users get a hover hint. */
   cursor: not-allowed;
 }
@@ -446,8 +458,8 @@ onBeforeUnmount(() => {
 .hiprint-element__handle {
   width: 8px;
   height: 8px;
-  background: #ffffff;
-  border: 1px solid #1677ff;
+  background: var(--hiprint-handle-bg, #ffffff);
+  border: 1px solid var(--hiprint-handle-border, #1677ff);
   z-index: 3;
   pointer-events: none;
   box-shadow: 0 0 1px rgba(0, 0, 0, 0.25);
@@ -466,7 +478,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f56c6c;
+  background: var(--hiprint-danger, #f56c6c);
   color: #ffffff;
   border: none;
   border-radius: 2px;
@@ -478,7 +490,7 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 .hiprint-element__del-btn:hover {
-  background: #ef4f4f;
+  filter: brightness(0.92);
 }
 
 /* TKT-151 — static size readout (V1 inventory interactions.md §1 line 162:

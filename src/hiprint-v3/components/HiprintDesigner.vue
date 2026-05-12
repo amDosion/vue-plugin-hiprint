@@ -203,6 +203,14 @@ interface Props {
   /** Initial collapsed state (defaults to false). */
   leftInitiallyCollapsed?: boolean
   rightInitiallyCollapsed?: boolean
+  /**
+   * TKT-252 — Opt-in theme override. When set to `'v1'` the designer root
+   * receives the `hiprint-theme-v1` class + `data-hiprint-theme="v1"`
+   * attribute so the V1 Material palette in `styles/theme-v1.css` activates
+   * for everything inside. Default `'v3'` keeps the Ant Design tokens.
+   * Pass `undefined` (or omit) for V3 defaults; explicit `'v3'` is a no-op.
+   */
+  theme?: 'v1' | 'v3' | undefined
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -279,6 +287,7 @@ const props = withDefaults(defineProps<Props>(), {
   rightMaxWidth: 480,
   leftInitiallyCollapsed: false,
   rightInitiallyCollapsed: false,
+  theme: undefined,
 })
 
 const emit = defineEmits<{
@@ -535,7 +544,14 @@ defineExpose({
 </script>
 
 <template>
-  <div class="hiprint-designer" :class="{ 'hiprint-designer--preview': isPreviewMode }">
+  <div
+    class="hiprint-designer"
+    :class="{
+      'hiprint-designer--preview': isPreviewMode,
+      'hiprint-theme-v1': props.theme === 'v1',
+    }"
+    :data-hiprint-theme="props.theme === 'v1' ? 'v1' : undefined"
+  >
     <header v-if="showToolbar && isDesignMode" class="hiprint-designer__toolbar">
       <slot name="toolbar">
         <HiprintToolbar
@@ -609,14 +625,14 @@ defineExpose({
            a 24px edge toggle pin (V1 `.hiprint-designer-edge-toggle`). -->
       <div
         v-if="showElementList"
-        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--left"
+        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--left hiprint-designer-resize-bar"
         @pointerdown="onSidebarResizeStart('left', $event)"
         aria-label="Resize element list panel"
         role="separator"
       >
         <button
           type="button"
-          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--left"
+          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--left hiprint-designer-edge-toggle"
           @click.stop="toggleSidebarCollapse('left')"
           @pointerdown.stop
           :aria-label="leftCollapsed ? 'Expand element list panel' : 'Collapse element list panel'"
@@ -643,14 +659,14 @@ defineExpose({
       <!-- TKT-150: right resize bar + edge toggle. -->
       <div
         v-if="showPropertyPanel"
-        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--right"
+        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--right hiprint-designer-resize-bar"
         @pointerdown="onSidebarResizeStart('right', $event)"
         aria-label="Resize property panel"
         role="separator"
       >
         <button
           type="button"
-          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--right"
+          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--right hiprint-designer-edge-toggle"
           @click.stop="toggleSidebarCollapse('right')"
           @pointerdown.stop
           :aria-label="rightCollapsed ? 'Expand property panel' : 'Collapse property panel'"

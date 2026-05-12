@@ -453,7 +453,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.fontWeight) === 'bold' }"
+            :class="{ 'is-active': String(opts.fontWeight) === 'bold', active: String(opts.fontWeight) === 'bold' }"
             :aria-pressed="String(opts.fontWeight) === 'bold'"
             @click="toggleBold"
           >
@@ -462,7 +462,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.fontStyle) === 'italic' }"
+            :class="{ 'is-active': String(opts.fontStyle) === 'italic', active: String(opts.fontStyle) === 'italic' }"
             :aria-pressed="String(opts.fontStyle) === 'italic'"
             @click="toggleItalic"
           >
@@ -471,7 +471,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.textDecoration) === 'underline' }"
+            :class="{ 'is-active': String(opts.textDecoration) === 'underline', active: String(opts.textDecoration) === 'underline' }"
             :aria-pressed="String(opts.textDecoration) === 'underline'"
             @click="toggleUnderline"
           >
@@ -545,7 +545,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.textAlign) === 'left' }"
+            :class="{ 'is-active': String(opts.textAlign) === 'left', active: String(opts.textAlign) === 'left' }"
             :aria-pressed="String(opts.textAlign) === 'left'"
             @click="onTextAlign('left')"
           >
@@ -554,7 +554,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.textAlign) === 'center' }"
+            :class="{ 'is-active': String(opts.textAlign) === 'center', active: String(opts.textAlign) === 'center' }"
             :aria-pressed="String(opts.textAlign) === 'center'"
             @click="onTextAlign('center')"
           >
@@ -563,7 +563,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.textAlign) === 'right' }"
+            :class="{ 'is-active': String(opts.textAlign) === 'right', active: String(opts.textAlign) === 'right' }"
             :aria-pressed="String(opts.textAlign) === 'right'"
             @click="onTextAlign('right')"
           >
@@ -574,7 +574,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.verticalAlign) === 'top' }"
+            :class="{ 'is-active': String(opts.verticalAlign) === 'top', active: String(opts.verticalAlign) === 'top' }"
             :aria-pressed="String(opts.verticalAlign) === 'top'"
             @click="onVAlign('top')"
           >
@@ -583,7 +583,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.verticalAlign) === 'middle' }"
+            :class="{ 'is-active': String(opts.verticalAlign) === 'middle', active: String(opts.verticalAlign) === 'middle' }"
             :aria-pressed="String(opts.verticalAlign) === 'middle'"
             @click="onVAlign('middle')"
           >
@@ -592,7 +592,7 @@ const showBorder = computed<boolean>(() => {
           <button
             type="button"
             class="hiprint-property-toggle"
-            :class="{ 'is-active': String(opts.verticalAlign) === 'bottom' }"
+            :class="{ 'is-active': String(opts.verticalAlign) === 'bottom', active: String(opts.verticalAlign) === 'bottom' }"
             :aria-pressed="String(opts.verticalAlign) === 'bottom'"
             @click="onVAlign('bottom')"
           >
@@ -678,28 +678,28 @@ const showBorder = computed<boolean>(() => {
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  background: #fafafa;
-  border-left: 1px solid #e5e5e5;
+  background: var(--hiprint-bg-preview, #fafafa);
+  border-left: 1px solid var(--hiprint-divider, #e5e5e5);
   font-size: 12px;
-  color: #333;
+  color: var(--hiprint-fg, #333);
   min-width: 240px;
   max-height: 100%;
   overflow-y: auto;
 }
 
 .hiprint-property-empty {
-  color: #999;
+  color: var(--hiprint-fg-disabled, #999);
   text-align: center;
   padding: 24px 8px;
   margin: 0;
 }
 
 .hiprint-property-multi-hint {
-  background: #e6f4ff;
+  background: var(--hiprint-selection-bg, #e6f4ff);
   border: 1px solid #91caff;
-  border-radius: 4px;
+  border-radius: var(--hiprint-radius, 4px);
   padding: 6px 8px;
-  color: #1677ff;
+  color: var(--hiprint-primary, #1677ff);
 }
 
 .hiprint-property-header {
@@ -714,7 +714,7 @@ const showBorder = computed<boolean>(() => {
 }
 
 .hiprint-property-id {
-  color: #999;
+  color: var(--hiprint-fg-disabled, #999);
   font-family: monospace;
   font-size: 11px;
 }
@@ -723,17 +723,17 @@ const showBorder = computed<boolean>(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid #e5e5e5;
-  border-radius: 4px;
+  border: 1px solid var(--hiprint-divider, #e5e5e5);
+  border-radius: var(--hiprint-radius, 4px);
   padding: 8px 10px;
   margin: 0;
-  background: #fff;
+  background: var(--hiprint-bg, #fff);
 }
 
 .hiprint-property-fieldset legend {
   font-weight: 600;
   padding: 0 4px;
-  color: #555;
+  color: var(--hiprint-fg-label, #555);
 }
 
 .hiprint-property-fieldset label {
@@ -741,7 +741,7 @@ const showBorder = computed<boolean>(() => {
   flex-direction: column;
   gap: 4px;
   font-size: 11px;
-  color: #666;
+  color: var(--hiprint-fg-muted, #666);
 }
 
 .hiprint-property-fieldset input[type='text'],
@@ -749,18 +749,18 @@ const showBorder = computed<boolean>(() => {
 .hiprint-property-fieldset select {
   height: 26px;
   padding: 0 6px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--hiprint-border, #d9d9d9);
   border-radius: 3px;
   font: inherit;
-  color: #333;
-  background: #fff;
+  color: var(--hiprint-fg, #333);
+  background: var(--hiprint-bg, #fff);
 }
 
 .hiprint-property-fieldset input[type='color'] {
   width: 100%;
   height: 28px;
   padding: 0;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--hiprint-border, #d9d9d9);
   border-radius: 3px;
   cursor: pointer;
 }
@@ -792,26 +792,28 @@ const showBorder = computed<boolean>(() => {
   min-width: 32px;
   height: 26px;
   padding: 0 6px;
-  background: #fff;
-  border: 1px solid #d9d9d9;
+  background: var(--hiprint-bg, #fff);
+  border: 1px solid var(--hiprint-border, #d9d9d9);
   border-radius: 3px;
   cursor: pointer;
   font: inherit;
-  color: #333;
+  color: var(--hiprint-fg, #333);
 }
 
 .hiprint-property-toggle:hover {
-  background: #f0f0f0;
+  background: var(--hiprint-bg-hover, #f0f0f0);
 }
 
 .hiprint-property-toggle:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
   outline-offset: 1px;
 }
 
-.hiprint-property-toggle.is-active {
-  background: #e6f4ff;
-  border-color: #409eff;
-  color: #1677ff;
+/* TKT-250 — co-emit `.is-active` and V1 legacy `.active`. */
+.hiprint-property-toggle.is-active,
+.hiprint-property-toggle.active {
+  background: var(--hiprint-selection-bg, #e6f4ff);
+  border-color: var(--hiprint-selection-outline, #409eff);
+  color: var(--hiprint-primary, #1677ff);
 }
 </style>

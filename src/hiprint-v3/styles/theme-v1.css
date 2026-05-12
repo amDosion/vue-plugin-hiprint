@@ -1,0 +1,66 @@
+/**
+ * theme-v1.css — V1 Material-palette opt-in theme (TKT-252).
+ *
+ * Apply by either:
+ *   1. Setting `theme="v1"` on `<HiprintDesigner>` (writes
+ *      `data-hiprint-theme="v1"` + `hiprint-theme-v1` class on the root), OR
+ *   2. Adding `class="hiprint-theme-v1"` to any ancestor manually, OR
+ *   3. Adding `data-hiprint-theme="v1"` attribute to any ancestor.
+ *
+ * Overrides the tokens defined in `./tokens.css` with the legacy V1 Material
+ * palette so business consumers that migrated from V1 keep their visual
+ * identity without code changes.
+ *
+ * Token role mapping (V1 → V3 token):
+ *   #2196f3 (Material primary)         → --hiprint-primary
+ *   #4ba9f5 (Material primary hover)   → --hiprint-primary-hover
+ *   #1976d2 (Material primary active)  → --hiprint-primary-active
+ *   #409eff (Element-Plus blue)        → --hiprint-selection-outline
+ *   #e3f2fd (Material light blue)      → --hiprint-selection-bg
+ *   #f56c6c (Element-Plus red)         → --hiprint-danger
+ *   #e6a23c (Element-Plus orange)      → --hiprint-warning
+ *   #67c23a (Element-Plus green)       → --hiprint-success
+ *
+ * Sources:
+ *   - V1 inventory `docs/V1-INVENTORY/styles.md` §1.7 (toolbar.btn.active),
+ *     §1.11 (ruler), §1.16 (state), and §1.18 (palette).
+ *   - V3 parity matrix `docs/V3-PARITY-MATRIX/08-styles.md` section U
+ *     ("Color Palette Parity").
+ */
+
+.hiprint-theme-v1,
+[data-hiprint-theme='v1'] {
+  /* Primary palette — V1 Material */
+  --hiprint-primary: #2196f3;
+  --hiprint-primary-hover: #4ba9f5;
+  --hiprint-primary-active: #1976d2;
+  --hiprint-success: #67c23a;
+  --hiprint-warning: #e6a23c;
+  --hiprint-danger: #f56c6c;
+
+  /* Selection — V1 used Element-Plus accent */
+  --hiprint-selection-outline: #409eff;
+  --hiprint-selection-bg: #e3f2fd;
+  --hiprint-handle-border: #409eff;
+  --hiprint-selected-row-bg: #e3f2fd;
+  --hiprint-selected-row-border: #2196f3;
+
+  /* Guides / smart guides */
+  --hiprint-guide-line: #2196f3;
+  --hiprint-smart-guide: #ff9800;
+
+  /* Border palette — Material */
+  --hiprint-border: #ddd;
+  --hiprint-border-hover: #aaa;
+  --hiprint-divider: #ddd;
+  --hiprint-ruler-bg: #fafbfc;
+  --hiprint-ruler-fg: #666;
+
+  /* Bg drift — Material */
+  --hiprint-bg-toolbar: #f9f9f9;
+
+  /* Compat alias remap */
+  --hiprint-designer-divider: #ddd;
+  --hiprint-designer-divider-active: #aaa;
+  --hiprint-designer-canvas-bg: #e8e8e8;
+}

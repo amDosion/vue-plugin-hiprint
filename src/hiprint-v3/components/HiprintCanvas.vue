@@ -598,7 +598,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 .hiprint-canvas--readonly {
-  background: #fafafa;
+  background: var(--hiprint-bg-preview, #fafafa);
 }
 /* Ruler-on layout: reserve 14pt top/left for the bars. */
 .hiprint-canvas--with-ruler {
@@ -610,7 +610,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #999;
+  color: var(--hiprint-fg-disabled, #999);
   font-size: 14pt;
 }
 /* SVG ruler tracks (CV-004). Width/height are driven by :width/:height
@@ -618,8 +618,8 @@ onBeforeUnmount(() => {
    and mm labels are rendered as real SVG <line>/<text> nodes inside. */
 .hiprint-canvas__ruler {
   position: absolute;
-  background: #fafafa;
-  border: 1px solid #ccc;
+  background: var(--hiprint-ruler-bg, #fafafa);
+  border: 1px solid var(--hiprint-border, #ccc);
   pointer-events: none;
   display: block;
 }
@@ -655,11 +655,11 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 .hiprint-guide-line--h {
-  border-top: 1px dashed #1677ff;
+  border-top: 1px dashed var(--hiprint-guide-line, #1677ff);
   cursor: ns-resize;
 }
 .hiprint-guide-line--v {
-  border-left: 1px dashed #1677ff;
+  border-left: 1px dashed var(--hiprint-guide-line, #1677ff);
   cursor: ew-resize;
 }
 .hiprint-guide-dragging {
@@ -670,9 +670,9 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .hiprint-smart-guide--h {
-  border-top: 1px dashed #fa8c16;
+  border-top: 1px dashed var(--hiprint-smart-guide, #fa8c16);
 }
 .hiprint-smart-guide--v {
-  border-left: 1px dashed #fa8c16;
+  border-left: 1px dashed var(--hiprint-smart-guide, #fa8c16);
 }
 </style>
