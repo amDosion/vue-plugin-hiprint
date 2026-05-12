@@ -192,6 +192,73 @@ test('A1: hicontextMenu menu.text 含 <img onerror> 不执行脚本', async ({ p
   expect(result.textPreserved).toContain('onerror');
 });
 
+test('I-B2: qrcode options.title 含 <img onerror> 不执行脚本', async ({ page }) => {
+  // bundle.js:10505 — title 通过模板字符串拼进 .html(),options.title 来自 user JSON 可控
+  const result = await page.evaluate(() => {
+    (window as any).__qrtitle_xss = false;
+    const h = (window as any).hiprint;
+    const tpl = new h.PrintTemplate({
+      template: { panels: [{
+        index: 0, name: '1', height: 100, width: 100, paperHeader: 0, paperFooter: 300,
+        printElements: [{
+          options: {
+            left: 0, top: 0, height: 80, width: 80,
+            title: '<img src=x onerror="window.__qrtitle_xss=true">',
+            testData: 'hello', hideTitle: false,
+          },
+          printElementType: { type: 'qrcode', tid: 'defaultModule.qrcode' }
+        }]
+      }] }
+    });
+    const $html = tpl.getHtml({});
+    if ($html && $html[0]) document.body.appendChild($html[0]);
+    tpl.destroy();
+    return {
+      fired: (window as any).__qrtitle_xss,
+      // 必须用 textNode 渲染 (无字面 <img onerror>)
+      hasInjectedImg: document.querySelectorAll('.hiprint-printElement-qrcode-content-title img').length > 0,
+    };
+  });
+  expect(result.fired).toBe(false);
+  expect(result.hasInjectedImg).toBe(false);
+});
+
+test('I-B3: qrcode options.textAlign 含闭合 attr 注入不破坏 style', async ({ page }) => {
+  // bundle.js:10504 — textAlign 拼进 style attr,user 传 'right">...<img onerror=...' 可注入
+  const result = await page.evaluate(() => {
+    (window as any).__qralign_xss = false;
+    const h = (window as any).hiprint;
+    const tpl = new h.PrintTemplate({
+      template: { panels: [{
+        index: 0, name: '1', height: 100, width: 100, paperHeader: 0, paperFooter: 300,
+        printElements: [{
+          options: {
+            left: 0, top: 0, height: 80, width: 80,
+            title: 'qr', testData: 'hello', hideTitle: false,
+            textAlign: 'right"><img src=x onerror="window.__qralign_xss=true">',
+            fontSize: '12; background:url(javascript:alert(1))',
+          },
+          printElementType: { type: 'qrcode', tid: 'defaultModule.qrcode' }
+        }]
+      }] }
+    });
+    const $html = tpl.getHtml({});
+    if ($html && $html[0]) document.body.appendChild($html[0]);
+    tpl.destroy();
+    // 序列化整个渲染输出,检查是否含未转义的攻击片段
+    const outer = ($html && $html[0]) ? $html[0].outerHTML : '';
+    return {
+      fired: (window as any).__qralign_xss,
+      hasInjectedImg: document.querySelectorAll('.hiprint-printElement-qrcode-content-title img').length > 0,
+      // 输出 HTML 不能含 user 注入的 <img> 字面或 javascript: 协议
+      hasInjectedFragment: /onerror=|javascript:/i.test(outer),
+    };
+  });
+  expect(result.fired).toBe(false);
+  expect(result.hasInjectedImg).toBe(false);
+  expect(result.hasInjectedFragment).toBe(false);
+});
+
 test('A2: pagination panel.name 含 <img onerror> 不执行脚本', async ({ page }) => {
   // bundle.js:12292 — buildPagination 把 panel.name 拼接进 .html()，template JSON 用户可控
   const result = await page.evaluate(() => {

@@ -10503,11 +10503,25 @@ var hiprint = function (t) {
           })
           content.html($(qrcode))
           if (!this.options.hideTitle) {
-            const titleText = title || '';
-            const textAlign = this.options.textAlign || 'center';
-            const fontSize = this.options.fontSize ? this.options.fontSize + 'pt' : '9pt';
-            const textStyle = (textAlign === 'justify' ? 'text-align-last: justify;text-justify: distribute-all-lines;' : `text-align: ${ textAlign };`) + `font-size:${ fontSize };line-height:1.5;`
-            content.append($(`<div class="hiprint-printElement-qrcode-content-title" style="${ textStyle }">${ titleText }</div>`))
+            // [XSS I-B2/B3] title / textAlign / fontSize 都来自 options (user JSON 可控),
+            // 之前用模板字符串拼进 .html() 既会注入 textContent (<img onerror>) 又会闭合 style attr
+            // (textAlign='right"><script>') . 改 DOM-build + 白名单 + 数字 parse.
+            const titleText = title == null ? '' : String(title);
+            const rawAlign = this.options.textAlign;
+            const textAlign = ['left', 'right', 'center', 'justify'].indexOf(rawAlign) >= 0 ? rawAlign : 'center';
+            const rawFontSize = parseFloat(this.options.fontSize);
+            const fontSizePt = isFinite(rawFontSize) && rawFontSize > 0 ? rawFontSize : 9;
+            const $titleDiv = $('<div></div>')
+              .addClass('hiprint-printElement-qrcode-content-title')
+              .css('font-size', fontSizePt + 'pt')
+              .css('line-height', '1.5')
+              .text(titleText);
+            if (textAlign === 'justify') {
+              $titleDiv.css('text-align-last', 'justify').css('text-justify', 'distribute-all-lines');
+            } else {
+              $titleDiv.css('text-align', textAlign);
+            }
+            content.append($titleDiv);
           }
         } catch (error) {
           console.error('[hiprint] qrcode render failed:', error)
