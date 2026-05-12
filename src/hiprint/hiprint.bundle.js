@@ -2114,7 +2114,15 @@ var hiprint = function (t) {
               console.error('[hiprint] rowsColumnsMerge call failed (cell-level):', err);
               rowsColumnsArr = [1, 1];
             }
-            var r = $(`<td style = 'display:${!(rowsColumnsArr[0] && rowsColumnsArr[1]) ? "none" : ""}' rowspan = '${rowsColumnsArr[0]}' colspan = '${rowsColumnsArr[1]}'></td>`);
+            // [security W-2] rowsColumnsArr 来自业务方 rowsColumnsMerge 返回值,可能含字符串
+            // 如 "1><script>...";之前模板字符串直接拼 rowspan/colspan attr,会闭合 td 注入。
+            // 强制 parseInt + 数字守卫,非数字 fallback 1; 用 .attr 安全写入。
+            var rs = parseInt(rowsColumnsArr[0], 10);
+            var cs = parseInt(rowsColumnsArr[1], 10);
+            if (!isFinite(rs) || rs < 1) rs = (rowsColumnsArr[0] === 0 ? 0 : 1);
+            if (!isFinite(cs) || cs < 1) cs = (rowsColumnsArr[1] === 0 ? 0 : 1);
+            var r = $('<td></td>').attr('rowspan', rs).attr('colspan', cs);
+            if (!(rs && cs)) r.css('display', 'none');
           } else {
             var r = $("<td></td>");
           }

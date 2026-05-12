@@ -192,6 +192,43 @@ test('A1: hicontextMenu menu.text 含 <img onerror> 不执行脚本', async ({ p
   expect(result.textPreserved).toContain('onerror');
 });
 
+test('J-W2: table rowsColumnsMerge 返回字符串注入不破坏 td attr', async ({ page }) => {
+  // bundle.js:2117 — rowsColumnsArr[0]/[1] 拼进 rowspan/colspan attr,
+  // 业务方 rowsColumnsMerge 返回 ['1"><script>...', 1] 之前会闭合 td 注入。
+  // 修后 parseInt 强制数字,.attr 安全写入。
+  const result = await page.evaluate(() => {
+    (window as any).__tdattr_xss = false;
+    const h = (window as any).hiprint;
+    const tpl = new h.PrintTemplate({
+      template: { panels: [{
+        index: 0, name: '1', height: 100, width: 200, paperHeader: 0, paperFooter: 300,
+        printElements: [{
+          options: {
+            left: 0, top: 0, height: 50, width: 200, field: 'items', tableHeaderRepeat: 'first',
+            columns: [[{ title: 'A', field: 'a', width: 100, checked: true }]],
+            // 业务方注入: rowsColumnsMerge 返回字符串 attr breakout
+            rowsColumnsMerge: function () {
+              return ['1"><img src=x onerror="window.__tdattr_xss=true"><td x="', '1'];
+            },
+          },
+          printElementType: { type: 'table', tid: 'defaultModule.table' }
+        }]
+      }] }
+    });
+    const $html = tpl.getHtml({ items: [{ a: 'ok' }] });
+    if ($html && $html[0]) document.body.appendChild($html[0]);
+    const outer = ($html && $html[0]) ? $html[0].outerHTML : '';
+    tpl.destroy();
+    return {
+      fired: (window as any).__tdattr_xss,
+      // 不能出现攻击片段
+      hasInjectedFragment: /onerror=/i.test(outer),
+    };
+  });
+  expect(result.fired).toBe(false);
+  expect(result.hasInjectedFragment).toBe(false);
+});
+
 test('I-B2: qrcode options.title 含 <img onerror> 不执行脚本', async ({ page }) => {
   // bundle.js:10505 — title 通过模板字符串拼进 .html(),options.title 来自 user JSON 可控
   const result = await page.evaluate(() => {
