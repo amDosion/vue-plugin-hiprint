@@ -8906,7 +8906,11 @@ var hiprint = function (t) {
         var o = $('<ul class="hicontextmenu" style="z-index: 9999;"></ul>');
         i || (i = o).addClass("hicontextmenuroot"), $.each(t, function (t, e) {
           var i = !!e.disable && e.disable(),
-            r = $('<li class="hicontextmenuitem"><a href="javascript:void(0);"><span>' + (e.text || "") + "</span></a></li>");
+            r = $('<li class="hicontextmenuitem"></li>').append(
+              $('<a href="javascript:void(0);"></a>').append(
+                $('<span></span>').text(e.text || "")
+              )
+            );
           i && r.addClass("disable"), e.borderBottom && r.addClass("borderBottom"), e.menus && (r.addClass("hicontextsubmenu"), n.renderMenu(e.menus, r)), e.callback && r.click(function (t) {
             $(this).hasClass("disable") ? t.stopPropagation() : ($(".hicontextmenuroot").remove(), e.callback(), t.stopPropagation());
           }), o.append(r);
@@ -12289,7 +12293,11 @@ var hiprint = function (t) {
         for (var i = $('<ul class="hiprint-pagination"></ul>'), o = function o() {
           var t = r,
             name = n.template.printPanels[t].name || (t + 1),
-            e = $("<li><span>" + name + '</span><a href="javascript:void(0);">x</a></li>');
+            e = $("<li></li>").append(
+              $("<span></span>").text(name)
+            ).append(
+              $('<a href="javascript:void(0);">x</a>')
+            );
           e.find("span").click(function () {
             n.template.selectPanel(t), e.siblings().removeClass("selected"), $(this).parent("li").addClass("selected");
           }), e.find("a").click(function () {

@@ -158,3 +158,75 @@ test('B8: 表格 column header 含 <script> 不渲染为标签', async ({ page }
   });
   expect(result.fired).toBe(false);
 });
+
+test('A1: hicontextMenu menu.text 含 <img onerror> 不执行脚本', async ({ page }) => {
+  // bundle.js:8909 — contextMenu 把 e.text 拼接进 .html()，opts.menus[].text 业务可控
+  const result = await page.evaluate(() => {
+    (window as any).__a1_xss = false;
+    const $ = (window as any).jQuery || (window as any).$;
+    const $host = $('<div id="a1-host" style="display:none"></div>').appendTo('body');
+    $host.hicontextMenu({
+      menus: [
+        { text: '<img src=x onerror="window.__a1_xss=true">', callback: function () {} },
+      ],
+    });
+    // 触发 contextmenu 事件让 renderMenu 跑
+    $host.trigger('contextmenu');
+    const rendered = $('.hicontextmenuroot').length > 0;
+    // 渲染后立即查 DOM 看有没有 <img> 标签 (有 = .html() 注入；没有 = 已转义)
+    const imgInjected = $('.hicontextmenu img').length > 0;
+    const textPreserved = $('.hicontextmenuitem span').first().text();
+    $('.hicontextmenuroot').remove();
+    $host.remove();
+    return {
+      rendered,
+      imgInjected,
+      xssFired: (window as any).__a1_xss,
+      textPreserved,
+    };
+  });
+  expect(result.rendered).toBe(true);
+  expect(result.imgInjected).toBe(false);
+  expect(result.xssFired).toBe(false);
+  // 文本应保留原样（作为字符串显示）
+  expect(result.textPreserved).toContain('onerror');
+});
+
+test('A2: pagination panel.name 含 <img onerror> 不执行脚本', async ({ page }) => {
+  // bundle.js:12292 — buildPagination 把 panel.name 拼接进 .html()，template JSON 用户可控
+  const result = await page.evaluate(() => {
+    (window as any).__a2_xss = false;
+    const h = (window as any).hiprint;
+    const $ = (window as any).jQuery || (window as any).$;
+    const $host = $('<div id="a2-pagination"></div>').appendTo('body');
+    // 通过 PrintTemplate 构造参数 paginationContainer 触发内部 dt.buildPagination 渲染
+    const tpl = new h.PrintTemplate({
+      paginationContainer: '#a2-pagination',
+      template: {
+        panels: [
+          {
+            index: 0, name: '<img src=x onerror="window.__a2_xss=true">',
+            height: 100, width: 100, paperHeader: 0, paperFooter: 300, printElements: [],
+          },
+          {
+            index: 1, name: 'normal',
+            height: 100, width: 100, paperHeader: 0, paperFooter: 300, printElements: [],
+          },
+        ],
+      },
+    });
+    const imgInjected = $host.find('img').length > 0;
+    const textPreserved = $host.find('li span').first().text();
+    tpl.destroy();
+    $host.remove();
+    return {
+      imgInjected,
+      xssFired: (window as any).__a2_xss,
+      textPreserved,
+    };
+  });
+  expect(result.imgInjected).toBe(false);
+  expect(result.xssFired).toBe(false);
+  // panel.name 文本应作为字符串显示
+  expect(result.textPreserved).toContain('onerror');
+});
