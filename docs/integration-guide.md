@@ -1,5 +1,7 @@
 # vue-plugin-hiprint 集成指南
 
+> 🚀 **vue-admin-main 等后台项目要 UI 跟 dev server 100% 一致？** 看 [`vue-admin-integration.md`](./vue-admin-integration.md) — 拷贝即用 Vue 3 模板 + 4 个常见坑 + UI 一致性验证清单。本文档是完整 opts 详解(60+ 字段)。
+
 ## 0. 当前版本变更摘要（2026-03）
 
 本指南已按当前仓库代码状态整理，以下为你本轮改造后需要重点关注的变化：

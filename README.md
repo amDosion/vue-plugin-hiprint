@@ -31,6 +31,12 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 
 > **当前版本**：v1.0.0+，Vue 3 + Vite；已支持 25+ 项深度改进（安全、A11y、功能、API）。详见 [CHANGELOG.md](./CHANGELOG.md) 及 [docs/CODEMAPS](./docs/CODEMAPS/)。
 
+> 📘 **业务方集成入口**：
+> - **vue-admin-main 等后台项目** → [`docs/vue-admin-integration.md`](./docs/vue-admin-integration.md)（UI 100% 一致复刻指南 + 拷贝即用模板 + 4 个常见坑）
+> - **完整 60+ opts 详解** → [`docs/integration-guide.md`](./docs/integration-guide.md)
+> - **API 速查（23 个 export）** → [`docs/API-REFERENCE.md`](./docs/API-REFERENCE.md)
+> - **CSS 体积优化（3 文件可选）** → [`docs/CSS-BUNDLE.md`](./docs/CSS-BUNDLE.md)
+
 ## vue-plugin-hiprint
 
 > [✨ 立即体验(Github 访问慢)](https://ccsimple.github.io/vue-plugin-hiprint/) <br/><br/> [✨ 国内访问(www.ibujian.cn)](https://www.ibujian.cn/) <br/><br/> [🌈 更新日志 (页面支持 Ctrl + F 搜索)](CHANGELOG.md) <br/><br/> [🐛 常见问题(入门必看!)](#常见问题) <br/><br/> [🚀 项目生态(打印客户端、node 服务端、uniapp)](#插件生态)
