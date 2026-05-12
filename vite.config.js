@@ -29,10 +29,33 @@ const copyPrintLockCss = () => ({
   closeBundle() {
     if (!isLib) return
 
+    // print-lock.css 业务方必须在 index.html link[media=print] 单独引用 (打印窗口隔离)
     fs.copyFileSync(
       path.resolve(__dirname, 'src/hiprint/css/print-lock.css'),
       path.resolve(__dirname, 'dist/print-lock.css')
     )
+
+    // CSS 拆分分发 (task #6):
+    // dist/vue-plugin-hiprint.css         — vite 自动合并产物,含 core + designer (向后兼容)
+    // dist/hiprint-core.css               — 仅核心打印/元素/骨架样式,无 minicolors (本插件 raw copy)
+    // dist/hiprint-designer.css           — 仅 minicolors 颜色选择器,含 68KB sprite url() (本插件 raw copy)
+    // 纯打印场景: 业务方 import hiprint-core.css 替代 vue-plugin-hiprint.css,省 minicolors 大头
+    fs.copyFileSync(
+      path.resolve(__dirname, 'src/hiprint/css/hiprint.css'),
+      path.resolve(__dirname, 'dist/hiprint-core.css')
+    )
+    fs.copyFileSync(
+      path.resolve(__dirname, 'src/hiprint/css/hiprint-designer.css'),
+      path.resolve(__dirname, 'dist/hiprint-designer.css')
+    )
+    // designer.css 引用 ./image/jquery.minicolors.png 相对路径 — 同时把 png 单独 copy 出来
+    // (vue-plugin-hiprint.css 仍会把它 inline 成 base64; hiprint-designer.css 用户拿到的是外置 png)
+    const imgSrcDir = path.resolve(__dirname, 'src/hiprint/css/image')
+    const imgDistDir = path.resolve(__dirname, 'dist/image')
+    if (!fs.existsSync(imgDistDir)) fs.mkdirSync(imgDistDir, { recursive: true })
+    for (const file of fs.readdirSync(imgSrcDir)) {
+      fs.copyFileSync(path.join(imgSrcDir, file), path.join(imgDistDir, file))
+    }
   },
 })
 

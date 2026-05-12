@@ -4,8 +4,12 @@ import {hiprint, defaultElementTypeProvider} from './hiprint/hiprint.bundle.js'
 import "./hiprint/plugins/jquery.hiwprint.js";
 // 默认配置
 import "./hiprint/hiprint.config";
-// 样式
+// 样式 — 默认 import 全部 (向后兼容)
+// hiprint.css         — 核心打印 / 元素 / 设计器骨架样式
+// hiprint-designer.css — minicolors 颜色选择器 (designer-only, 68KB PNG sprite 来源)
+//                        纯打印场景可用 dist/hiprint-core.css 跳过它 — 见 docs/CSS-BUNDLE.md
 import "./hiprint/css/hiprint.css"
+import "./hiprint/css/hiprint-designer.css"
 import "./hiprint/css/print-lock.css"
 
 import {version} from '../package.json'
