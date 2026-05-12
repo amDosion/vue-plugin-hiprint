@@ -12957,10 +12957,11 @@ var hiprint = function (t) {
           e.onUpdateError && e.onUpdateError(er);
         }
       }, t.prototype.getSelectEls = function () {
+        if (this._assertNotDestroyed('getSelectEls')) return [];
         var t = this;
         var elements = [];
         // 获取选区元素
-        if (t.editingPanel.mouseRect && t.editingPanel.mouseRect.target && $(".mouseRect").length) {
+        if (t.editingPanel && t.editingPanel.mouseRect && t.editingPanel.mouseRect.target && $(".mouseRect").length) {
           elements = t.editingPanel.getElementInRect(t.editingPanel.mouseRect);
         } else { // 获取多选元素
           elements = t.editingPanel.printElements.filter(function (el) {
@@ -12970,6 +12971,7 @@ var hiprint = function (t) {
         return elements
       },
      t.prototype.selectElementsByField = function (fieldsArray){
+            if (this._assertNotDestroyed('selectElementsByField')) return undefined;
             var hiPrintEntity = this;
             if (!hiPrintEntity.editingPanel || !Array.isArray(fieldsArray) || !fieldsArray.length) return;
             var appendSelect = false;
@@ -12982,6 +12984,7 @@ var hiprint = function (t) {
             });
           },
       t.prototype.selectAllElements = function () {
+        if (this._assertNotDestroyed('selectAllElements')) return undefined;
         var hiPrintEntity = this;
         if (!hiPrintEntity.editingPanel) return;
         var appendSelect = false;
@@ -12993,6 +12996,7 @@ var hiprint = function (t) {
         });
       },
       t.prototype.updateOption = function (option, v) { // 批量更新参数
+        if (this._assertNotDestroyed('updateOption')) return undefined;
         var elements = this.getSelectEls();
         if (elements && elements.length) {
           elements.forEach(function (e) {
@@ -13001,6 +13005,7 @@ var hiprint = function (t) {
           o.a.event.trigger("hiprintTemplateDataChanged_" + this.id, "批量修改");
         }
       }, t.prototype.setElsAlign = function (e) { // 设置框选、多选元素对齐api
+        if (this._assertNotDestroyed('setElsAlign')) return undefined;
         var t = this;
         var elements = this.getSelectEls();
         if (elements.length) {
@@ -13080,6 +13085,7 @@ var hiprint = function (t) {
           }
         }
       }, t.prototype.setElsSpace = function (dis, isHor) {
+        if (this._assertNotDestroyed('setElsSpace')) return undefined;
         var t = this;
         var elements = this.getSelectEls();
         if (elements.length) {
