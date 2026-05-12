@@ -290,6 +290,21 @@ function clientToPaperPt(axis: 'h' | 'v', clientX: number, clientY: number): num
   return (clientX - rect.left) / scale
 }
 
+// Sprint 22g (Stream GI) TKT-412 — body class while a guide is being created
+// or moved. V1 bundle.js:9610 set `document.body.classList.add(...)` so caller
+// CSS can hide other UI affordances (cursor, hover hints) during the gesture.
+const GUIDE_DRAG_BODY_CLASS = 'hiprint-guide-dragging'
+
+function applyGuideDragBodyClass(): void {
+  if (typeof document === 'undefined' || !document.body) return
+  document.body.classList.add(GUIDE_DRAG_BODY_CLASS)
+}
+
+function clearGuideDragBodyClass(): void {
+  if (typeof document === 'undefined' || !document.body) return
+  document.body.classList.remove(GUIDE_DRAG_BODY_CLASS)
+}
+
 function onRulerPointerDown(axis: 'h' | 'v', e: PointerEvent): void {
   if (props.readonly) return
   if (e.button !== 0) return
@@ -298,6 +313,7 @@ function onRulerPointerDown(axis: 'h' | 'v', e: PointerEvent): void {
   const guide = canvas.addGuideLine(axis, Math.max(0, pos))
   if (!guide.id) return
   guideDragState.value = { kind: 'creating', axis, guideId: guide.id }
+  applyGuideDragBodyClass()
   window.addEventListener('pointermove', onGuidePointerMove)
   window.addEventListener('pointerup', onGuidePointerUp, { once: true })
   e.preventDefault()
@@ -307,6 +323,7 @@ function onGuideLinePointerDown(g: { id: string; axis: 'h' | 'v' }, e: PointerEv
   if (props.readonly) return
   if (e.button !== 0) return
   guideDragState.value = { kind: 'moving', axis: g.axis, guideId: g.id }
+  applyGuideDragBodyClass()
   window.addEventListener('pointermove', onGuidePointerMove)
   window.addEventListener('pointerup', onGuidePointerUp, { once: true })
   e.preventDefault()
@@ -324,6 +341,7 @@ function onGuidePointerMove(e: PointerEvent): void {
 function onGuidePointerUp(e: PointerEvent): void {
   const state = guideDragState.value
   guideDragState.value = null
+  clearGuideDragBodyClass()
   window.removeEventListener('pointermove', onGuidePointerMove)
   if (!state) return
   const wrap = canvasEl.value
@@ -415,6 +433,9 @@ onBeforeUnmount(() => {
   }
   unsubscribeSmartGuide = null
   window.removeEventListener('pointermove', onGuidePointerMove)
+  // Defensive: if the component unmounts mid-gesture, scrub the body class
+  // so a re-mount doesn't inherit a stale `hiprint-guide-dragging` state.
+  clearGuideDragBodyClass()
 })
 </script>
 

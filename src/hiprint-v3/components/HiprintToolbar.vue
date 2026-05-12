@@ -229,6 +229,51 @@ interface Props {
   rotateButtonText?: string
   businessButtonText?: string
   templateButtonText?: string
+  /**
+   * Sprint 22g (Stream GI) TKT-418 — locale for aria-labels. Accepts 'zh-cn'
+   * (V1 default 缩小/放大/...) or 'en' (V3 default English labels). Reactive:
+   * flipping at runtime swaps every aria-label without remount.
+   */
+  locale?: 'zh-cn' | 'zh-CN' | 'zh' | 'en' | 'en-us' | 'en-US' | string
+  // ---- Sprint 22g wave 2 — V1 hook surface ----
+  /**
+   * TKT-328 — V1 `onCustomPaperOpen(template, api)` hook. Returning a falsy
+   * value (`false` / `0` / `null` / `''`) suppresses the popover toggle so
+   * business code can render its own paper-size dialog. Returning anything
+   * truthy (including `undefined`) allows the default behaviour.
+   * V1 ref: bundle.js line 14281-14283.
+   */
+  onCustomPaperOpen?: (
+    tpl: PrintTemplate | null | undefined,
+    api?: unknown
+  ) => boolean | void | unknown
+  /**
+   * TKT-329 — V1 `onClearConfirm` async hook. Resolving to `false` skips the
+   * clear; any other resolution proceeds. Synchronous `false` returns also
+   * skip the clear (V1 parity).
+   * V1 ref: bundle.js line 14409-14422.
+   */
+  onClearConfirm?: (
+    tpl: PrintTemplate | null | undefined
+  ) => boolean | Promise<boolean> | void
+  /**
+   * TKT-330 — V1 `onSaveDialogOpen` hook. Receives `(context, tpl)` where the
+   * context carries the current `defaultName` + the resolved JSON. Returning
+   * `false` suppresses the SaveDialog and falls back to the legacy
+   * `saveHandler` / direct-download flow.
+   * V1 ref: bundle.js line 14502-14506, 14072-14091.
+   */
+  onSaveDialogOpen?: (
+    ctx: { defaultName: string; json: TemplateJson },
+    tpl: PrintTemplate | null | undefined
+  ) => boolean | void
+  /**
+   * TKT-330 — companion to `onSaveDialogOpen`. Drives whether the toolbar
+   * opens its own `SaveDialog` SFC v-model. When `true` and the dialog hook
+   * does not suppress, the toolbar emits `save-dialog-open` so the parent
+   * (HiprintDesigner) can flip `saveDialogOpen` true.
+   */
+  useSaveDialog?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -322,6 +367,12 @@ const props = withDefaults(defineProps<Props>(), {
   rotateButtonText: undefined,
   businessButtonText: undefined,
   templateButtonText: undefined,
+  locale: undefined,
+  // Sprint 22g wave 2 — V1 hook defaults.
+  onCustomPaperOpen: undefined,
+  onClearConfirm: undefined,
+  onSaveDialogOpen: undefined,
+  useSaveDialog: false,
 })
 
 /**
@@ -340,6 +391,12 @@ interface Emits {
   (e: 'print', tpl: PrintTemplate | null | undefined): void
   (e: 'save', tpl: PrintTemplate | null | undefined, json: TemplateJson, event: Event | null, api: unknown, ctx: { name?: string }): void
   (e: 'clear', tpl: PrintTemplate | null | undefined): void
+  /**
+   * TKT-330 — fired when user clicks Save AND `useSaveDialog=true` AND
+   * `onSaveDialogOpen` did not suppress. Carries the current JSON snapshot
+   * + a default suggested name so the host can render its SaveDialog SFC.
+   */
+  (e: 'save-dialog-open', ctx: { defaultName: string; json: TemplateJson; tpl: PrintTemplate | null | undefined }): void
   (e: 'paperChange', tpl: PrintTemplate | null | undefined, name: string, size: { width: number; height: number }): void
   (e: 'scaleChange', tpl: PrintTemplate | null | undefined, scale: number): void
   (e: 'addPanel', tpl: PrintTemplate | null | undefined): void
@@ -500,6 +557,73 @@ function useHtmlFor(_id: ToolbarButtonId): boolean {
   return false
 }
 
+// ============ Sprint 22g (Stream GI) TKT-418 — aria-label i18n ============
+//
+// V1 toolbar buttons used ZH aria-labels (缩小/放大/添加分页/etc.). V3 had hardcoded
+// English. `locale` prop selects between the two; default keeps V3 behavior
+// (English) for back-compat. ZH set sourced from V1 bundle.js lines 14323,
+// 14324, 14374, 14460, 14456 + V1-INVENTORY/styles.md §1.7.
+
+const ARIA_LABELS_EN: Record<string, string> = {
+  toolbarRoot: 'Designer toolbar',
+  undo: 'Undo',
+  redo: 'Redo',
+  templateSelect: 'Templates',
+  businessSelect: 'Business',
+  save: 'Save',
+  preview: 'Preview',
+  print: 'Print',
+  pdf: 'Download PDF',
+  clear: 'Clear template',
+  paperSize: 'Paper size',
+  customPaper: 'Custom paper size',
+  rotate: 'Rotate paper',
+  activePanel: 'Active panel',
+  panelManager: 'Active panel',
+  addPanel: 'Add panel',
+  removePanel: 'Remove panel',
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  zoomReset: 'Reset zoom',
+  gridToggle: 'Toggle grid',
+  rulerToggle: 'Toggle ruler',
+}
+
+const ARIA_LABELS_ZH: Record<string, string> = {
+  toolbarRoot: '设计器工具栏',
+  undo: '撤销',
+  redo: '重做',
+  templateSelect: '模板列表',
+  businessSelect: '业务场景',
+  save: '保存',
+  preview: '预览',
+  print: '打印',
+  pdf: '导出 PDF',
+  clear: '清空模板',
+  paperSize: '纸张大小',
+  customPaper: '自定义纸张',
+  rotate: '旋转纸张',
+  activePanel: '当前分页',
+  panelManager: '选择分页',
+  addPanel: '添加分页',
+  removePanel: '删除分页',
+  zoomIn: '放大',
+  zoomOut: '缩小',
+  zoomReset: '重置缩放',
+  gridToggle: '切换网格',
+  rulerToggle: '切换标尺',
+}
+
+const isZhLocale = computed<boolean>(() => {
+  const v = (props.locale ?? '').toString().toLowerCase()
+  return v === 'zh' || v === 'zh-cn' || v === 'zh-tw' || v === 'zh-hk'
+})
+
+function ariaFor(key: string): string {
+  const table = isZhLocale.value ? ARIA_LABELS_ZH : ARIA_LABELS_EN
+  return table[key] ?? key
+}
+
 const scalePercent = computed<number>(() => Math.round(canvas.scale * 100))
 
 const orderedExtraButtons = computed<readonly ToolbarExtraButton[]>(
@@ -523,6 +647,32 @@ function handleSave(): void {
   // observer (emit fires for it anyway) and only treat `saveHandler` as a
   // true override.
   let json: TemplateJson
+  // TKT-330 (Sprint 22g wave 2) — V1 save dialog flow:
+  //   saveButton click → openSaveDialog → onSaveDialogOpen(context) → openSaveDialogDefault
+  // When `useSaveDialog=true` AND `onSaveDialogOpen` does not return false,
+  // emit `save-dialog-open` so the parent SaveDialog SFC opens. Default
+  // download is skipped in that path (the dialog's submit drives onSave).
+  if (props.useSaveDialog) {
+    json = tpl.getJson()
+    const ctx = {
+      defaultName: deriveSaveDefaultName(json),
+      json,
+    }
+    let suppressed = false
+    if (typeof props.onSaveDialogOpen === 'function') {
+      const ret = safeCallReturning(
+        props.onSaveDialogOpen as unknown as (...a: unknown[]) => unknown,
+        [ctx, props.tpl] as unknown[],
+        'toolbar.onSaveDialogOpen'
+      )
+      if (ret === false) suppressed = true
+    }
+    if (!suppressed) {
+      emit('save-dialog-open', { ...ctx, tpl: props.tpl })
+      return
+    }
+    // Fall through to legacy save flow when suppressed.
+  }
   if (props.saveHandler) {
     safeCall(
       props.saveHandler as unknown as (...args: unknown[]) => void,
@@ -537,6 +687,39 @@ function handleSave(): void {
     downloadJson(json, 'template.json')
   }
   emit('save', props.tpl, json, null, undefined, {})
+}
+
+/**
+ * TKT-330 — Derive a default file name for the save dialog. Reads the first
+ * panel's `name` field when present; falls back to `'template'`.
+ */
+function deriveSaveDefaultName(json: TemplateJson): string {
+  try {
+    const first = json?.panels?.[0]
+    const name = first && typeof first.name === 'string' ? first.name.trim() : ''
+    return name || 'template'
+  } catch {
+    return 'template'
+  }
+}
+
+/**
+ * Variant of safeCall that returns the user callback's value (or `undefined`
+ * when it throws). V1-compat hooks `onPreview` / `onPrint` / `onClear` /
+ * `onCustomPaperOpen` / `onSaveDialogOpen` use a `false`-return to mean "skip
+ * default" — we need the return value, not just isolation.
+ */
+function safeCallReturning<T>(
+  fn: (...args: unknown[]) => T,
+  args: unknown[],
+  name: string
+): T | undefined {
+  try {
+    return fn(...args)
+  } catch (err) {
+    console.warn('[hiprint-v3] ' + name + ' threw:', err)
+    return undefined
+  }
 }
 
 /**
@@ -811,24 +994,26 @@ defineExpose({
     ref="toolbarRootEl"
     class="hiprint-toolbar"
     role="toolbar"
-    aria-label="Designer toolbar"
+    :aria-label="ariaFor('toolbarRoot')"
   >
     <!-- Extra buttons (start position) -->
     <template v-if="extraPosition === 'start'">
-      <button
-        v-for="btn in orderedExtraButtons"
-        :key="'extra-start-' + btn.key"
-        v-show="btn.visible !== false"
-        type="button"
-        class="hiprint-toolbar-btn"
-        :class="btn.className"
-        :disabled="btn.disabled === true"
-        :aria-label="btn.label ?? btn.key"
-        @click="handleExtraButtonClick(btn, $event)"
-      >
-        <span v-if="btn.html" v-html="btn.html" />
-        <template v-else>{{ btn.label ?? btn.key }}</template>
-      </button>
+      <span class="hiprint-toolbar-group hiprint-toolbar-extra" role="group">
+        <button
+          v-for="btn in orderedExtraButtons"
+          :key="'extra-start-' + btn.key"
+          v-show="btn.visible !== false"
+          type="button"
+          class="hiprint-toolbar-btn"
+          :class="btn.className"
+          :disabled="btn.disabled === true"
+          :aria-label="btn.label ?? btn.key"
+          @click="handleExtraButtonClick(btn, $event)"
+        >
+          <span v-if="btn.html" v-html="btn.html" />
+          <template v-else>{{ btn.label ?? btn.key }}</template>
+        </button>
+      </span>
       <span
         v-if="orderedExtraButtons.length > 0"
         class="hiprint-toolbar-sep"
@@ -836,117 +1021,134 @@ defineExpose({
       />
     </template>
 
-    <button
-      v-if="isShown('undo')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('undo')"
-      aria-label="Undo"
-      @click="handleUndo"
+    <!-- TKT-410 group wrapper: history (undo / redo) -->
+    <span
+      v-if="isShown('undo') || isShown('redo')"
+      class="hiprint-toolbar-group hiprint-toolbar-history"
+      role="group"
     >
-      <span v-if="useHtmlFor('undo')" v-html="labelFor('undo')" />
-      <template v-else>{{ labelFor('undo') }}</template>
-    </button>
-    <button
-      v-if="isShown('redo')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('redo')"
-      aria-label="Redo"
-      @click="handleRedo"
-    >
-      <span v-if="useHtmlFor('redo')" v-html="labelFor('redo')" />
-      <template v-else>{{ labelFor('redo') }}</template>
-    </button>
+      <button
+        v-if="isShown('undo')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :disabled="isDisabled('undo')"
+        :aria-label="ariaFor('undo')"
+        @click="handleUndo"
+      >
+        <span v-if="useHtmlFor('undo')" v-html="labelFor('undo')" />
+        <template v-else>{{ labelFor('undo') }}</template>
+      </button>
+      <button
+        v-if="isShown('redo')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :disabled="isDisabled('redo')"
+        :aria-label="ariaFor('redo')"
+        @click="handleRedo"
+      >
+        <span v-if="useHtmlFor('redo')" v-html="labelFor('redo')" />
+        <template v-else>{{ labelFor('redo') }}</template>
+      </button>
+    </span>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <button
-      v-if="isShown('templateSelect')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('templateSelect')"
-      aria-label="Templates"
-      @click="handleTemplateSelectClick"
+    <!-- TKT-410 group wrapper: template/business selectors -->
+    <span
+      v-if="isShown('templateSelect') || isShown('businessSelect')"
+      class="hiprint-toolbar-group hiprint-toolbar-template-select hiprint-toolbar-business-select"
+      role="group"
     >
-      <span v-if="useHtmlFor('templateSelect')" v-html="labelFor('templateSelect')" />
-      <template v-else>{{ labelFor('templateSelect') }}</template>
-    </button>
-    <button
-      v-if="isShown('businessSelect')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('businessSelect')"
-      aria-label="Business"
-      @click="handleBusinessSelectClick"
-    >
-      <span v-if="useHtmlFor('businessSelect')" v-html="labelFor('businessSelect')" />
-      <template v-else>{{ labelFor('businessSelect') }}</template>
-    </button>
+      <button
+        v-if="isShown('templateSelect')"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="isDisabled('templateSelect')"
+        :aria-label="ariaFor('templateSelect')"
+        @click="handleTemplateSelectClick"
+      >
+        <span v-if="useHtmlFor('templateSelect')" v-html="labelFor('templateSelect')" />
+        <template v-else>{{ labelFor('templateSelect') }}</template>
+      </button>
+      <button
+        v-if="isShown('businessSelect')"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="isDisabled('businessSelect')"
+        :aria-label="ariaFor('businessSelect')"
+        @click="handleBusinessSelectClick"
+      >
+        <span v-if="useHtmlFor('businessSelect')" v-html="labelFor('businessSelect')" />
+        <template v-else>{{ labelFor('businessSelect') }}</template>
+      </button>
+    </span>
 
-    <button
-      v-if="isShown('save')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('save')"
-      aria-label="Save"
-      @click="handleSave"
-    >
-      <span v-if="useHtmlFor('save')" v-html="labelFor('save')" />
-      <template v-else>{{ labelFor('save') }}</template>
-    </button>
-    <button
-      v-if="isShown('preview')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('preview')"
-      aria-label="Preview"
-      @click="handlePreview"
-    >
-      <span v-if="useHtmlFor('preview')" v-html="labelFor('preview')" />
-      <template v-else>{{ labelFor('preview') }}</template>
-    </button>
-    <button
-      v-if="isShown('print')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('print')"
-      aria-label="Print"
-      @click="handlePrint"
-    >
-      <span v-if="useHtmlFor('print')" v-html="labelFor('print')" />
-      <template v-else>{{ labelFor('print') }}</template>
-    </button>
-    <button
-      v-if="isShown('pdf')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('pdf')"
-      aria-label="Download PDF"
-      @click="handlePdf"
-    >
-      <span v-if="useHtmlFor('pdf')" v-html="labelFor('pdf')" />
-      <template v-else>{{ labelFor('pdf') }}</template>
-    </button>
-    <button
-      v-if="isShown('clear')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :disabled="isDisabled('clear')"
-      aria-label="Clear template"
-      @click="handleClear"
-    >
-      <span v-if="useHtmlFor('clear')" v-html="labelFor('clear')" />
-      <template v-else>{{ labelFor('clear') }}</template>
-    </button>
+    <!-- TKT-410/TKT-411 group wrapper: primary actions (save/preview/print/pdf/clear) -->
+    <span class="hiprint-toolbar-group hiprint-toolbar-actions" role="group">
+      <button
+        v-if="isShown('save')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-btn-primary"
+        :disabled="isDisabled('save')"
+        :aria-label="ariaFor('save')"
+        @click="handleSave"
+      >
+        <span v-if="useHtmlFor('save')" v-html="labelFor('save')" />
+        <template v-else>{{ labelFor('save') }}</template>
+      </button>
+      <button
+        v-if="isShown('preview')"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="isDisabled('preview')"
+        :aria-label="ariaFor('preview')"
+        @click="handlePreview"
+      >
+        <span v-if="useHtmlFor('preview')" v-html="labelFor('preview')" />
+        <template v-else>{{ labelFor('preview') }}</template>
+      </button>
+      <button
+        v-if="isShown('print')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-btn-primary"
+        :disabled="isDisabled('print')"
+        :aria-label="ariaFor('print')"
+        @click="handlePrint"
+      >
+        <span v-if="useHtmlFor('print')" v-html="labelFor('print')" />
+        <template v-else>{{ labelFor('print') }}</template>
+      </button>
+      <button
+        v-if="isShown('pdf')"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :disabled="isDisabled('pdf')"
+        :aria-label="ariaFor('pdf')"
+        @click="handlePdf"
+      >
+        <span v-if="useHtmlFor('pdf')" v-html="labelFor('pdf')" />
+        <template v-else>{{ labelFor('pdf') }}</template>
+      </button>
+      <button
+        v-if="isShown('clear')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-btn-danger"
+        :disabled="isDisabled('clear')"
+        :aria-label="ariaFor('clear')"
+        @click="handleClear"
+      >
+        <span v-if="useHtmlFor('clear')" v-html="labelFor('clear')" />
+        <template v-else>{{ labelFor('clear') }}</template>
+      </button>
+    </span>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <label v-if="isShown('paper')" class="hiprint-toolbar-paper">
+    <label v-if="isShown('paper')" class="hiprint-toolbar-paper hiprint-toolbar-group">
       <span class="hiprint-toolbar-label">Paper</span>
       <select
-        class="hiprint-toolbar-select"
-        aria-label="Paper size"
+        class="hiprint-toolbar-select hiprint-toolbar-input"
+        :aria-label="ariaFor('paperSize')"
         :value="selectedPaperLabel"
         @change="
           handlePaperChange(($event.target as HTMLSelectElement).value)
@@ -963,8 +1165,8 @@ defineExpose({
       <button
         v-if="showCustomPaper"
         type="button"
-        class="hiprint-toolbar-btn"
-        aria-label="Custom paper size"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :aria-label="ariaFor('customPaper')"
         :aria-expanded="customPaperOpen"
         @click="customPaperOpen = !customPaperOpen"
       >⚙</button>
@@ -982,7 +1184,7 @@ defineExpose({
       v-if="isShown('rotate')"
       type="button"
       class="hiprint-toolbar-btn"
-      aria-label="Rotate paper"
+      :aria-label="ariaFor('rotate')"
       :disabled="isDisabled('rotate')"
       @click="handleRotate"
     >
@@ -999,9 +1201,9 @@ defineExpose({
          dropdown instead (compact for many-panel docs). -->
     <span
       v-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'chips'"
-      class="hiprint-toolbar-panel-chips"
+      class="hiprint-toolbar-panel-chips hiprint-toolbar-group"
       role="group"
-      aria-label="Active panel"
+      :aria-label="ariaFor('activePanel')"
     >
       <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
         {{ panelManagerLabel }}
@@ -1027,14 +1229,14 @@ defineExpose({
          deterministically (handleSwitchPanel takes an index). -->
     <label
       v-else-if="showPanelManager && canvas.panels.length > 0 && panelManagerMode === 'select'"
-      class="hiprint-toolbar-panel-manager"
+      class="hiprint-toolbar-panel-manager hiprint-toolbar-group"
     >
       <span v-if="panelManagerLabel" class="hiprint-toolbar-label">
         {{ panelManagerLabel }}
       </span>
       <select
-        class="hiprint-toolbar-select hiprint-toolbar-panel-select"
-        aria-label="Active panel"
+        class="hiprint-toolbar-select hiprint-toolbar-panel-select hiprint-toolbar-input"
+        :aria-label="ariaFor('panelManager')"
         :value="canvas.panels.findIndex((p) => p.id === canvas.activePanelId)"
         @change="
           handleSwitchPanel(
@@ -1060,9 +1262,9 @@ defineExpose({
     <button
       v-if="isShown('addPanel')"
       type="button"
-      class="hiprint-toolbar-btn"
+      class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
       :disabled="isDisabled('addPanel')"
-      aria-label="Add panel"
+      :aria-label="ariaFor('addPanel')"
       @click="handleAddPanel"
     >
       <span v-if="useHtmlFor('addPanel')" v-html="labelFor('addPanel')" />
@@ -1071,8 +1273,8 @@ defineExpose({
     <button
       v-if="isShown('removePanel')"
       type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Remove panel"
+      class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+      :aria-label="ariaFor('removePanel')"
       :disabled="isDisabled('removePanel')"
       @click="handleRemovePanel"
     >
@@ -1082,64 +1284,79 @@ defineExpose({
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <button
-      v-if="isShown('zoomOut')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Zoom out"
-      :disabled="isDisabled('zoomOut')"
-      @click="handleZoomOut"
+    <!-- TKT-410 group wrapper: scale (zoom out / reset / in) -->
+    <span
+      v-if="isShown('zoomOut') || isShown('zoomReset') || isShown('zoomIn')"
+      class="hiprint-toolbar-group hiprint-toolbar-scale"
+      role="group"
     >
-      <span v-if="useHtmlFor('zoomOut')" v-html="labelFor('zoomOut')" />
-      <template v-else>{{ labelFor('zoomOut') }}</template>
-    </button>
-    <button
-      v-if="isShown('zoomReset')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Reset zoom"
-      @click="handleZoomReset"
-    >
-      {{ scalePercent }}%
-    </button>
-    <button
-      v-if="isShown('zoomIn')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Zoom in"
-      :disabled="isDisabled('zoomIn')"
-      @click="handleZoomIn"
-    >
-      <span v-if="useHtmlFor('zoomIn')" v-html="labelFor('zoomIn')" />
-      <template v-else>{{ labelFor('zoomIn') }}</template>
-    </button>
+      <button
+        v-if="isShown('zoomOut')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :aria-label="ariaFor('zoomOut')"
+        :disabled="isDisabled('zoomOut')"
+        @click="handleZoomOut"
+      >
+        <span v-if="useHtmlFor('zoomOut')" v-html="labelFor('zoomOut')" />
+        <template v-else>{{ labelFor('zoomOut') }}</template>
+      </button>
+      <button
+        v-if="isShown('zoomReset')"
+        type="button"
+        class="hiprint-toolbar-btn"
+        :aria-label="ariaFor('zoomReset')"
+        @click="handleZoomReset"
+      >
+        {{ scalePercent }}%
+      </button>
+      <button
+        v-if="isShown('zoomIn')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :aria-label="ariaFor('zoomIn')"
+        :disabled="isDisabled('zoomIn')"
+        @click="handleZoomIn"
+      >
+        <span v-if="useHtmlFor('zoomIn')" v-html="labelFor('zoomIn')" />
+        <template v-else>{{ labelFor('zoomIn') }}</template>
+      </button>
+    </span>
 
     <span class="hiprint-toolbar-sep" aria-hidden="true" />
 
-    <button
-      v-if="isShown('gridToggle')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :class="{ 'is-active': gridVisible, active: gridVisible }"
-      :aria-pressed="gridVisible"
-      aria-label="Toggle grid"
-      @click="handleToggleGrid"
+    <!-- TKT-410 group wrapper: align (grid / ruler — these are alignment
+         aides, not the V1 6-button align array which lives in contextmenu) -->
+    <span
+      v-if="isShown('gridToggle') || isShown('rulerToggle')"
+      class="hiprint-toolbar-group hiprint-toolbar-align"
+      role="group"
     >
-      <span v-if="useHtmlFor('gridToggle')" v-html="labelFor('gridToggle')" />
-      <template v-else>{{ labelFor('gridToggle') }}</template>
-    </button>
-    <button
-      v-if="isShown('rulerToggle')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      :class="{ 'is-active': rulerVisible, active: rulerVisible }"
-      :aria-pressed="rulerVisible"
-      aria-label="Toggle ruler"
-      @click="handleToggleRuler"
-    >
-      <span v-if="useHtmlFor('rulerToggle')" v-html="labelFor('rulerToggle')" />
-      <template v-else>{{ labelFor('rulerToggle') }}</template>
-    </button>
+      <button
+        v-if="isShown('gridToggle')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :class="{ 'is-active': gridVisible, active: gridVisible }"
+        :aria-pressed="gridVisible"
+        :aria-label="ariaFor('gridToggle')"
+        @click="handleToggleGrid"
+      >
+        <span v-if="useHtmlFor('gridToggle')" v-html="labelFor('gridToggle')" />
+        <template v-else>{{ labelFor('gridToggle') }}</template>
+      </button>
+      <button
+        v-if="isShown('rulerToggle')"
+        type="button"
+        class="hiprint-toolbar-btn hiprint-toolbar-icon-btn"
+        :class="{ 'is-active': rulerVisible, active: rulerVisible }"
+        :aria-pressed="rulerVisible"
+        :aria-label="ariaFor('rulerToggle')"
+        @click="handleToggleRuler"
+      >
+        <span v-if="useHtmlFor('rulerToggle')" v-html="labelFor('rulerToggle')" />
+        <template v-else>{{ labelFor('rulerToggle') }}</template>
+      </button>
+    </span>
 
     <!--
       Sprint 22d TKT-158: align/distribute buttons removed from the toolbar
@@ -1152,20 +1369,22 @@ defineExpose({
     <!-- Extra buttons (end position; default) -->
     <template v-if="extraPosition !== 'start' && orderedExtraButtons.length > 0">
       <span class="hiprint-toolbar-sep" aria-hidden="true" />
-      <button
-        v-for="btn in orderedExtraButtons"
-        :key="'extra-end-' + btn.key"
-        v-show="btn.visible !== false"
-        type="button"
-        class="hiprint-toolbar-btn"
-        :class="btn.className"
-        :disabled="btn.disabled === true"
-        :aria-label="btn.label ?? btn.key"
-        @click="handleExtraButtonClick(btn, $event)"
-      >
-        <span v-if="btn.html" v-html="btn.html" />
-        <template v-else>{{ btn.label ?? btn.key }}</template>
-      </button>
+      <span class="hiprint-toolbar-group hiprint-toolbar-extra" role="group">
+        <button
+          v-for="btn in orderedExtraButtons"
+          :key="'extra-end-' + btn.key"
+          v-show="btn.visible !== false"
+          type="button"
+          class="hiprint-toolbar-btn"
+          :class="btn.className"
+          :disabled="btn.disabled === true"
+          :aria-label="btn.label ?? btn.key"
+          @click="handleExtraButtonClick(btn, $event)"
+        >
+          <span v-if="btn.html" v-html="btn.html" />
+          <template v-else>{{ btn.label ?? btn.key }}</template>
+        </button>
+      </span>
     </template>
   </div>
 </template>
@@ -1247,6 +1466,29 @@ defineExpose({
 .hiprint-toolbar-btn-danger:hover:not(:disabled),
 .hiprint-toolbar-btn.hiprint-toolbar-btn-danger:hover:not(:disabled) {
   filter: brightness(0.92);
+}
+
+/* Sprint 22g (Stream GI) TKT-411 — icon-only modifier (tight padding +
+ * square-ish footprint). V1 uses this for zoom/grid/ruler/add-panel where
+ * the button content is a single glyph rather than a word. */
+.hiprint-toolbar-btn.hiprint-toolbar-icon-btn,
+.hiprint-toolbar-icon-btn {
+  padding: 0 6px;
+  min-width: 28px;
+  justify-content: center;
+}
+
+/* TKT-410 group wrapper — invisible inline-flex span that just gives caller
+ * CSS a stable hook to query / style ranges of related toolbar buttons.
+ * `.hiprint-toolbar-group` is the generic class; `.hiprint-toolbar-history`,
+ * `.hiprint-toolbar-actions`, `.hiprint-toolbar-scale`,
+ * `.hiprint-toolbar-align`, `.hiprint-toolbar-template-select`,
+ * `.hiprint-toolbar-business-select`, `.hiprint-toolbar-extra` are the
+ * specific named regions. */
+.hiprint-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .hiprint-toolbar-sep {

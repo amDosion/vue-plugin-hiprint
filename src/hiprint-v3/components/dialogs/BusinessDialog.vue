@@ -144,13 +144,22 @@ function onRefresh(): void {
     :width="width"
     :footer="null"
     :mask-closable="true"
-    class="hiprint-business-dialog"
-    wrap-class-name="hiprint-toolbar-business-dialog-wrap"
+    class="hiprint-business-dialog hiprint-toolbar-business"
+    wrap-class-name="hiprint-toolbar-business-dialog-wrap hiprint-toolbar-business-wrap"
+    mask-class-name="hiprint-toolbar-business-mask hiprint-toolbar-template-mask"
     @update:open="handleOpenChange"
     @cancel="close"
   >
-    <div class="hiprint-business-dialog__body">
-      <div class="hiprint-business-dialog__header">
+    <div
+      class="hiprint-business-dialog__body hiprint-toolbar-business-body hiprint-toolbar-template-body"
+      :class="{
+        'is-loading': loading,
+        loading: loading,
+        'is-empty': !loading && filteredItems.length === 0,
+        empty: !loading && filteredItems.length === 0,
+      }"
+    >
+      <div class="hiprint-business-dialog__header hiprint-toolbar-business-header hiprint-toolbar-template-header">
         <AInputSearch
           v-model:value="searchQuery"
           placeholder="搜索业务场景..."
@@ -164,7 +173,7 @@ function onRefresh(): void {
       <ASpin :spinning="loading">
         <div
           v-if="filteredItems.length === 0"
-          class="hiprint-business-dialog__empty"
+          class="hiprint-business-dialog__empty hiprint-toolbar-business-state hiprint-toolbar-template-state empty"
           role="status"
         >
           {{ searchQuery ? '无匹配场景' : '暂无业务场景' }}

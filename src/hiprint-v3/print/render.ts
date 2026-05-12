@@ -371,26 +371,54 @@ function renderLongTextElement(
   const formatter = compileFormatter(opts.formatter)
   const separator = '：'
 
-  // Leading indent <span> — V1 R3 C1 fix (numeric clamp)
+  // Leading indent <span> — V1 R3 C1 fix (numeric clamp).
+  // ADR-0033 / TKT-349: V1 emits an indent span at the start of EVERY line
+  // (not only the first). We helper-build one whenever needed so the per-line
+  // emit code can call it inside the loop too.
   const indentPt = safeNumber(opts.longTextIndent, { min: 0 })
-  if (indentPt > 0) {
-    const indent = document.createElement('span')
-    indent.classList.add('long-text-indent')
-    indent.style.marginLeft = indentPt + 'pt'
-    content.appendChild(indent)
+  const buildIndentSpan = (): HTMLSpanElement | null => {
+    // V1 parity: only emit the indent span when there's actually an indent
+    // value to apply. When `longTextIndent` is absent or 0, emit nothing
+    // (matches existing render-elements.spec.ts assertion).
+    if (indentPt <= 0) return null
+    const span = document.createElement('span')
+    span.classList.add('long-text-indent')
+    span.style.marginLeft = indentPt + 'pt'
+    return span
   }
 
   if (formatter) {
+    // Formatter is by-design HTML (Invariant #2). Author owns the markup,
+    // including any per-paragraph indent. We still emit ONE leading indent
+    // span (V1 line 9826 — `l = [this.getLongTextIndent()]` is unconditional).
+    const leading = buildIndentSpan()
+    if (leading) content.appendChild(leading)
     const out = safelyCall(formatter, [title, value, opts, options.data])
-    // by-design HTML for longText with formatter (Invariant #2)
     const span = document.createElement('span')
     span.innerHTML = out == null ? '' : String(out)
     content.appendChild(span)
   } else {
     // `value` is already a string (formatValue guarantees); no re-coerce.
-    const text = hideTitle || !title ? value : title + separator + value
-    const textNode = document.createTextNode(text) // [Invariant #1]
-    content.appendChild(textNode)
+    const composed = hideTitle || !title ? value : title + separator + value
+
+    // ADR-0033 / TKT-348: V1 default = strip leading whitespace each line
+    // (V1 line 9829 `0 != options.leftSpaceRemoved`). Opt-out by setting
+    // `leftSpaceRemoved: 0`.
+    const stripLeftSpace = opts.leftSpaceRemoved !== 0
+
+    // ADR-0033 / TKT-349: split on `\r|\n`, emit indent span + text node +
+    // <br> between lines. V1 line 9826-9830 exactly.
+    const lines = composed.split(/\r|\n/)
+    lines.forEach((rawLine, idx) => {
+      const lineText = stripLeftSpace ? rawLine.replace(/^\s*/, '') : rawLine
+      const indent = buildIndentSpan()
+      if (indent) content.appendChild(indent)
+      // [Invariant #1] textContent — never innerHTML with user data.
+      content.appendChild(document.createTextNode(lineText))
+      if (idx < lines.length - 1) {
+        content.appendChild(document.createElement('br'))
+      }
+    })
   }
   return content
 }

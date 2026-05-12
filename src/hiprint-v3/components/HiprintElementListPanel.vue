@@ -305,10 +305,92 @@ function onDrop(targetId: string): void {
   history.pushSnapshot()
 }
 
+// ----- TKT-403 keyboard navigation -----
+
+/**
+ * Track which row index has keyboard focus, distinct from selection. A row can
+ * be focused (cursor sits on it for navigation) without being selected; press
+ * Enter to commit the focused row into selection. Mirrors the V1 floating
+ * panel's pattern (`docs/V1-INVENTORY/interactions.md` §16.3 line 11925-11939,
+ * where row click sets selection and triggers an outline flash). Index, not
+ * id, because rows reorder on canvas mutations and we want focus to remain on
+ * the position the user was navigating, not jump around with reorders.
+ */
+const focusIdx = ref<number>(-1)
+
+/**
+ * Handle ArrowUp / ArrowDown / Enter on the body container.
+ *
+ * Why on the body container and not on each row: a single tabindex'd container
+ * with delegated keyboard handling avoids the focus-management nightmare of N
+ * tabindexed rows (and keeps Tab navigation predictable for screen-reader
+ * users). The container becomes the only focusable element in the panel, and
+ * the focused-row state is purely visual.
+ *
+ * Behavior:
+ *  - ArrowDown: focusIdx → min(focusIdx+1, rows.length-1). Wraps from -1 to 0
+ *    when nothing was focused (V1 "first ArrowDown selects first row").
+ *  - ArrowUp:   focusIdx → max(focusIdx-1, 0). Wraps from -1 to last row when
+ *    nothing was focused (V1 ArrowUp-when-empty selects last).
+ *  - Enter:     replace selection with the focused row's element + scroll into
+ *    view. No history snapshot (selection is not a persisted edit).
+ *  - Esc:       blur the panel + clear focusIdx (matches V1 §1.7 — Esc clears
+ *    selection-derived UI hints).
+ */
+function onBodyKeyDown(ev: KeyboardEvent): void {
+  if (rows.value.length === 0) return
+  // Don't fight input focus when the user is typing in a row's child input
+  // (currently none, but defensive against future inline edit widgets).
+  const tgt = ev.target as HTMLElement | null
+  if (
+    tgt &&
+    (tgt.tagName === 'INPUT' ||
+      tgt.tagName === 'TEXTAREA' ||
+      tgt.isContentEditable)
+  ) {
+    return
+  }
+  const last = rows.value.length - 1
+  if (ev.key === 'ArrowDown') {
+    ev.preventDefault()
+    focusIdx.value =
+      focusIdx.value < 0 ? 0 : Math.min(focusIdx.value + 1, last)
+    return
+  }
+  if (ev.key === 'ArrowUp') {
+    ev.preventDefault()
+    focusIdx.value = focusIdx.value < 0 ? last : Math.max(focusIdx.value - 1, 0)
+    return
+  }
+  if (ev.key === 'Enter') {
+    ev.preventDefault()
+    const row = rows.value[focusIdx.value]
+    if (row) canvas.selectElement(row.id, 'replace')
+    return
+  }
+  if (ev.key === 'Escape') {
+    // Don't preventDefault — Escape may close other UI (matches the
+    // selection-shortcut behavior in interactions/selection.ts).
+    focusIdx.value = -1
+    return
+  }
+  if (ev.key === 'Home') {
+    ev.preventDefault()
+    focusIdx.value = 0
+    return
+  }
+  if (ev.key === 'End') {
+    ev.preventDefault()
+    focusIdx.value = last
+    return
+  }
+}
+
 // Exposed for tests / parent imperative access.
 defineExpose({
   isOpen,
   hoverId,
+  focusIdx,
   openPanel,
   closePanel,
 })
@@ -343,11 +425,26 @@ defineExpose({
     <div v-if="rows.length === 0" class="hiprint-el-list-empty">
       <slot name="empty">No elements</slot>
     </div>
-    <div v-else ref="listBodyRef" class="hiprint-el-list-panel-body">
+    <div
+      v-else
+      ref="listBodyRef"
+      class="hiprint-el-list-panel-body"
+      tabindex="0"
+      role="listbox"
+      :aria-activedescendant="
+        focusIdx >= 0 && rows[focusIdx]
+          ? `hiprint-el-list-row-${rows[focusIdx].id}`
+          : undefined
+      "
+      @keydown="onBodyKeyDown"
+    >
       <div
         v-for="(el, idx) in rows"
+        :id="`hiprint-el-list-row-${el.id}`"
         :key="el.id"
         class="hiprint-el-list-row"
+        role="option"
+        :aria-selected="selectedIds.has(el.id)"
         :class="{
           /* TKT-250 — co-emit BEM + V1 legacy state classes so business CSS
              keyed to either selector vocabulary still fires. V1 inventory
@@ -365,6 +462,8 @@ defineExpose({
           dragging: draggingId === el.id,
           'is-drop-target': dropTargetId === el.id && draggingId !== el.id,
           /* `.is-drop-target` has no V1 equivalent (V3-only). */
+          /* TKT-403 — keyboard focus visual (NOT selection). */
+          'is-keyboard-focus': focusIdx === idx,
         }"
         :data-element-id="el.id"
         draggable="true"
@@ -533,6 +632,18 @@ defineExpose({
 .hiprint-el-list-row.is-drop-target {
   background: var(--hiprint-drop-target-bg, #fff8e1);
   border-top: 1px dashed var(--hiprint-drop-target-border, #f59e0b);
+}
+/* TKT-403 — keyboard focus visual. Distinct from `.selected-el` (which is
+ * persisted selection) so users can navigate without losing track of the
+ * actual selection. Uses outline (not background) to stack cleanly on top of
+ * `.selected` rows. */
+.hiprint-el-list-row.is-keyboard-focus {
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
+  outline-offset: -2px;
+}
+.hiprint-el-list-panel-body:focus-visible {
+  outline: 2px solid var(--hiprint-selection-outline, #409eff);
+  outline-offset: -2px;
 }
 
 .hiprint-el-list-row-title {

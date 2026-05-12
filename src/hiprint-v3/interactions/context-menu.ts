@@ -754,32 +754,63 @@ function _toggleLock(
   history.pushSnapshot()
 }
 
+/**
+ * TKT-396 — Resolve the z-order "target set":
+ *
+ * V1 inventory §7.1 / §10.3 / bundle 11488-11522: z-order actions (置顶 / 置底
+ * / 上移 / 下移) act on the FULL selection, not the right-clicked element.
+ * E.g. if A,B,C are selected and the user right-clicks C → "Bring to Front",
+ * V1 brings ALL of {A,B,C} to the front (preserving intra-selection relative
+ * order via sequential z increments).
+ *
+ * V3 previously acted on the single right-clicked element only — which broke
+ * the muscle memory of users editing multiple elements at once. We restore V1
+ * behavior here, but fall back to a single-element target set when the
+ * right-clicked element is NOT part of the selection (matches V1 — clicking
+ * an unselected element implicitly selects it then acts).
+ */
+function _zOrderTargetIds(canvas: CanvasStore, elementId: string): string[] {
+  const selected = canvas.selectedElementIds
+  if (selected.size > 0 && selected.has(elementId)) {
+    return Array.from(selected)
+  }
+  return [elementId]
+}
+
 function _bringToFront(
   canvas: CanvasStore,
   elementId: string,
   history: HistoryStore
 ): void {
+  // TKT-396: act on FULL selection (V1 §10.3 line 11488-11496). The classic
+  // single-element behavior is preserved when selection is empty or doesn't
+  // include the right-clicked element.
+  const targetIds = _zOrderTargetIds(canvas, elementId)
   const hit = _findElement(canvas, elementId)
   if (!hit) return
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
   if (!panel) return
-  // Reorder: move element to end of printElements array.
-  const idx = panel.printElements.findIndex((e) => e.id === elementId)
-  if (idx < 0 || idx === panel.printElements.length - 1) return
-  const next = panel.printElements.slice()
-  const [moved] = next.splice(idx, 1)
-  if (!moved) return
-  next.push(moved)
-  // Use updateElement on each shifted element to trigger reactivity via the
-  // store's immutable patch path. Simpler: replace panels directly.
+  // Build a set for O(1) membership check while preserving original printElements
+  // ORDER among the moved items (V1 preserves intra-selection relative order).
+  const moveSet = new Set(targetIds)
+  const moved = panel.printElements.filter((e) => moveSet.has(e.id))
+  const stayed = panel.printElements.filter((e) => !moveSet.has(e.id))
+  if (moved.length === 0) return
+  // Already at the front?
+  const allAtEnd =
+    moved.length === panel.printElements.length ||
+    (stayed.length > 0 &&
+      panel.printElements
+        .slice(-moved.length)
+        .every((e) => moveSet.has(e.id)))
+  if (allAtEnd) return
+  const next = [...stayed, ...moved]
   const pIdx = canvas.panels.findIndex((p) => p.id === hit.panelId)
   if (pIdx < 0) return
   const nextPanels = canvas.panels.slice()
   nextPanels[pIdx] = { ...panel, printElements: next }
-  // canvas.panels is reactive via Pinia; direct assignment triggers diff.
   canvas.panels = nextPanels
-  // TKT-020: z-order changed → snapshot. (Early-returns above guarantee that
-  // reaching this line means the array actually shifted.)
+  // TKT-020: z-order changed → snapshot.
   history.pushSnapshot()
 }
 
@@ -788,16 +819,24 @@ function _sendToBack(
   elementId: string,
   history: HistoryStore
 ): void {
+  // TKT-396: full-selection mirror of _bringToFront.
+  const targetIds = _zOrderTargetIds(canvas, elementId)
   const hit = _findElement(canvas, elementId)
   if (!hit) return
   const panel = canvas.panels.find((p) => p.id === hit.panelId)
   if (!panel) return
-  const idx = panel.printElements.findIndex((e) => e.id === elementId)
-  if (idx <= 0) return
-  const next = panel.printElements.slice()
-  const [moved] = next.splice(idx, 1)
-  if (!moved) return
-  next.unshift(moved)
+  const moveSet = new Set(targetIds)
+  const moved = panel.printElements.filter((e) => moveSet.has(e.id))
+  const stayed = panel.printElements.filter((e) => !moveSet.has(e.id))
+  if (moved.length === 0) return
+  const allAtStart =
+    moved.length === panel.printElements.length ||
+    (stayed.length > 0 &&
+      panel.printElements
+        .slice(0, moved.length)
+        .every((e) => moveSet.has(e.id)))
+  if (allAtStart) return
+  const next = [...moved, ...stayed]
   const pIdx = canvas.panels.findIndex((p) => p.id === hit.panelId)
   if (pIdx < 0) return
   const nextPanels = canvas.panels.slice()
@@ -814,37 +853,53 @@ function _sendToBack(
 /**
  * Shift an element's `options.zIndex` up by 1. V1 §G 11509-11515 — pure
  * numeric increment with no max clamp (V1 quirk: stacks unboundedly).
+ *
+ * TKT-396 — applies to ALL selected elements (V1 §10.3 quirk: "Layer up/down
+ * applies SAME delta to each, so distinct z values in selection are preserved")
+ * so user-visible behavior matches V1 when right-clicking inside a multi-select.
  */
 function _bringForward(
   canvas: CanvasStore,
   elementId: string,
   history: HistoryStore
 ): void {
-  const hit = _findElement(canvas, elementId)
-  if (!hit) return
-  const o = hit.el.options as Record<string, unknown>
-  const z = Number(o.zIndex ?? 0)
-  canvas.updateElement(hit.panelId, elementId, { options: { zIndex: z + 1 } })
-  history.pushSnapshot()
+  const targetIds = _zOrderTargetIds(canvas, elementId)
+  let mutated = false
+  for (const id of targetIds) {
+    const hit = _findElement(canvas, id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    const z = Number(o.zIndex ?? 0)
+    canvas.updateElement(hit.panelId, id, { options: { zIndex: z + 1 } })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
 }
 
 /**
  * Shift an element's `options.zIndex` down by 1, clamped at 0.
  * V1 §G 11516-11522 — `Math.max(0, zIndex - 1)`.
+ *
+ * TKT-396 — applies to ALL selected elements (see `_bringForward`).
  */
 function _sendBackward(
   canvas: CanvasStore,
   elementId: string,
   history: HistoryStore
 ): void {
-  const hit = _findElement(canvas, elementId)
-  if (!hit) return
-  const o = hit.el.options as Record<string, unknown>
-  const z = Number(o.zIndex ?? 0)
-  canvas.updateElement(hit.panelId, elementId, {
-    options: { zIndex: Math.max(0, z - 1) },
-  })
-  history.pushSnapshot()
+  const targetIds = _zOrderTargetIds(canvas, elementId)
+  let mutated = false
+  for (const id of targetIds) {
+    const hit = _findElement(canvas, id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    const z = Number(o.zIndex ?? 0)
+    canvas.updateElement(hit.panelId, id, {
+      options: { zIndex: Math.max(0, z - 1) },
+    })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
 }
 
 // -----------------------------------------------------------------------------

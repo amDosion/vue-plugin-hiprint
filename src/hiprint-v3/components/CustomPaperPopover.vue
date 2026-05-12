@@ -15,7 +15,7 @@
  * When `open` flips true we convert pt → mm and prefill the inputs so the
  * popover reflects the active panel's current dimensions.
  */
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 
 interface Props {
   open: boolean
@@ -40,6 +40,12 @@ const emit = defineEmits<{
 const w = ref<number>(210)
 const h = ref<number>(297)
 
+// Root element ref — used by the outside-click detector (TKT-408) to decide
+// whether a `mousedown` originated from inside the popover. Without this we'd
+// need to walk the event path or rely on `event.composedPath()` which doesn't
+// play well with Vue's `@click.stop` short-circuit on the root element.
+const rootRef = ref<HTMLElement | null>(null)
+
 watch(
   () => [props.initialWidth, props.initialHeight, props.open] as const,
   ([pw, ph, op]) => {
@@ -61,41 +67,113 @@ function submit(): void {
 function close(): void {
   emit('close')
 }
+
+/**
+ * TKT-408 — outside-click dismiss.
+ *
+ * V1 inventory §17.7 + bundle 14303-14307: clicking anywhere outside the
+ * popover closed it. V3 previously relied on the parent toolbar to flip
+ * `open=false` when the trigger button was re-clicked; clicks elsewhere on
+ * the page would leave a stale popover hanging.
+ *
+ * We install a `mousedown` listener (capture phase) on `document` while
+ * `open` is true. Using `mousedown` instead of `click` matches the
+ * context-menu dismiss strategy (`context-menu.ts` line 211) so the popover
+ * disappears the instant the user starts a click outside, before any
+ * downstream target consumes the gesture.
+ *
+ * Capture-phase = true ensures we hear the event before bubbling — important
+ * because some toolbar buttons call `event.stopPropagation()` to prevent
+ * accidental re-open loops; a bubble-phase listener would never fire.
+ */
+function onDocumentMouseDown(ev: MouseEvent): void {
+  const root = rootRef.value
+  if (!root) return
+  const target = ev.target
+  if (target instanceof Node && root.contains(target)) return
+  close()
+}
+
+/**
+ * TKT-409 — Escape dismiss + focus return.
+ *
+ * V1 inventory §17.7 + bundle 14294-14300: Escape closed the popover and
+ * returned focus to the trigger button. V3 has the close half but doesn't
+ * coordinate focus return (parent owns that). We handle the close half
+ * here; the parent is responsible for restoring focus to its trigger
+ * button when `close` fires (HiprintToolbar.vue already does this via a
+ * `triggerRef` it tracks for each popover).
+ *
+ * Capture phase so the popover wins over global Esc consumers like the
+ * context-menu and lasso-clear shortcuts.
+ */
+function onDocumentKeyDown(ev: KeyboardEvent): void {
+  if (ev.key !== 'Escape') return
+  ev.stopPropagation()
+  close()
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      document.addEventListener('mousedown', onDocumentMouseDown, true)
+      document.addEventListener('keydown', onDocumentKeyDown, true)
+    } else {
+      document.removeEventListener('mousedown', onDocumentMouseDown, true)
+      document.removeEventListener('keydown', onDocumentKeyDown, true)
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  // Defensive cleanup — guards against the popover being unmounted while
+  // `open=true` (would otherwise leak listeners on the document).
+  document.removeEventListener('mousedown', onDocumentMouseDown, true)
+  document.removeEventListener('keydown', onDocumentKeyDown, true)
+})
 </script>
 
 <template>
   <div
     v-if="open"
-    class="hiprint-custom-paper-popover hiprint-toolbar-custom-paper-dialog-wrap"
+    ref="rootRef"
+    class="hiprint-custom-paper-popover hiprint-toolbar-custom-paper-dialog-wrap hiprint-toolbar-popover hiprint-toolbar-custom-wrap"
     role="dialog"
     aria-label="Custom paper size"
     @click.stop
+    @mousedown.stop
   >
-    <label>
-      <span>Width (mm)</span>
-      <input
-        type="number"
-        min="10"
-        max="2000"
-        :value="w"
-        aria-label="Custom paper width millimetres"
-        @input="w = Number(($event.target as HTMLInputElement).value)"
-      />
-    </label>
-    <label>
-      <span>Height (mm)</span>
-      <input
-        type="number"
-        min="10"
-        max="2000"
-        :value="h"
-        aria-label="Custom paper height millimetres"
-        @input="h = Number(($event.target as HTMLInputElement).value)"
-      />
-    </label>
-    <div class="actions">
-      <button type="button" @click="close">Cancel</button>
-      <button type="button" class="primary" @click="submit">Apply</button>
+    <div class="hiprint-toolbar-popover-content">
+      <label>
+        <span>Width (mm)</span>
+        <input
+          type="number"
+          min="10"
+          max="2000"
+          :value="w"
+          class="hiprint-toolbar-input"
+          aria-label="Custom paper width millimetres"
+          @input="w = Number(($event.target as HTMLInputElement).value)"
+        />
+      </label>
+      <label>
+        <span>Height (mm)</span>
+        <input
+          type="number"
+          min="10"
+          max="2000"
+          :value="h"
+          class="hiprint-toolbar-input"
+          aria-label="Custom paper height millimetres"
+          @input="h = Number(($event.target as HTMLInputElement).value)"
+        />
+      </label>
+      <div class="actions">
+        <button type="button" @click="close">Cancel</button>
+        <button type="button" class="primary hiprint-toolbar-btn-primary" @click="submit">Apply</button>
+      </div>
     </div>
   </div>
 </template>

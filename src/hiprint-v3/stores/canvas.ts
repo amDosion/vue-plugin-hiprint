@@ -364,16 +364,28 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     nextPanels[idx] = { ...panel, printElements: filteredEls }
     panels.value = nextPanels
 
+    // TKT-405 — clearSettingContainer parity: when the deleted element was
+    // selected we update selection state, AND we must fire the selection bus
+    // so external integrators (e.g. a property-panel mirror keyed off
+    // `subscribe('select', ...)`) can drop their UI references. Without the
+    // emit the prop panel would keep showing the now-deleted element's edit
+    // controls (V1 inventory §21 `clearSettingContainer` event).
     if (selectedElementIds.value.has(elementId)) {
       const next = new Set(selectedElementIds.value)
       next.delete(elementId)
       selectedElementIds.value = next
+      _emitSelect()
     }
   }
 
   /**
    * Patch an element immutably. Returns nothing; reactive panels array is
    * replaced so Vue diff fires.
+   *
+   * TKT-404 — emits `option-change` on every `options` patch so external
+   * custom-option panels can rebuild themselves. Non-options patches
+   * (printElementType / tid swap — rare; only during type-coercion) do not
+   * emit; V1's BuildCustomOptionSetting bus only fired for options edits.
    */
   function updateElement(
     panelId: string,
@@ -389,16 +401,133 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     const oldEl = panel.printElements[eIdx]
     if (!oldEl) return
     const nextEls = panel.printElements.slice()
-    nextEls[eIdx] = applyElementPatch(oldEl, patch)
+    const nextEl = applyElementPatch(oldEl, patch)
+    nextEls[eIdx] = nextEl
     const nextPanels = panels.value.slice()
     nextPanels[pIdx] = { ...panel, printElements: nextEls }
     panels.value = nextPanels
+    // TKT-404 emit (after store mutation lands so listeners reading the
+    // store see the new state).
+    if (patch.options !== undefined) {
+      _emitOptionChange(panelId, elementId, nextEl.options)
+    }
+  }
+
+  // -------- TKT-401 / TKT-404 event bus --------
+
+  /**
+   * TKT-401 — selection event bus for non-V3 consumers.
+   *
+   * V1 reference: bundle.js line 12562-12564 `PrintElementSelectEventKey_<id>`
+   * was the V1 event that fired whenever selection changed. Internal V3 uses
+   * Pinia reactivity, but external integrators (e.g. an Ant Design Vue
+   * Drawer that needs to mirror selection state) currently have no
+   * mechanism to subscribe without polling. We expose a Set-of-listeners
+   * pattern mirroring `history.subscribe('change', ...)` for symmetry.
+   *
+   * Why on `selectElement` AND `selectMultiple` AND `clearSelection`:
+   * V1 emitted on every state transition (single click, shift-click,
+   * Ctrl+A, Esc, lasso end). We fire from the three store actions that
+   * change selection so every transition is covered. The listener
+   * receives the FRESH `Array<string>` (snapshot, not the live ref) so
+   * consumers can iterate safely without locking reactivity.
+   *
+   * TKT-404 — option-change event bus (V1 reference: bundle 12565-12567
+   * `BuildCustomOptionSettingEventKey_<id>`). Fires whenever
+   * `updateElement` lands an `options` patch, so custom property-panel
+   * authors can rebuild their UI without polling. Identical fan-out
+   * pattern to the select bus, but the listener receives the patched
+   * element id + patch options snapshot.
+   */
+  type SelectListener = (ids: readonly string[]) => void
+  type OptionListener = (
+    payload: {
+      panelId: string
+      elementId: string
+      options: Record<string, unknown>
+    }
+  ) => void
+  const _selectListeners = new Set<SelectListener>()
+  const _optionListeners = new Set<OptionListener>()
+
+  function _emitSelect(): void {
+    if (_selectListeners.size === 0) return
+    const snap = Array.from(selectedElementIds.value)
+    for (const fn of _selectListeners) {
+      try {
+        fn(snap)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[hiprint-v3:canvas] select listener threw:', err)
+      }
+    }
+  }
+
+  function _emitOptionChange(
+    panelId: string,
+    elementId: string,
+    options: Record<string, unknown>
+  ): void {
+    if (_optionListeners.size === 0) return
+    // Copy so listeners can't mutate the underlying element through this
+    // payload reference. The element's actual `options` ref is reactive and
+    // already protected by the immutable patch path in `applyElementPatch`.
+    const payload = {
+      panelId,
+      elementId,
+      options: { ...options },
+    }
+    for (const fn of _optionListeners) {
+      try {
+        fn(payload)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[hiprint-v3:canvas] option listener threw:', err)
+      }
+    }
+  }
+
+  /**
+   * TKT-401 / TKT-404 — subscribe to canvas events. Returns unsubscribe.
+   *
+   * @example
+   *   const off = canvas.subscribe('select', (ids) => syncDrawer(ids))
+   *   canvas.subscribe('option-change', ({ elementId, options }) => …)
+   */
+  function subscribe(
+    event: 'select',
+    listener: SelectListener
+  ): () => void
+  function subscribe(
+    event: 'option-change',
+    listener: OptionListener
+  ): () => void
+  function subscribe(
+    event: 'select' | 'option-change',
+    listener: SelectListener | OptionListener
+  ): () => void {
+    if (event === 'select') {
+      _selectListeners.add(listener as SelectListener)
+      return () => {
+        _selectListeners.delete(listener as SelectListener)
+      }
+    }
+    if (event === 'option-change') {
+      _optionListeners.add(listener as OptionListener)
+      return () => {
+        _optionListeners.delete(listener as OptionListener)
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.warn('[hiprint-v3:canvas] subscribe: unknown event', event)
+    return () => undefined
   }
 
   /** Clear all selection. */
   function clearSelection(): void {
     if (selectedElementIds.value.size === 0) return
     selectedElementIds.value = new Set()
+    _emitSelect()
   }
 
   /**
@@ -410,6 +539,7 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
   function selectElement(id: string, mode: SelectionMode = 'replace'): void {
     if (mode === 'replace') {
       selectedElementIds.value = new Set([id])
+      _emitSelect()
       return
     }
     const next = new Set(selectedElementIds.value)
@@ -421,11 +551,13 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
       next.add(id)
     }
     selectedElementIds.value = next
+    _emitSelect()
   }
 
   /** Replace selection with a set of ids. */
   function selectMultiple(ids: readonly string[]): void {
     selectedElementIds.value = new Set(ids)
+    _emitSelect()
   }
 
   /**
@@ -604,6 +736,8 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     removeGuideLine,
     updateGuideLine,
     clearGuideLines,
+    // TKT-401 — selection event bus for external integrators.
+    subscribe,
     $reset,
   }
 })

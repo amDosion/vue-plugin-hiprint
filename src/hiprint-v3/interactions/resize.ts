@@ -289,6 +289,31 @@ export function enableElementResize(
   }
   ELEMENT_STATE.set(el, state)
 
+  // TKT-399 — Scale-awareness for resize deltas at non-1 zoom.
+  //
+  // V1 inventory §4.3 lines 8302-8315: `n = (pageX - o) / scale` — V1 divides
+  // mouse-delta by the panel's current scale BEFORE applying as size delta,
+  // so a 100px mouse drag at scale=2 grows the element by 50pt (not 100pt
+  // and not 100/72 pt). interact.js delivers `event.rect` + `event.deltaRect`
+  // in unscaled CLIENT px (display pixels at the CURRENT zoom), so we must
+  // apply the same divide-by-scale before pt conversion to keep delta math
+  // consistent with V1.
+  //
+  // We capture the canvas store at enable time (same multi-designer pinia-pin
+  // pattern as drag-drop.ts / keyboard.ts) so the scale read inside `move`
+  // targets THIS designer's store. If Pinia isn't active (raw unit test path)
+  // we fall back to scale=1; tests that care install Pinia.
+  let canvasForScale: ReturnType<typeof useCanvasStore> | null = null
+  try {
+    canvasForScale = useCanvasStore()
+  } catch {
+    canvasForScale = null
+  }
+  function currentScale(): number {
+    const s = canvasForScale?.scale ?? 1
+    return Number.isFinite(s) && s > 0 ? s : 1
+  }
+
   // TKT-020: capture history store at enable-time (multi-designer pinia-pin
   // pattern — same rationale as drag-drop.ts / keyboard.ts). The captured
   // ref stays valid for the lifetime of this resizable; resize-end pushes
@@ -365,9 +390,18 @@ export function enableElementResize(
         const dy = deltaRect?.top ?? 0
         if (dx !== 0 || dy !== 0) didResize = true
 
-        // event.rect is in px (browser pixel domain). Convert to pt.
-        let widthPt = pxToPt(rect.width)
-        let heightPt = pxToPt(rect.height)
+        // TKT-399 — Scale-aware delta + dimension conversion.
+        //
+        // event.rect is in screen px AT THE CURRENT ZOOM. To recover the
+        // logical (pt) dimension we must divide by scale before the px→pt
+        // conversion. At scale=1 the behavior is identical to the pre-fix
+        // path. At scale=2 a 100px-wide rendered element represents only
+        // 50px of logical layout space — without the divide the element
+        // would jump to 2× its actual width on first resize tick. Same
+        // logic applies to deltaRect (movement delta).
+        const s = currentScale()
+        let widthPt = pxToPt(rect.width / s)
+        let heightPt = pxToPt(rect.height / s)
 
         // Aspect ratio lock — derive missing dimension from the larger delta.
         if (state.aspectLocked && state.startRatio > 0) {
@@ -383,10 +417,11 @@ export function enableElementResize(
 
         // Compute new top/left in pt by reading current style + applying delta.
         // (We trust caller has set style.left/style.top in pt.)
+        // TKT-399 — same scale divide applies to the delta-based shift.
         const curLeft = parseFloat(el.style.left || '0')
         const curTop = parseFloat(el.style.top || '0')
-        const leftPt = curLeft + pxToPt(deltaRect?.left ?? 0)
-        const topPt = curTop + pxToPt(deltaRect?.top ?? 0)
+        const leftPt = curLeft + pxToPt((deltaRect?.left ?? 0) / s)
+        const topPt = curTop + pxToPt((deltaRect?.top ?? 0) / s)
 
         // Grid snap (pt domain) — applies to position when modifier didn't
         // cover it (snapSize only snaps dimensions).

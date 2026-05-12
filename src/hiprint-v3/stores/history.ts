@@ -103,8 +103,36 @@ export const useHistoryStore = defineStore('hiprint-v3-history', () => {
   // -------- Actions --------
 
   /**
+   * TKT-400 — External `change` event bus for non-V3 integrators.
+   *
+   * V1 reference: bundle 10001+ `hiprintTemplateDataChanged_<id>` event was
+   * the single hook business code subscribed to so it could persist updates,
+   * trigger re-renders, etc. V3 replaces the internal use with Pinia
+   * reactivity, but external consumers (vue-admin-main / standalone embeds)
+   * have no equivalent without a subscription primitive. We expose a plain
+   * `subscribe('change', fn)` interface that fires every time
+   * `pushSnapshot()` lands — that's the closest semantic mapping to V1's
+   * "data changed" emission (both fire on every commit boundary).
+   *
+   * Implementation: a Set of listeners is kept module-local (not in
+   * reactive state — listeners aren't part of the persisted template and
+   * shouldn't trigger their own reactive updates). Each listener is
+   * invoked inside try/catch so a broken consumer can't take down the
+   * designer.
+   *
+   * Listeners receive the FRESH snapshot — same `currentSnapshot.value`
+   * the history record stores, deep-cloned so consumers can hold the
+   * reference safely without locking the designer's reactive graph.
+   */
+  type ChangeListener = (snap: TemplateSnapshot) => void
+  const _changeListeners = new Set<ChangeListener>()
+
+  /**
    * Capture current canvas state as a new history entry. Composables should
    * call this on logical edit boundaries (drag-end, paste, delete, etc.).
+   *
+   * TKT-400 — also broadcasts the post-commit snapshot to every
+   * `subscribe('change', ...)` listener.
    */
   function pushSnapshot(): void {
     const canvas = useCanvasStore()
@@ -114,6 +142,43 @@ export const useHistoryStore = defineStore('hiprint-v3-history', () => {
       timestamp: Date.now(),
     })
     manual.commit()
+    // TKT-400: fan out to external listeners. We pass a CLONE so listeners
+    // can't mutate the stored snapshot record. P14 R3 — exceptions caught +
+    // warned so a buggy consumer can't break subsequent listeners or kill
+    // the commit path.
+    for (const fn of _changeListeners) {
+      try {
+        fn(clone(currentSnapshot.value))
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[hiprint-v3:history] change listener threw:', err)
+      }
+    }
+  }
+
+  /**
+   * TKT-400 — subscribe to history-commit events. Returns an unsubscribe.
+   *
+   * @example
+   *   const off = history.subscribe('change', (snap) => persist(snap))
+   *   // later: off()
+   */
+  function subscribe(
+    event: 'change',
+    listener: ChangeListener
+  ): () => void {
+    if (event !== 'change') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[hiprint-v3:history] subscribe: unknown event',
+        event
+      )
+      return () => undefined
+    }
+    _changeListeners.add(listener)
+    return () => {
+      _changeListeners.delete(listener)
+    }
   }
 
   /** Apply a snapshot to the canvas store (used by undo/redo restore). */
@@ -190,6 +255,8 @@ export const useHistoryStore = defineStore('hiprint-v3-history', () => {
     redo,
     clear,
     setCapacity,
+    // TKT-400 — external bus for vue-admin-main / standalone integrators.
+    subscribe,
   }
 })
 

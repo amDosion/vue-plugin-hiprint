@@ -29,10 +29,11 @@
  *    failing callback does not crash the designer mount.
  */
 
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, nextTick, reactive, type App } from 'vue'
 import { setActivePinia } from 'pinia'
 import HiprintDesigner from '@hiprint-v3/components/HiprintDesigner.vue'
 import {
+  useCanvasStore,
   useHistoryStore,
   useTemplateStore,
 } from '@hiprint-v3/stores'
@@ -133,15 +134,35 @@ export interface BuildDesignerToolbarOptions {
 /**
  * V1-shape templateOptions forwarded to PrintTemplate constructor + SFC. The
  * `onDataChanged` callback is polled via setInterval (P21.6 best-effort).
+ *
+ * TKT-324 (Sprint 22g wave 2): full V1 sub-opts pass-through. 9 keys forwarded
+ * to the PrintTemplate / designer SFC so V1 callers see identical behaviour.
  */
 export interface BuildDesignerTemplateOptions {
   template?: TemplateJson | Record<string, unknown> | undefined
+  /** V1 ref bundle.js 12278 — history capacity (number) or boolean (false → 0). */
   history?: number | boolean | undefined
+  /** V1 ref bundle.js 12280 — auto-paginate long-text elements. */
   paginate?: boolean | undefined
+  /** V1 ref bundle.js 15077 — 1=template-only, 2=template+data layout. */
   dataMode?: 1 | 2 | undefined
+  /** V1 ref bundle.js 15078 — warn when element placed outside panel bounds. */
   willOutOfBounds?: boolean | undefined
+  /** V1 ref bundle.js 15079 — Qt designer flag (toggles desktop-app behaviours). */
   qtDesigner?: boolean | undefined
+  /** V1 ref bundle.js 15080 — default name shown on first panel. */
+  defaultPanelName?: string | undefined
+  /** V1 ref bundle.js 12898 — font list shown in property panel font dropdown. */
+  fontList?: readonly string[] | undefined
+  /** V1 ref bundle.js 12904 — dynamic-field map for `${...}` text bindings. */
+  fields?: Record<string, unknown> | readonly unknown[] | undefined
+  /** V1 ref bundle.js 12912 — designer image picker handler. */
+  onImageChooseClick?: ((tpl: PrintTemplate) => void) | undefined
+  /** V1 ref bundle.js 15076 — fired when user clicks `+ Panel`. */
+  onPanelAddClick?: ((tpl: PrintTemplate) => void) | undefined
+  /** V1 ref bundle.js 15076 — polled when template data changes. */
   onDataChanged?: (() => void) | undefined
+  /** V1 ref bundle.js — fired when update() throws or schema is invalid. */
   onUpdateError?: ((err: unknown) => void) | undefined
   [key: string]: unknown
 }
@@ -187,11 +208,35 @@ export interface DesignerController {
   getTemplate(): TemplateJson
   /** Get the PrintTemplate instance this designer owns. */
   getTpl(): PrintTemplate
-  /** V1 quirk methods (no-ops in V3 — slot-driven). */
+  /**
+   * V1 quirk methods (no-ops in V3 — slot-driven).
+   * See `docs/adr/0031-component-panel-slot-replaced-by-vue-slots.md`.
+   */
   setComponentPanelSlot(slotOptions?: Record<string, unknown>): void
   clearComponentPanelSlot(): void
   rebuildComponentPanel(moduleName?: string, slotOptions?: Record<string, unknown>): void
+  /**
+   * TKT-327 — Toggle pagination/panel-manager visibility at runtime. V3 maps
+   * this to `<HiprintToolbar :show-panel-manager>` so the panel chip list /
+   * select dropdown hides when `visible=false`.
+   */
   setPaginationVisible(visible: boolean): void
+  /**
+   * TKT-325 — V1-compat escape-hatch element accessors. Each returns the
+   * mounted DOM root for the corresponding designer region, or null when the
+   * controller is destroyed / the region is hidden.
+   */
+  getComponentContainer(): HTMLElement | null
+  getTemplateContainer(): HTMLElement | null
+  getSettingContainer(): HTMLElement | null
+  /**
+   * TKT-326 — Programmatic sidebar collapse API (V1 line 15115-15118).
+   * `setXxxCollapsed(true)` collapses; `isXxxCollapsed()` reads current state.
+   */
+  setLeftCollapsed(collapsed: boolean): void
+  setRightCollapsed(collapsed: boolean): void
+  isLeftCollapsed(): boolean
+  isRightCollapsed(): boolean
   /** Underlying Vue app + container (escape hatches). */
   readonly _app: App
   readonly _container: HTMLElement
@@ -237,6 +282,9 @@ export function buildDesigner(
 
   // Build PrintTemplate options bag from V1-shaped templateOptions + top-level
   // template (V1 quirk: both shapes accepted; top-level wins per V1).
+  //
+  // TKT-324 (Sprint 22g wave 2): forward 9 V1 sub-opts through to the
+  // PrintTemplate constructor so V1 callers see identical behaviour.
   const printTemplateOptions: PrintTemplateOptions = {
     template: (options.template ?? tpl_options.template) as
       | TemplateJson
@@ -245,12 +293,38 @@ export function buildDesigner(
     data: options.data,
     history: tpl_options.history,
     paginate: tpl_options.paginate,
+    dataMode: tpl_options.dataMode,
+    willOutOfBounds: tpl_options.willOutOfBounds,
+    qtDesigner: tpl_options.qtDesigner,
+    defaultPanelName: tpl_options.defaultPanelName,
+    fontList: tpl_options.fontList ? [...tpl_options.fontList] : undefined,
+    dynamicFields: tpl_options.fields as Record<string, unknown> | unknown[] | undefined,
+    onImageChooseClick: tpl_options.onImageChooseClick as
+      | ((...args: unknown[]) => void)
+      | undefined,
   }
 
   // Create PrintTemplate first — it owns its Pinia. The SFC mount reuses it.
   const tpl = new PrintTemplate(printTemplateOptions)
   const pinia = tpl._getPinia()
   setActivePinia(pinia)
+
+  // TKT-324 — Apply font list + fields after construction so the dedicated
+  // setters fire their event-bus signals (font-list-change etc.).
+  if (Array.isArray(tpl_options.fontList) && tpl_options.fontList.length > 0) {
+    try {
+      tpl.setFontList([...tpl_options.fontList])
+    } catch (err) {
+      console.warn('[hiprint] buildDesigner.fontList setter failed:', err)
+    }
+  }
+  if (tpl_options.fields !== undefined) {
+    try {
+      tpl.setDynamicFields(tpl_options.fields as Record<string, unknown>)
+    } catch (err) {
+      console.warn('[hiprint] buildDesigner.fields setter failed:', err)
+    }
+  }
 
   // Wrap V1-signature toolbar handlers ((tpl) => void) into V3 SFC handlers
   // (() => void). The `tpl` closure binds to the PrintTemplate we just made.
@@ -285,7 +359,10 @@ export function buildDesigner(
       }
     : undefined
 
-  const app = createApp(HiprintDesigner, {
+  // TKT-327 (Sprint 22g wave 2): props are now a reactive bag so the
+  // controller's `setPaginationVisible(bool)` (which toggles the panel-manager
+  // chip/select group) can mutate them at runtime without remounting the SFC.
+  const designerProps = reactive<Record<string, unknown>>({
     template: printTemplateOptions.template as TemplateJson | undefined,
     data: options.data,
     showToolbar: !options.hideToolbar,
@@ -358,6 +435,51 @@ export function buildDesigner(
         }
       : undefined,
   })
+
+  // TKT-324 (Sprint 22g wave 2): seed first panel name from defaultPanelName
+  // when template-less ctor auto-created the A4 default panel.
+  if (
+    !printTemplateOptions.template &&
+    typeof tpl_options.defaultPanelName === 'string' &&
+    tpl_options.defaultPanelName.length > 0
+  ) {
+    try {
+      setActivePinia(pinia)
+      const cs = useCanvasStore()
+      const first = cs.panels[0]
+      if (first) {
+        cs.updatePanel(first.id, { name: tpl_options.defaultPanelName })
+      }
+    } catch (err) {
+      console.warn('[hiprint] buildDesigner.defaultPanelName seed failed:', err)
+    }
+  }
+
+  // TKT-324 — wrap addPanel emit so onPanelAddClick fires with `tpl` per V1.
+  const onPanelAddClick = tpl_options.onPanelAddClick
+  if (typeof onPanelAddClick === 'function') {
+    const existingAddPanel = designerProps.toolbarOnAddPanel as
+      | ((tpl: PrintTemplate | null | undefined) => void)
+      | undefined
+    designerProps.toolbarOnAddPanel = (
+      tplArg: PrintTemplate | null | undefined
+    ): void => {
+      if (existingAddPanel) {
+        safeCall(
+          existingAddPanel as unknown as (...args: unknown[]) => void,
+          [tplArg] as unknown[],
+          'toolbarOptions.onAddPanel'
+        )
+      }
+      safeCall(
+        onPanelAddClick as unknown as (...args: unknown[]) => void,
+        [tplArg ?? tpl] as unknown[],
+        'templateOptions.onPanelAddClick'
+      )
+    }
+  }
+
+  const app = createApp(HiprintDesigner, designerProps)
   app.use(pinia)
   app.mount(target)
 
@@ -434,7 +556,16 @@ export function buildDesigner(
       try {
         tpl.update(json as TemplateJson)
       } catch (err) {
-        console.error('[hiprint] designer.update failed:', err)
+        // TKT-324 — surface update errors via V1 onUpdateError when provided.
+        if (typeof tpl_options.onUpdateError === 'function') {
+          safeCall(
+            tpl_options.onUpdateError as unknown as (...args: unknown[]) => void,
+            [err] as unknown[],
+            'templateOptions.onUpdateError'
+          )
+        } else {
+          console.error('[hiprint] designer.update failed:', err)
+        }
       }
     },
 
@@ -447,31 +578,112 @@ export function buildDesigner(
     },
 
     setComponentPanelSlot(slotOptions): void {
+      // TKT-323 — see ADR-0031 (slot-options now driven by Vue slots).
       if (slotOptions) {
         console.warn(
-          '[hiprint] setComponentPanelSlot is a no-op in V3 — use Vue slots on <HiprintDesigner>'
+          '[hiprint] setComponentPanelSlot is a no-op in V3 — see ADR-0031; use Vue slots on <HiprintDesigner>'
         )
       }
     },
 
     clearComponentPanelSlot(): void {
-      /* no-op in V3 */
+      /* no-op in V3 — see ADR-0031. */
     },
 
     rebuildComponentPanel(moduleName, _slotOptions): void {
+      // TKT-323 — see ADR-0031. Element list is reactive; no rebuild required.
       if (moduleName) {
         console.warn(
-          '[hiprint] rebuildComponentPanel: V3 element list is reactive; no-op'
+          '[hiprint] rebuildComponentPanel: V3 element list is reactive — see ADR-0031; no-op'
         )
       }
     },
 
-    setPaginationVisible(_visible: boolean): void {
-      // V3 pagination visibility is store-driven; configure via reactive
-      // toolbarOptions.showPagination instead.
-      console.warn(
-        '[hiprint] setPaginationVisible is a no-op in V3; configure via reactive toolbarOptions.showPagination or HiprintToolbar showPanelManager prop'
+    setPaginationVisible(visible: boolean): void {
+      // TKT-327 (Sprint 22g wave 2): toggle the panel-manager / pagination
+      // group at runtime by mutating the reactive `toolbarShowPanelManager`
+      // prop. The HiprintToolbar v-if on the chip/select group reads this.
+      if (this._destroyed) return
+      designerProps.toolbarShowPanelManager = visible
+    },
+
+    // ============ TKT-325 — container accessors ============
+    //
+    // V1 escape-hatch: caller wants the mounted DOM root for a specific
+    // designer region (e.g. to attach a third-party tooltip / focus capture).
+    // V3 returns the matching `.hiprint-designer__*` element under our
+    // container, or null when not mounted.
+    getComponentContainer(): HTMLElement | null {
+      if (this._destroyed) return null
+      return target.querySelector<HTMLElement>('.hiprint-designer__element-list')
+    },
+
+    getTemplateContainer(): HTMLElement | null {
+      if (this._destroyed) return null
+      return target.querySelector<HTMLElement>('.hiprint-designer__canvas')
+    },
+
+    getSettingContainer(): HTMLElement | null {
+      if (this._destroyed) return null
+      return target.querySelector<HTMLElement>('.hiprint-designer__property-panel')
+    },
+
+    // ============ TKT-326 — programmatic sidebar collapse ============
+    //
+    // HiprintDesigner.vue owns `leftCollapsed` / `rightCollapsed` refs internally.
+    // We drive them by toggling the `leftInitiallyCollapsed` reactive prop the
+    // SFC reads on mount AND by clicking the matching edge-toggle button when
+    // the SFC is already mounted. Reading state inspects the DOM class.
+    setLeftCollapsed(collapsed: boolean): void {
+      if (this._destroyed) return
+      const node = target.querySelector<HTMLElement>(
+        '.hiprint-designer__element-list'
       )
+      if (!node) return
+      const current = node.classList.contains(
+        'hiprint-designer__element-list--collapsed'
+      )
+      if (current === collapsed) return
+      const toggle = target.querySelector<HTMLElement>(
+        '.hiprint-designer__edge-toggle--left'
+      )
+      if (toggle) toggle.click()
+    },
+
+    setRightCollapsed(collapsed: boolean): void {
+      if (this._destroyed) return
+      const node = target.querySelector<HTMLElement>(
+        '.hiprint-designer__property-panel'
+      )
+      if (!node) return
+      const current = node.classList.contains(
+        'hiprint-designer__property-panel--collapsed'
+      )
+      if (current === collapsed) return
+      const toggle = target.querySelector<HTMLElement>(
+        '.hiprint-designer__edge-toggle--right'
+      )
+      if (toggle) toggle.click()
+    },
+
+    isLeftCollapsed(): boolean {
+      if (this._destroyed) return false
+      const node = target.querySelector<HTMLElement>(
+        '.hiprint-designer__element-list'
+      )
+      return node
+        ? node.classList.contains('hiprint-designer__element-list--collapsed')
+        : false
+    },
+
+    isRightCollapsed(): boolean {
+      if (this._destroyed) return false
+      const node = target.querySelector<HTMLElement>(
+        '.hiprint-designer__property-panel'
+      )
+      return node
+        ? node.classList.contains('hiprint-designer__property-panel--collapsed')
+        : false
     },
   }
   return controller

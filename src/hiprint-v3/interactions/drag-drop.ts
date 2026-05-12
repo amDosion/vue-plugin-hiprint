@@ -272,8 +272,45 @@ export function enableElementDrag(
               // (buildModifiers below). Pass 0 here to skip double-snap.
               gridSize: 0,
             })
+            // TKT-398 — Panel-bound clamping (V1 inventory §2.8 lines
+            // 7693-7715). V1 clamps the dragged element to the paper
+            // rectangle BEFORE committing the position so elements never
+            // drift off-paper. We mirror that here. Ctrl/⌘+drag escapes
+            // the clamp per V1 line 7538 — caller signals "free move" via
+            // the same modifier that disables smart-snap (Alt currently;
+            // we extend by also reading event.ctrlKey / metaKey so power
+            // users keep V1 muscle memory).
+            //
+            // Clamp window: left ∈ [0, panel.width - element.width];
+            //               top  ∈ [0, panel.height - element.height].
+            // Negative widths from sentinel panels are tolerated by
+            // collapsing to `[0, 0]` (clamp = 0).
+            //
+            // NOTE: V1's rotation-aware diffLeft/diffTop expansion is
+            // intentionally omitted here — V3 does not support rotated
+            // elements yet (Section 5 deferred per `interactions.md`
+            // Section 5.4). When rotation lands we'll extend the clamp
+            // bounds the same way V1 does.
+            const eventLike = event as { ctrlKey?: boolean; metaKey?: boolean }
+            const escapeClamp = !!(eventLike.ctrlKey || eventLike.metaKey)
+            let finalLeft = snap.left
+            let finalTop = snap.top
+            if (!escapeClamp) {
+              const panelW = Number(panel.width) || 0
+              const panelH = Number(panel.height) || 0
+              const elW = dragBox.width
+              const elH = dragBox.height
+              if (panelW > 0) {
+                const maxL = Math.max(0, panelW - elW)
+                finalLeft = Math.min(Math.max(0, finalLeft), maxL)
+              }
+              if (panelH > 0) {
+                const maxT = Math.max(0, panelH - elH)
+                finalTop = Math.min(Math.max(0, finalTop), maxT)
+              }
+            }
             canvas.updateElement(opts.panelId, opts.elementId, {
-              options: { left: snap.left, top: snap.top },
+              options: { left: finalLeft, top: finalTop },
             })
             setSmartGuidePreviews(snap.previews)
           }
@@ -397,6 +434,11 @@ export function enableElementListSource(
         }
       },
       move: (event: { clientX: number; clientY: number }) => {
+        // TKT-390 — stash the latest cursor position so the panel's ondrop
+        // can place the new element where the user actually released the
+        // mouse (V1 §6.5). Always recorded, even when clone creation failed,
+        // so a missing visual doesn't also break placement.
+        _lastSourcePointer.set(el, { x: event.clientX, y: event.clientY })
         if (!cloneEl) return
         try {
           cloneEl.style.left = event.clientX + 'px'
@@ -426,6 +468,21 @@ export function enableElementListSource(
  * Factory stash keyed by source element (avoid polluting DOM with closures).
  */
 const _factoryByEl = new WeakMap<HTMLElement, () => Record<string, unknown>>()
+
+/**
+ * TKT-390 — Last cursor position stash for palette drops.
+ *
+ * V1 inventory §6.5 / bundle 11250-11265: when a palette item drops onto a
+ * panel, V1 reads the LIVE cursor pageX/pageY (cached during `mousemove`)
+ * and computes left/top relative to the printPaper offset. V3 previously
+ * dropped at panel origin (0, 0) regardless of cursor — every new element
+ * landed top-left until the user moved it.
+ *
+ * We capture `clientX/clientY` from the source's drag-move handler and use
+ * it inside `ondrop`. Keyed by source element so concurrent palette items
+ * (different sidebar rows) don't clobber each other.
+ */
+const _lastSourcePointer = new WeakMap<HTMLElement, { x: number; y: number }>()
 
 /**
  * Enable a panel root as a drop zone.
@@ -481,14 +538,62 @@ export function enablePanelDropZone(el: HTMLElement, panelId: string): void {
           }
           const factory = _factoryByEl.get(dragged)
           const base = factory ? factory() : {}
+          const baseOpts =
+            ((base as { options?: Record<string, unknown> }).options as
+              | Record<string, unknown>
+              | undefined) ?? {}
+
+          // TKT-390 — Translate the cached cursor position (client px) into
+          // panel-local pt so the new element lands under the cursor (V1
+          // §6.5 / bundle 11250-11265).
+          //
+          // Algorithm (mirrors V1):
+          //   1. Read the last cursor client coord from the source's stash.
+          //   2. Compute the panel's screen rect.
+          //   3. Subtract: cursorClient - panelClient = pixel offset INSIDE
+          //      the panel (still at current zoom).
+          //   4. Divide by canvas.scale to undo zoom.
+          //   5. Convert px → pt.
+          // If any step fails (cursor missing, panel not measurable in
+          // happy-dom test) we fall back to the factory's default left/top
+          // (typically 0,0) — matches the legacy behavior.
+          const pointer = _lastSourcePointer.get(dragged)
+          const placedOpts: Record<string, unknown> = { ...baseOpts }
+          if (pointer) {
+            try {
+              const rect = el.getBoundingClientRect?.()
+              if (rect && rect.width > 0 && rect.height > 0) {
+                const s = canvas.scale > 0 ? canvas.scale : 1
+                const offsetXpx = (pointer.x - rect.left) / s
+                const offsetYpx = (pointer.y - rect.top) / s
+                if (
+                  Number.isFinite(offsetXpx) &&
+                  Number.isFinite(offsetYpx) &&
+                  offsetXpx >= 0 &&
+                  offsetYpx >= 0
+                ) {
+                  placedOpts.left = px.toPt(offsetXpx)
+                  placedOpts.top = px.toPt(offsetYpx)
+                }
+              }
+            } catch (err) {
+              console.warn(
+                '[hiprint] palette drop coord translation failed:',
+                err
+              )
+            }
+          }
+
           canvas.addElement(panelId, {
             tid,
-            options: (base.options as Record<string, unknown>) ?? {},
             ...base,
+            options: placedOpts,
           })
           // TKT-020: palette → canvas creates a new element; push a snapshot
           // so the user can undo a mis-drop.
           history.pushSnapshot()
+          // TKT-390: clear the stash so subsequent gestures start fresh.
+          _lastSourcePointer.delete(dragged)
           return
         }
 

@@ -55,18 +55,24 @@ export function computeGeometryStyle(opts: Opts): CSSProperties {
   if (opts.zIndex != null) {
     style.zIndex = String(safeNumber(opts.zIndex, { fallback: 0 }))
   }
-  // TKT-005 — accept both V1 `transform` (preferred for backcompat with
-  // existing V1 templates) and V3 panel-written `rotate`. Numeric degrees in
-  // either key. `transform` wins when both present so V1 imports do not lose
-  // rotation.
-  const rotateDeg =
-    opts.transform != null
-      ? safeNumber(opts.transform, { fallback: 0 })
-      : opts.rotate != null
-        ? safeNumber(opts.rotate, { fallback: 0 })
-        : null
-  if (rotateDeg != null) {
-    style.transform = 'rotate(' + rotateDeg + 'deg)'
+  // TKT-005 + TKT-351 — accept three transform shapes:
+  //   1. V1 `transform` as a number (rotate deg). V1 inventory B.1 image
+  //      column documents this as the only supported shape (rotate only).
+  //   2. V1 `transform` as a string. V1 designer always wrote rotate(Xdeg)
+  //      but some templates contain raw CSS transform strings
+  //      (rotate / scale / skew / translate / matrix). Pass through verbatim.
+  //   3. V3 panel-written `rotate` as a number (V3-only key — fallback when
+  //      `transform` absent).
+  // `transform` wins when both present so V1 imports do not lose rotation.
+  const rawTransform = opts.transform
+  if (typeof rawTransform === 'string' && rawTransform.trim()) {
+    style.transform = rawTransform.trim()
+  } else if (rawTransform != null && rawTransform !== '') {
+    const deg = safeNumber(rawTransform, { fallback: 0 })
+    style.transform = 'rotate(' + deg + 'deg)'
+  } else if (opts.rotate != null) {
+    const deg = safeNumber(opts.rotate, { fallback: 0 })
+    style.transform = 'rotate(' + deg + 'deg)'
   }
   return style
 }

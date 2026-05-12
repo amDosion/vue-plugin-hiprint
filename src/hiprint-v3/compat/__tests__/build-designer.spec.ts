@@ -127,15 +127,15 @@ describe('buildDesigner — controller', () => {
     ctrl.destroy()
   })
 
-  it('setPaginationVisible warns + no-op (V3 reactive prop replaces V1 imperative)', () => {
+  it('setPaginationVisible toggles toolbarShowPanelManager at runtime (Sprint 22g)', () => {
     const ctrl = buildDesigner(host)
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    ctrl.setPaginationVisible(true)
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('setPaginationVisible is a no-op')
-    )
-    warn.mockRestore()
+    // Sprint 22g wave 2 made this functional: mutates designerProps reactively
+    // so the panel-manager chips/select group hides/shows. No throw.
+    expect(() => ctrl.setPaginationVisible(true)).not.toThrow()
+    expect(() => ctrl.setPaginationVisible(false)).not.toThrow()
+    // After destroy, calls are silent no-ops (assertNotDestroyed style)
     ctrl.destroy()
+    expect(() => ctrl.setPaginationVisible(true)).not.toThrow()
   })
 })
 

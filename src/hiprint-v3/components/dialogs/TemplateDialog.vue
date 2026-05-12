@@ -145,13 +145,22 @@ function onRefresh(): void {
     :width="width"
     :footer="null"
     :mask-closable="true"
-    class="hiprint-template-dialog"
-    wrap-class-name="hiprint-toolbar-template-dialog-wrap"
+    class="hiprint-template-dialog hiprint-toolbar-template"
+    wrap-class-name="hiprint-toolbar-template-dialog-wrap hiprint-toolbar-template-wrap"
+    mask-class-name="hiprint-toolbar-template-mask"
     @update:open="handleOpenChange"
     @cancel="close"
   >
-    <div class="hiprint-template-dialog__body">
-      <div class="hiprint-template-dialog__header">
+    <div
+      class="hiprint-template-dialog__body hiprint-toolbar-template-body"
+      :class="{
+        'is-loading': loading,
+        loading: loading,
+        'is-empty': !loading && filteredItems.length === 0,
+        empty: !loading && filteredItems.length === 0,
+      }"
+    >
+      <div class="hiprint-template-dialog__header hiprint-toolbar-template-header">
         <AInputSearch
           v-model:value="searchQuery"
           placeholder="搜索模板..."
@@ -165,7 +174,7 @@ function onRefresh(): void {
       <ASpin :spinning="loading">
         <div
           v-if="filteredItems.length === 0"
-          class="hiprint-template-dialog__empty"
+          class="hiprint-template-dialog__empty hiprint-toolbar-template-state empty"
           role="status"
         >
           {{ searchQuery ? '无匹配模板' : '暂无模板' }}

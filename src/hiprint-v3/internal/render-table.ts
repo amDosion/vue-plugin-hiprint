@@ -65,6 +65,8 @@ import {
   safeNumber,
 } from './dom-helpers'
 import { compileFormatter } from './compile-formatter'
+import { numFormat } from './format'
+import { groupBy } from './group-by'
 
 // ============ Types ============
 
@@ -111,10 +113,64 @@ export interface TableRenderBodyCell {
   hidden: boolean
   /** Horizontal alignment. */
   align: string
+  /** Vertical alignment (V1 line 2122 — `vAlign` per column). */
+  vAlign?: string
+  /** Left padding in pt (V1 config 1817). 0 means "not set" (caller omits). */
+  paddingLeft: number
+  /** Right padding in pt (V1 config 1823). 0 means "not set" (caller omits). */
+  paddingRight: number
 }
+
+/**
+ * Sprint 22g GG (TKT-382 / B.4) — group-header / group-footer entry surfaced
+ * in `groupedBodyRows`. Renderers walk `groupedBodyRows` in order, choosing
+ * which subtype to emit. Falls back to plain `bodyRows` when no grouping.
+ */
+export type TableRenderBodyEntry =
+  | { kind: 'row'; row: TableRenderBodyRow; rowStyle: Record<string, string> }
+  | {
+      kind: 'group-header'
+      html: string
+      /** Number of leaf columns the group header should span. */
+      colspan: number
+    }
+  | {
+      kind: 'group-footer'
+      html: string
+      colspan: number
+    }
 
 export interface TableRenderBodyRow {
   cells: TableRenderBodyCell[]
+}
+
+/**
+ * Sprint 22g GG (TKT-382) — summary row computed from column.tableSummary.
+ *
+ * Each cell is either:
+ *  - `{ summary: true, ... }` — an active summary cell rendered as `<td>` with
+ *    the aggregated string,
+ *  - `{ summary: false, hidden: true }` — a hidden placeholder swallowed by
+ *    the previous summary cell's `colspan`, OR
+ *  - `{ summary: false, hidden: false }` — an empty `<td>` for columns
+ *    without a summary aggregator.
+ *
+ * V1 emits a single `<tr>` per `<tfoot>` with the same `<td>` count as the
+ * body row (cells without `tableSummary` get empty cells; bundle line
+ * 1989-2034).
+ */
+export interface TableRenderSummaryCell {
+  summary: boolean
+  hidden: boolean
+  text: string
+  /** Whether the cell was produced by a formatter (caller emits innerHTML). */
+  isHtml: boolean
+  colspan: number
+  align: string
+}
+
+export interface TableRenderSummaryRow {
+  cells: TableRenderSummaryCell[]
 }
 
 export interface TableRenderFooterCell {
@@ -144,6 +200,14 @@ export interface TableRenderInput {
    * Sprint 22a-r empty-state behavior; set to `true` for legacy V1 parity.
    */
   rowsFallbackPlaceholder?: boolean
+  /**
+   * TKT-387 — when present, used as the cascade tail for per-cell
+   * `formatter` / `styler` lookups. V1 P.11 (line 2790-2810) cascades:
+   * column.formatter → printElementType.formatter → none. We mirror that
+   * priority here so business templates that set defaults on the element
+   * type get applied to every cell whose column doesn't override.
+   */
+  elementType?: Record<string, unknown> | undefined
 }
 
 export interface TableRenderOutput {
@@ -159,6 +223,19 @@ export interface TableRenderOutput {
    * TableCell for inline-edit write-back without re-resolving.
    */
   rows: Array<Record<string, unknown>>
+  /**
+   * Sprint 22g GG — body rows mixed with group-header / group-footer entries
+   * in order. When `groupFields` is empty this contains one `kind: 'row'`
+   * entry per `bodyRow`. Callers that don't care about grouping can keep
+   * iterating `bodyRows`; callers that DO honor grouping should walk this
+   * array instead.
+   */
+  groupedBodyRows: TableRenderBodyEntry[]
+  /**
+   * Sprint 22g GG (TKT-382) — summary row computed from column.tableSummary.
+   * Empty array when no column has a summary aggregator.
+   */
+  summaryRow: TableRenderSummaryRow | null
   /** Optional footer rows from `gridColumnsFooter`. */
   footerRows: TableRenderFooterRow[]
   /** Compiled HTML from `footerFormatter` (empty when none). */
@@ -169,6 +246,28 @@ export interface TableRenderOutput {
    * caller should not add a border class.
    */
   borderClass: string
+  /**
+   * Sprint 22g GG (TKT-385/386) — flat metadata bag for table-level style
+   * overrides. Caller emits these as inline `style="..."` on the matching
+   * DOM section (`<thead>` for `headerRowHeight`, `<tbody>` for body, etc.).
+   *
+   * Values are normalized: numbers in pt, strings as-is. `0` / `''` means
+   * "not set" — caller should not emit the property.
+   */
+  meta: {
+    /** `tableHeaderRowHeight` (V1 config 967-970). */
+    headerRowHeight: number
+    /** `tableBodyRowHeight` (V1 line 2243-2245). */
+    bodyRowHeight: number
+    /** `tableHeaderBackground` (V1 print-lock.css 162). */
+    headerBackground: string
+    /** `tableHeaderFontWeight` (V1 print-lock.css 163). */
+    headerFontWeight: string
+    /** `tableHeaderFontSize` (V1 config 975-978). */
+    headerFontSize: number
+    /** `tableBodyFontFamily` (V1 css fallback to SimSun). */
+    bodyFontFamily: string
+  }
 }
 
 // ============ Helpers ============
@@ -459,6 +558,310 @@ function buildFooterHtml(
   }
 }
 
+/**
+ * Sprint 22g GG (TKT-388) — Nzh Chinese-number conversion.
+ *
+ * V1 ref: bundle 359-389 (`hinnn.toUpperCase(type, val)`). The `type` is a
+ * stringy numeric code 0..7 that selects an Nzh encoding (`encodeS` simple,
+ * `encodeB` formal capital, `toMoney` financial). This helper:
+ *  - Dynamically imports `nzh` (lazy import — the library is bundled, so the
+ *    require/import resolves synchronously in build output, but we use the
+ *    indirection so test environments without Nzh fail gracefully to the
+ *    original value).
+ *  - Falls back to the plain `String(val).toUpperCase()` when:
+ *    a) the type code is unrecognized,
+ *    b) Nzh is not available,
+ *    c) the value is non-numeric.
+ *
+ * Public for testing.
+ */
+export function applyUpperCase(value: unknown, type: unknown): string {
+  if (value == null) return ''
+  const raw = String(value)
+  if (type == null || type === '' || type === false) {
+    // No conversion configured.
+    return raw
+  }
+  // Cheap path: Latin "toUpperCase" semantic when `upperCase` is just a
+  // truthy non-string (V1 alias) or 'true'.
+  const code = String(type)
+  if (code === 'true' || code === '1' && Number.isNaN(parseFloat(raw))) {
+    return raw.toUpperCase()
+  }
+  // Nzh path — strings code 0..7. Only attempt when value parses as a number.
+  const num = parseFloat(raw)
+  if (!Number.isFinite(num)) return raw.toUpperCase()
+  try {
+    // Lazy synchronous require to keep this module pure-importable in unit
+    // tests that don't have nzh on path.
+    const req: ((name: string) => unknown) | undefined =
+      typeof require === 'function' ? (require as (name: string) => unknown) : undefined
+    const mod = req
+      ? (req('nzh') as { cn?: { encodeS: (n: number, o?: unknown) => string; encodeB: (n: number, o?: unknown) => string; toMoney: (n: number, o?: unknown) => string } } | undefined)
+      : undefined
+    const cn = mod?.cn
+    if (!cn) return raw.toUpperCase()
+    switch (code) {
+      case '0':
+        return cn.encodeS(num)
+      case '1':
+        return cn.encodeS(num, { tenMin: false })
+      case '2':
+        return cn.encodeB(num, { tenMin: true })
+      case '3':
+        return cn.encodeB(num)
+      case '4':
+        return cn.toMoney(num, { tenMin: true })
+      case '5':
+        return cn.toMoney(num)
+      case '6':
+        return cn.toMoney(num, { complete: true })
+      case '7':
+        return cn.toMoney(num, { complete: true, outSymbol: false })
+      default:
+        return raw.toUpperCase()
+    }
+  } catch (err) {
+    console.warn('[hiprint] applyUpperCase Nzh failed:', err)
+    return raw.toUpperCase()
+  }
+}
+
+/**
+ * Sprint 22g GG (TKT-382) — aggregate body data for `column.tableSummary`.
+ * V1 ref: bundle line 1989-2034.
+ *
+ * Returns a numeric/string result depending on aggregator:
+ *  - `count` → number of truthy entries.
+ *  - `sum` / `avg` / `min` / `max` → numeric reduction of parseable values.
+ *  - `text` / other → empty string (V1 lets `tableSummaryFormatter` fill in).
+ */
+function aggregateColumn(
+  rows: Array<Record<string, unknown>>,
+  field: string | undefined,
+  kind: string
+): number | string {
+  if (!field) return kind === 'count' ? rows.length : ''
+  const values = rows.map((r) => resolveCellValue(r, field))
+  switch (kind) {
+    case 'count':
+      return values.filter((v) => v != null && v !== '' && v !== false).length
+    case 'sum': {
+      let total = 0
+      for (const v of values) {
+        const n = parseFloat(String(v ?? ''))
+        if (Number.isFinite(n)) total += n
+      }
+      return total
+    }
+    case 'avg': {
+      let total = 0
+      let n = 0
+      for (const v of values) {
+        const num = parseFloat(String(v ?? ''))
+        if (Number.isFinite(num)) {
+          total += num
+          n += 1
+        }
+      }
+      return n > 0 ? total / n : 0
+    }
+    case 'min': {
+      let m = Infinity
+      for (const v of values) {
+        const num = parseFloat(String(v ?? ''))
+        if (Number.isFinite(num) && num < m) m = num
+      }
+      return Number.isFinite(m) ? m : 0
+    }
+    case 'max': {
+      let m = -Infinity
+      for (const v of values) {
+        const num = parseFloat(String(v ?? ''))
+        if (Number.isFinite(num) && num > m) m = num
+      }
+      return Number.isFinite(m) ? m : 0
+    }
+    default:
+      return ''
+  }
+}
+
+/**
+ * Sprint 22g GG (TKT-382) — build the summary row from leaf columns.
+ *
+ * Walks every leaf column; columns whose `tableSummary` is set produce a
+ * summary cell. The cell honors:
+ *  - `tableSummaryFormatter` — overrides text entirely (string source via
+ *    `compileFormatter`); rendered with `isHtml: true`.
+ *  - `tableSummaryNumFormat` — `numFormat` precision applied to numeric
+ *    aggregates.
+ *  - `tableSummaryColspan` — caller emits `colspan` attribute and we mark the
+ *    swallowed cells `hidden: true` so DOM column count stays consistent.
+ *  - `tableSummaryAlign` / `tableSummaryText` / `tableSummaryTitle` — UI
+ *    affordances.
+ *  - `upperCase` — Nzh capital-form conversion applied to the formatted
+ *    string (numeric → 壹拾贰).
+ *
+ * Returns null when no column has an aggregator (avoids emitting empty
+ * <tfoot><tr>).
+ */
+function buildSummaryRow(
+  leafColumns: Array<Record<string, unknown>>,
+  rows: Array<Record<string, unknown>>,
+  options: Record<string, unknown>
+): TableRenderSummaryRow | null {
+  // Quick scan — any column has tableSummary?
+  const anySummary = leafColumns.some(
+    (c) => c.tableSummary != null && c.tableSummary !== ''
+  )
+  if (!anySummary) return null
+  const cells: TableRenderSummaryCell[] = []
+  let skipUntil = -1
+  for (let i = 0; i < leafColumns.length; i++) {
+    if (i < skipUntil) {
+      cells.push({
+        summary: false,
+        hidden: true,
+        text: '',
+        isHtml: false,
+        colspan: 1,
+        align: 'center',
+      })
+      continue
+    }
+    const col = leafColumns[i]!
+    const kind =
+      typeof col.tableSummary === 'string' && col.tableSummary
+        ? col.tableSummary
+        : ''
+    if (!kind) {
+      cells.push({
+        summary: false,
+        hidden: false,
+        text: '',
+        isHtml: false,
+        colspan: 1,
+        align: 'center',
+      })
+      continue
+    }
+    const field = typeof col.field === 'string' ? col.field : undefined
+    const rawAggregate = aggregateColumn(rows, field, kind)
+    const precision =
+      col.tableSummaryNumFormat != null ? col.tableSummaryNumFormat : 2
+    let formatted: string
+    if (typeof rawAggregate === 'number' && Number.isFinite(rawAggregate)) {
+      // V1 line 1999: numFormat(sum, numF).
+      const nf = numFormat(rawAggregate, precision as number | string)
+      formatted = typeof nf === 'string' ? nf : String(nf)
+    } else {
+      formatted = String(rawAggregate)
+    }
+    // V1 line 1981: hinnn.toUpperCase(column.upperCase, formatted).
+    if (col.upperCase != null && col.upperCase !== '') {
+      formatted = applyUpperCase(formatted, col.upperCase)
+    }
+    // V1 line 1977 / 1991: title / text override.
+    const showTitle =
+      col.tableSummaryTitle == null ? true : Boolean(col.tableSummaryTitle)
+    const text =
+      typeof col.tableSummaryText === 'string' && col.tableSummaryText
+        ? col.tableSummaryText
+        : showTitle && typeof col.title === 'string'
+          ? `${col.title}: `
+          : ''
+    let display = `${text}${formatted}`
+    let isHtml = false
+    // tableSummaryFormatter overrides everything (V1 line 1983-1988).
+    const fmt = compileFormatter(col.tableSummaryFormatter)
+    if (fmt) {
+      try {
+        const fmtOut = fmt(rawAggregate, rows, col, options)
+        if (fmtOut != null && fmtOut !== '') {
+          display = String(fmtOut)
+          isHtml = true
+        }
+      } catch (err) {
+        console.warn('[hiprint] tableSummaryFormatter threw:', err)
+      }
+    }
+    const colspan =
+      typeof col.tableSummaryColspan === 'number' &&
+      col.tableSummaryColspan >= 1
+        ? Math.floor(col.tableSummaryColspan)
+        : 1
+    const align =
+      typeof col.tableSummaryAlign === 'string' && col.tableSummaryAlign
+        ? col.tableSummaryAlign
+        : 'center'
+    cells.push({
+      summary: true,
+      hidden: false,
+      text: display,
+      isHtml,
+      colspan,
+      align,
+    })
+    if (colspan > 1) skipUntil = i + colspan
+  }
+  return { cells }
+}
+
+/**
+ * Sprint 22g GG (TKT-382 / B.4) — invoke `groupFormatter` / `groupFooterFormatter`.
+ * Both follow V1 signature `(colspan, allData, printData, group, options)`
+ * returning an HTML string that the caller wraps in `<tr><td colspan="..">`.
+ *
+ * Errors caught (Invariant #8) — returns empty string.
+ */
+function invokeGroupFormatter(
+  formatterInput: unknown,
+  colspan: number,
+  allRows: Array<Record<string, unknown>>,
+  printData: Record<string, unknown> | undefined,
+  group: Record<string, unknown>,
+  options: Record<string, unknown>
+): string {
+  const fn = compileFormatter(formatterInput)
+  if (!fn) return ''
+  try {
+    const out = fn(colspan, allRows, printData, group, options)
+    return out == null ? '' : String(out)
+  } catch (err) {
+    console.warn('[hiprint] table groupFormatter threw:', err)
+    return ''
+  }
+}
+
+/**
+ * Sprint 22g GG — apply `rowStyler` (V1 line 2226-2231) to a body row. Returns
+ * an inline-style map (may be empty). Errors caught (Invariant #8).
+ */
+function applyRowStyler(
+  styler: unknown,
+  row: Record<string, unknown>,
+  options: Record<string, unknown>
+): Record<string, string> {
+  const fn = compileFormatter(styler)
+  if (!fn) return {}
+  try {
+    const r = fn(row, options)
+    if (r && typeof r === 'object') {
+      const out: Record<string, string> = {}
+      for (const k of Object.keys(r as Record<string, unknown>)) {
+        const v = (r as Record<string, unknown>)[k]
+        if (typeof v === 'string') out[k] = v
+        else if (typeof v === 'number') out[k] = String(v)
+      }
+      return out
+    }
+  } catch (err) {
+    console.warn('[hiprint] rowStyler threw:', err)
+  }
+  return {}
+}
+
 /** Map `options.tableBorder` to V1 CSS class suffix. */
 function resolveBorderClass(options: Record<string, unknown>): string {
   const variant =
@@ -486,7 +889,13 @@ function resolveBorderClass(options: Record<string, unknown>): string {
  * returned structure to emit their target output (reactive DOM / HTML string).
  */
 export function buildTableModel(input: TableRenderInput): TableRenderOutput {
-  const { options, data, rowsColumnsMerge, rowsFallbackPlaceholder } = input
+  const {
+    options,
+    data,
+    rowsColumnsMerge,
+    rowsFallbackPlaceholder,
+    elementType,
+  } = input
 
   // 1. Normalize columns into 2-D layers.
   const layers = normalizeHeaderLayers(options.columns)
@@ -499,6 +908,16 @@ export function buildTableModel(input: TableRenderInput): TableRenderOutput {
   const rows = resolveBodyRows(options, data, rowsFallbackPlaceholder === true)
 
   // 4. Build body cells (per-cell formatter + styler + row-merge resolution).
+  // TKT-387 — `elementType` provides the formatter/styler cascade tail.
+  const typeFormatter =
+    elementType && typeof elementType === 'object'
+      ? (elementType as Record<string, unknown>).formatter
+      : undefined
+  const typeStyler =
+    elementType && typeof elementType === 'object'
+      ? (elementType as Record<string, unknown>).styler
+      : undefined
+
   const bodyRows: TableRenderBodyRow[] = rows.map((row, rIdx) => {
     const cells: TableRenderBodyCell[] = leafColumns.map((col, cIdx) => {
       const field = typeof col.field === 'string' ? col.field : undefined
@@ -524,21 +943,62 @@ export function buildTableModel(input: TableRenderInput): TableRenderOutput {
         }
       }
       const hidden = rowspan === 0 || colspan === 0
-      // Formatter (column.formatter — string or function, V1 P.11).
+      // Formatter cascade (TKT-380, TKT-387):
+      //   1. column.formatter (string or function)
+      //   2. column.formatter2 (V1 alias for the string form)
+      //   3. printElementType.formatter (TKT-387 cascade fallback)
+      const formatterSrc =
+        col.formatter != null && col.formatter !== ''
+          ? col.formatter
+          : col.formatter2 != null && col.formatter2 !== ''
+            ? col.formatter2
+            : typeFormatter
       const formatterArgs: unknown[] = [value, row, col, rows]
-      const { rendered, isHtml } = applyCellFormatter(
-        value,
-        col.formatter,
-        formatterArgs
-      )
-      // Styler (function or string form, same compileFormatter path).
+      const formatted = applyCellFormatter(value, formatterSrc, formatterArgs)
+      let rendered = formatted.rendered
+      let isHtml = formatted.isHtml
+      // TKT-389 — tableCustomCell etype: when `tableTextType:'custom'` or
+      // the cell carries a custom HTML payload, render as by-design HTML.
+      if (
+        col.tableTextType === 'custom' &&
+        typeof col.customCellHtml === 'string'
+      ) {
+        rendered = col.customCellHtml
+        isHtml = true
+      }
+      // TKT-388 — Nzh upperCase per-cell. V1 only applies upperCase on
+      // SUMMARY cells, but business templates commonly want body-cell
+      // conversion too. We apply when column.upperCase is set AND no
+      // formatter ran (formatter output is already user-controlled HTML).
+      if (
+        !isHtml &&
+        col.upperCase != null &&
+        col.upperCase !== '' &&
+        col.upperCase !== false
+      ) {
+        rendered = applyUpperCase(rendered, col.upperCase)
+      }
+      // Styler cascade (TKT-381, TKT-387):
+      //   1. column.styler
+      //   2. column.styler2 (V1 alias)
+      //   3. printElementType.styler
+      const stylerSrc =
+        col.styler != null && col.styler !== ''
+          ? col.styler
+          : col.styler2 != null && col.styler2 !== ''
+            ? col.styler2
+            : typeStyler
       const stylerArgs: unknown[] = [value, row, col, rows]
-      const { classNames, style } = applyCellStyler(col.styler, stylerArgs)
+      const { classNames, style } = applyCellStyler(stylerSrc, stylerArgs)
       const align =
         (typeof col.halign === 'string' && col.halign) ||
         (typeof col.align === 'string' && col.align) ||
         'left'
-      return {
+      const vAlign =
+        typeof col.vAlign === 'string' && col.vAlign ? col.vAlign : undefined
+      const paddingLeft = safeNumber(col.paddingLeft, { fallback: 0, min: 0 })
+      const paddingRight = safeNumber(col.paddingRight, { fallback: 0, min: 0 })
+      const cell: TableRenderBodyCell = {
         value,
         rendered,
         isHtml,
@@ -548,25 +1008,149 @@ export function buildTableModel(input: TableRenderInput): TableRenderOutput {
         colspan,
         hidden,
         align,
+        paddingLeft,
+        paddingRight,
       }
+      if (vAlign) cell.vAlign = vAlign
+      return cell
     })
     return { cells }
   })
 
-  // 5. Footer rows + footerFormatter.
+  // 4b. Per-row styler (rowStyler) — applied to <tr> via inline style map.
+  const perRowStyles = rows.map((row) =>
+    applyRowStyler(options.rowStyler, row, options)
+  )
+
+  // 4c. groupBy + groupFormatter / groupFooterFormatter (B.4) —
+  //     produce `groupedBodyRows` interleaving group-header / row / footer
+  //     entries. When `groupFields` is empty, just emit plain rows.
+  const groupedBodyRows: TableRenderBodyEntry[] = []
+  const rawGroupFields = options.groupFields
+  let groupFields: string[] = []
+  if (Array.isArray(rawGroupFields)) {
+    groupFields = (rawGroupFields as unknown[]).filter(
+      (f): f is string => typeof f === 'string' && f.length > 0
+    )
+  } else if (typeof rawGroupFields === 'string' && rawGroupFields) {
+    try {
+      const parsed = JSON.parse(rawGroupFields)
+      if (Array.isArray(parsed)) {
+        groupFields = parsed.filter(
+          (f): f is string => typeof f === 'string' && f.length > 0
+        )
+      }
+    } catch {
+      groupFields = [rawGroupFields]
+    }
+  }
+  if (groupFields.length > 0 && rows.length > 0) {
+    const groups = groupBy(
+      rows,
+      groupFields,
+      (item: Record<string, unknown>) =>
+        groupFields.map((f) => item[f]).join('||')
+    )
+    const totalCols = leafColumns.length || 1
+    for (const grp of groups) {
+      const headerHtml = invokeGroupFormatter(
+        options.groupFormatter,
+        totalCols,
+        rows,
+        data,
+        grp as Record<string, unknown>,
+        options
+      )
+      if (headerHtml) {
+        groupedBodyRows.push({
+          kind: 'group-header',
+          html: headerHtml,
+          colspan: totalCols,
+        })
+      }
+      const grpRows = (grp as { rows: Array<Record<string, unknown>> }).rows
+      for (const r of grpRows) {
+        const idx = rows.indexOf(r)
+        if (idx >= 0 && bodyRows[idx]) {
+          groupedBodyRows.push({
+            kind: 'row',
+            row: bodyRows[idx]!,
+            rowStyle: perRowStyles[idx] ?? {},
+          })
+        }
+      }
+      const footerHtmlGroup = invokeGroupFormatter(
+        options.groupFooterFormatter,
+        totalCols,
+        rows,
+        data,
+        grp as Record<string, unknown>,
+        options
+      )
+      if (footerHtmlGroup) {
+        groupedBodyRows.push({
+          kind: 'group-footer',
+          html: footerHtmlGroup,
+          colspan: totalCols,
+        })
+      }
+    }
+  } else {
+    for (let i = 0; i < bodyRows.length; i++) {
+      groupedBodyRows.push({
+        kind: 'row',
+        row: bodyRows[i]!,
+        rowStyle: perRowStyles[i] ?? {},
+      })
+    }
+  }
+
+  // 5. Summary row + footer rows + footerFormatter.
+  const summaryRow = buildSummaryRow(leafColumns, rows, options)
   const footerRows = buildFooterRows(options.gridColumnsFooter)
   const footerHtml = buildFooterHtml(options, rows, data)
 
-  // 6. Border class.
+  // 6. Border class + meta.
   const borderClass = resolveBorderClass(options)
+  const meta = {
+    headerRowHeight: safeNumber(options.tableHeaderRowHeight, {
+      fallback: 0,
+      min: 0,
+    }),
+    bodyRowHeight: safeNumber(options.tableBodyRowHeight, {
+      fallback: 0,
+      min: 0,
+    }),
+    headerBackground:
+      typeof options.tableHeaderBackground === 'string'
+        ? options.tableHeaderBackground
+        : '',
+    headerFontWeight:
+      typeof options.tableHeaderFontWeight === 'string'
+        ? options.tableHeaderFontWeight
+        : options.tableHeaderFontWeight != null
+          ? String(options.tableHeaderFontWeight)
+          : '',
+    headerFontSize: safeNumber(options.tableHeaderFontSize, {
+      fallback: 0,
+      min: 0,
+    }),
+    bodyFontFamily:
+      typeof options.tableBodyFontFamily === 'string'
+        ? options.tableBodyFontFamily
+        : '',
+  }
 
   return {
     theadRows,
     leafColumns,
     bodyRows,
     rows,
+    groupedBodyRows,
+    summaryRow,
     footerRows,
     footerHtml,
     borderClass,
+    meta,
   }
 }
