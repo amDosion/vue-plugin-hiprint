@@ -1,7 +1,7 @@
 # Toolbar Architecture Codemap
 
-**Last Updated:** 2026-05-10
-**Source:** `src/hiprint/hiprint.bundle.js` (lines ~13100–14300)
+**Last Updated:** 2026-05-12
+**Source:** `src/hiprint/hiprint.bundle.js` (lines 13384–14935; `_toolbarUid` @ 13389, `_toolbarClickNs` @ 13390)
 
 ## Entry Point
 

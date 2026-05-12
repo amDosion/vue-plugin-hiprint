@@ -1,7 +1,7 @@
 # Core Bundle Codemap
 
-**Last Updated:** 2026-05-11
-**Source:** `src/hiprint/hiprint.bundle.js` (15344 lines)
+**Last Updated:** 2026-05-12
+**Source:** `src/hiprint/hiprint.bundle.js` (15436 lines)
 
 ## Architecture
 
@@ -73,7 +73,7 @@ toPdf(args, filename)                  // → Promise<void>
 
 ### Lifecycle (NEW)
 ```js
-destroy()                              // (line 12567) idempotent cleanup:
+destroy()                              // (line 12612) idempotent cleanup:
                                        // • abort in-flight global drag (draging=false + remove body class)
                                        // • remove event subscriptions
                                        // • clear canvas elements
@@ -81,15 +81,16 @@ destroy()                              // (line 12567) idempotent cleanup:
                                        // • deregister from singleton map
                                        // • mark _destroyed = true
 
-_assertNotDestroyed(name)              // (line 12545) shared guard helper.
-                                       // Used by 16+ public methods:
+_assertNotDestroyed(name)              // (line 12590) shared guard helper.
+                                       // Used by 16+ public methods (after R3+H/I/J,
+                                       // 6 more select/update APIs now guarded):
                                        //   if (this._assertNotDestroyed('getJson'))
                                        //     return <safe fallback>;
                                        // Logs `[hiprint] <name> called on destroyed template`
                                        // once per call. Replaces ad-hoc
                                        // `if (this._destroyed) return ...` checks.
 
-isDestroyed()                          // (line 12542) public getter, returns
+isDestroyed()                          // (line 12587) public getter, returns
                                        // !!this._destroyed for business code
                                        // (replaces direct read of private _destroyed).
 
@@ -166,36 +167,50 @@ new PrintTemplate({
   getter. All `$(document)` handlers in buildDesigner now use
   `_designerEventNs` namespace.
 
-## Key Function Line Numbers (R3, bundle = 15344 lines)
+## Key Function Line Numbers (post-A/B/C/G/H/I/J, bundle = 15436 lines)
 
 | Function | Line |
 |----------|------|
-| `BasePrintElement.prototype.getDesignTarget` | 735 |
-| `BasePrintElement.prototype.getData` | 1265 |
-| `t.prototype.addPrintElementTypes` (PrintElementTypeManager) | 8961 |
-| `t.prototype.removePrintElementTypes` | 9011 |
-| `PrintPanel.prototype.getHtml` | 11077 |
-| `PrintPanel.prototype.droppablePaper` | 11237 |
-| `PrintPanel.prototype.clear` | 11293 |
-| `PrintTemplate` (`ct = function () { ... }`) class start | ~12244 |
-| `PrintTemplate.prototype.design` (idempotency guard) | 12366 |
-| `PrintTemplate.prototype.getHtml` | 12451 |
-| `PrintTemplate.prototype.selectPanel` | 12484 |
-| `PrintTemplate.prototype.deletePanel` (editingPanel re-select) | 12491 |
-| `PrintTemplate.prototype.getJson` | 12528 |
-| `PrintTemplate.prototype.isDestroyed` (NEW public getter) | 12542 |
-| `PrintTemplate.prototype._assertNotDestroyed` | 12545 |
-| `PrintTemplate.prototype.clear` | 12559 |
-| `PrintTemplate.prototype.destroy` | 12567 |
-| `PrintTemplate.prototype.toPdf` | 12767 |
-| `_safeCall(fn, args, name)` (module-level, R3) | 13234 |
-| `_evalCap(src, name)` (module-level, R3 security M3) | 13242 |
-| `function buildToolbar` | 13296 |
-| `_toolbarUid` declaration | 13301 |
-| `_toolbarClickNs` | 13302 |
-| `function buildDesigner` | 14850 |
-| `_designerUid` declaration | 14881 |
-| `_designerEventNs` declaration | 14882 |
+| `BasePrintElement.prototype.getDesignTarget` | 742 |
+| `BasePrintElement.prototype.getData` | 1273 |
+| `t.prototype.addPrintElementTypes` (PrintElementTypeManager) | 8981 |
+| `t.prototype.removePrintElementTypes` | 9031 |
+| `n.fn.hicontextMenu` (jQuery plugin, A: XSS fix) | 8945 |
+| `LongTextPrintElement.prototype.getLongTextIndent` (H: token-returning) | 9825 |
+| `LongTextPrintElement.prototype.getPaperHtmlResult` | 9833 |
+| `LongTextPrintElement.prototype.BinarySearch` | 9899 |
+| `LongTextPrintElement.prototype.IsPaginationIndex` | 9908 |
+| `PrintPanel.prototype.getHtml` | 11118 |
+| `PrintPanel.prototype.droppablePaper` | 11278 |
+| `PrintPanel.prototype.clear` | 11334 |
+| `OptionSettingPanel` (line 12101 start) + `PrintPaginationCreator` (A: panel.name XSS) | 12100–12290 |
+| `PrintTemplate` (`ct = function () { ... }`) class start | 12365 |
+| `PrintTemplate.prototype.design` (idempotency guard) | 12366 (entry constructor) |
+| `PrintTemplate.prototype.getSimpleHtml` | 12437 |
+| `PrintTemplate.prototype.getHtml` | 12496 |
+| `PrintTemplate.prototype.selectPanel` | 12529 |
+| `PrintTemplate.prototype.deletePanel` (editingPanel re-select) | 12536 |
+| `PrintTemplate.prototype.getJson` | 12573 |
+| `PrintTemplate.prototype.isDestroyed` (public getter) | 12587 |
+| `PrintTemplate.prototype._assertNotDestroyed` | 12590 |
+| `PrintTemplate.prototype.clear` | 12604 |
+| `PrintTemplate.prototype.destroy` | 12612 |
+| `PrintTemplate.prototype.print` | 12687 |
+| `PrintTemplate.prototype.toPdf` | 12810 |
+| `PrintTemplate.prototype.getSelectEls` (B: destroyed guard) | 12985 |
+| `PrintTemplate.prototype.setElsAlign` (B: destroyed guard) | 13033 |
+| `PrintTemplate.prototype.setElsSpace` (B: destroyed guard) | 13113 |
+| `PrintTemplate.prototype.initAutoSave` | 13140 |
+| `_safeCall(fn, args, name)` (module-level, R3+C) | 13283 |
+| `_renderLongTextContent(contentEl, tokens)` (H: NEW) | 13295 |
+| `_evalCap(src, name)` (module-level, R3 security M3) | 13330 |
+| `function buildToolbar` | 13384 |
+| `_toolbarUid` declaration | 13389 |
+| `_toolbarClickNs` | 13390 |
+| `function buildDesigner` | 14938 |
+| `_designerUid` declaration | 14969 |
+| `_designerEventNs` declaration | 14970 |
+| `function mt(t)` (hiprint.init entry) | 15245 |
 
 ## Related
 
