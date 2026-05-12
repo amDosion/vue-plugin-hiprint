@@ -36,6 +36,9 @@ vue-plugin-hiprint (基于 [hiprint 2.5.4](http://hiprint.io/)) 当时只是为�
 > - **完整 60+ opts 详解** → [`docs/integration-guide.md`](./docs/integration-guide.md)
 > - **API 速查（23 个 export）** → [`docs/API-REFERENCE.md`](./docs/API-REFERENCE.md)
 > - **CSS 体积优化（3 文件可选）** → [`docs/CSS-BUNDLE.md`](./docs/CSS-BUNDLE.md)
+>
+> 🔍 **业务方集成审计快照**（每次审计独立归档,按日期命名）：
+> - [`docs/audits/vue-admin-main-integration-audit-2026-05-12.md`](./docs/audits/vue-admin-main-integration-audit-2026-05-12.md) — 2 个 BLOCK / 1 WARN / 1 INFO + 修复任务清单 + 验证脚本
 
 ## vue-plugin-hiprint
 
