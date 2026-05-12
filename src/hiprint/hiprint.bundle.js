@@ -9815,11 +9815,13 @@ var hiprint = function (t) {
         var e = this.getPaperHtmlResult(new T("", "", void 0, 1e3, 1e3, 0, 25e3, 0, 0, !0, !0, void 0, 0, void 0), {}, t);
         return this.removeTempContainer(), e[0].referenceElement.bottomInLastPaper - e[0].referenceElement.printTopInPaper;
       }, e.prototype.getLongTextIndent = function () {
-        // [XSS C1] longTextIndent 来自模板 JSON (业务 / 设计器数据), 不能直接拼接 HTML.
-        // 强制 parseInt 把任何 user 字符串约束成数字 (>= 0), 防止注入 style attribute 闭合 + script 标签.
+        // [longText H fix] 返回 token 对象而非 HTML 字符串. 之前 9831/9835 把字符串入 l 数组,
+        // 9911 .text(slice.join("")) 把字面 `<span class="long-text-indent">` 字符串写进 textContent,
+        // 浏览器当文本显示 (用户报告主 bug). 改为 token,由 _renderLongTextContent 渲染真实 span.
+        // parseInt 守卫保留 — longTextIndent 来自模板 JSON 业务/用户可控,只接数字。
         var indent = parseInt(this.options.longTextIndent, 10);
         if (!isFinite(indent) || indent < 0) indent = 0;
-        return indent > 0 ? '<span class="long-text-indent" style="margin-left:' + indent + 'pt"></span>' : '<span class="long-text-indent"></span>';
+        return { type: 'indent', margin: indent };
       }, e.prototype.getPaperHtmlResult = function (t, e, n) {
         var i = this,
           o = [],
@@ -9832,7 +9834,8 @@ var hiprint = function (t) {
           u = p.split(new RegExp("\r|\n", "g"));
         if (u.forEach(function (t, e) {
           var n = 0 != i.options.leftSpaceRemoved ? (t || "").toString().replace(/^\s*/, "") : t;
-          l = l.concat(n.split("")), e < u.length - 1 && l.push("<br/>" + i.getLongTextIndent());
+          // 段落间 push 独立的 br + indent token (不再拼接为 "<br/>" + indentHtml 字符串)
+          l = l.concat(n.split("")), e < u.length - 1 && l.push({ type: 'br' }, i.getLongTextIndent());
         }), 0 == l.length && (l = [""]), this.isHeaderOrFooter() || this.isFixed() || !e) return (f = this.getStringBySpecificHeight(l, 25e3, s)).target.css("left", this.options.displayLeft()), f.target.css("top", this.options.displayTop()), f.target[0].height = "", o.push(new P.a({
           target: f.target,
           printLine: this.options.displayTop() + f.height,
@@ -9887,19 +9890,21 @@ var hiprint = function (t) {
         return r.IsPagination ? r : this.BinarySearch(t, 0, t.length - 1, i, n);
       }, e.prototype.BinarySearch = function (t, e, n, i, o) {
         var r = Math.floor((e + n) / 2);
-        if (e > n) return o.find(".hiprint-printElement-longText-content").html(""), {
-          IsPagination: !0,
-          height: 0,
-          length: 0,
-          target: o.clone()
-        };
+        if (e > n) {
+          // 终止: 清空 content (空 tokens 即清空)
+          _renderLongTextContent(o.find(".hiprint-printElement-longText-content")[0], []);
+          return { IsPagination: !0, height: 0, length: 0, target: o.clone() };
+        }
         var a = this.IsPaginationIndex(t, r, i, o);
         return a.IsPagination ? a : "l" == a.move ? this.BinarySearch(t, e, r - 1, i, o) : this.BinarySearch(t, r + 1, n, i, o);
       }, e.prototype.IsPaginationIndex = function (t, e, n, i) {
-        // [XSS C3] t 是 user 字段值 split 出的字符数组, .join("") 后含 user text.
-        // BinarySearch 仅为测量高度,用 .text() 写 textContent 等价高度且不解析为 HTML.
+        // [longText H fix] t 是混合数组 (user 单字符 string + indent/br token object).
+        // 用 _renderLongTextContent 写入真实 DOM (text node for user chars, span/br for tokens).
+        // 既保 user chars 的 .text() 级 XSS 安全 (走 textNode),又让 indent/br 作为真实元素渲染。
+        // 测量阶段也用真实节点,测量精度对齐最终渲染 (修 W-1 paging 不准)。
+        var contentEl = i.find(".hiprint-printElement-longText-content")[0];
         if (-1 == n) {
-          i.find(".hiprint-printElement-longText-content").text(t.slice(0, e).join(""));
+          _renderLongTextContent(contentEl, t.slice(0, e));
           var a = i.height();
           return {
             IsPagination: !0,
@@ -9908,9 +9913,9 @@ var hiprint = function (t) {
             target: i.clone()
           }
         }
-        i.find(".hiprint-printElement-longText-content").text(t.slice(0, e + 2).join(""));
+        _renderLongTextContent(contentEl, t.slice(0, e + 2));
         var r = i.height();
-        i.find(".hiprint-printElement-longText-content").text(t.slice(0, e + 1).join(""));
+        _renderLongTextContent(contentEl, t.slice(0, e + 1));
         var a = i.height();
         return e >= t.length - 1 && a < n ? {
           IsPagination: !0,
@@ -13257,6 +13262,45 @@ var hiprint = function (t) {
     if (typeof fn !== 'function') return undefined;
     try { return fn.apply(null, args || []); }
     catch (err) { console.error('[hiprint] ' + name + ' threw:', err); }
+  }
+
+  // [longText H fix] 把 longText 的 token 数组 (单字符 string + indent/br token object)
+  // 用真实 DOM 节点写入 content 元素,既保 .text() 级别的 XSS 安全 (user char 走 textNode),
+  // 又让 indent span / <br> 作为真实元素渲染 (而不是被 .text() 当字面字符串显示)。
+  // 之前 bug: 9911 `.text(t.slice().join(""))` 把 `<span class="long-text-indent"></span>`
+  // 字面字符串写进 textContent,浏览器把它当 35+ 字符纯文本显示,既影响视觉又导致
+  // BinarySearch 测量偏大 (paging 提前断)。修后测量 ≈ 真实首行缩进对应宽度。
+  function _renderLongTextContent(contentEl, tokens) {
+    if (!contentEl) return;
+    // 清空 content (不用 jQuery .html('') 是为了避免误用,直接操作 DOM)
+    while (contentEl.firstChild) contentEl.removeChild(contentEl.firstChild);
+    var doc = contentEl.ownerDocument || document;
+    var pending = '';
+    function flushText() {
+      if (pending) {
+        contentEl.appendChild(doc.createTextNode(pending));
+        pending = '';
+      }
+    }
+    for (var i = 0; i < tokens.length; i++) {
+      var tk = tokens[i];
+      if (tk && typeof tk === 'object') {
+        flushText();
+        if (tk.type === 'br') {
+          contentEl.appendChild(doc.createElement('br'));
+        } else if (tk.type === 'indent') {
+          var span = doc.createElement('span');
+          span.className = 'long-text-indent';
+          var m = parseFloat(tk.margin);
+          if (isFinite(m) && m > 0) span.style.marginLeft = m + 'pt';
+          contentEl.appendChild(span);
+        }
+      } else {
+        // user 字符 — text node 安全
+        pending += String(tk == null ? '' : tk);
+      }
+    }
+    flushText();
   }
 
   // [security M3] 设计时 formatter / styler 字符串 → Function. 防御过大输入 (DoS / 内存炸):

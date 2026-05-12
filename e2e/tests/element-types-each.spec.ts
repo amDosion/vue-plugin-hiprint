@@ -72,6 +72,54 @@ test('long-text element nested-field 0 渲染 "0" (PM-002 ?? "")', async ({ page
   expect(html).toMatch(/0\s*<\/div>|>0</);
 });
 
+test('long-text indent 渲染为真实 span DOM 节点而非字面文本 (H bug — 用户报告)', async ({ page }) => {
+  // 拖到纸张后应显示真实首行缩进 (空白 + 文本),
+  // 不能显示字面字符串 `<span class="long-text-indent"></span>长文`
+  const html = await renderElement(page, 'longText',
+    { field: 'content', title: '', longTextIndent: 18, height: 100, width: 300 },
+    { content: '长文' }
+  );
+  // ❌ 不能含被 .text() 转义后的字面 HTML (textContent 序列化)
+  expect(html).not.toContain('&lt;span class="long-text-indent"');
+  // ✅ 必须是真实 DOM 节点 (元素而非文本)
+  expect(html).toMatch(/<span class="long-text-indent"[^>]*><\/span>/);
+  // ✅ user 文本仍正确显示
+  expect(html).toContain('长文');
+  // ✅ margin-left style 正确反映 longTextIndent: 18
+  expect(html).toMatch(/margin-left:\s*18pt/);
+});
+
+test('long-text 多段 (含换行) 每段开头都有 indent span (H bug)', async ({ page }) => {
+  const html = await renderElement(page, 'longText',
+    { field: 'content', title: '', longTextIndent: 12, height: 200, width: 300 },
+    { content: '第一段\n第二段' }
+  );
+  // 不能有字面文本
+  expect(html).not.toContain('&lt;span class="long-text-indent"');
+  // 真实节点 — 段间有 <br> + indent span,所以至少 2 个 indent span 节点
+  const matches = html.match(/<span class="long-text-indent"/g) || [];
+  expect(matches.length).toBeGreaterThanOrEqual(2);
+  expect(html).toContain('第一段');
+  expect(html).toContain('第二段');
+});
+
+test('long-text indent <script> 注入 user content 不执行 (XSS regression — 修后必须保留)', async ({ page }) => {
+  const html = await renderElement(page, 'longText',
+    { field: 'content', title: '', longTextIndent: 8, height: 100, width: 300 },
+    { content: '<img src=x onerror="window.__lti_xss=true">' }
+  );
+  await page.evaluate(() => { (window as any).__lti_xss = false; });
+  // 把渲染的 HTML 挂到 DOM 触发 onerror (若 user content 被当 HTML 执行)
+  await page.evaluate((h) => {
+    const $ = (window as any).jQuery;
+    const $w = $('<div></div>').html(h).appendTo('body');
+    setTimeout(() => $w.remove(), 100);
+  }, html);
+  await page.waitForTimeout(150);
+  const fired = await page.evaluate(() => (window as any).__lti_xss);
+  expect(fired).toBe(false);
+});
+
 test('image element src 通过 .attr() 设置 (R3 B1 防字符串拼接 XSS)', async ({ page }) => {
   const html = await renderElement(page, 'image',
     { src: 'data:image/png;base64,iVBORw0KGgo=', title: 'I' }
