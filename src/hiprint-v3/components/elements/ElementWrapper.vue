@@ -31,7 +31,7 @@
  * P18) is responsible for picking the right etype SFC based on tid/type.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useCanvasStore } from '@hiprint-v3/stores'
+import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
 import {
   disableInteractions,
   enableElementDrag,
@@ -39,6 +39,10 @@ import {
   enableElementSelection,
 } from '@hiprint-v3/interactions'
 import { isAnyLocked, isFullyLocked } from '@hiprint-v3/interactions/lock'
+import {
+  getHandlesForType,
+  type HandlePosition,
+} from '@hiprint-v3/interactions/resize'
 import type { CanvasElement } from '@hiprint-v3/stores'
 import { computeBaseStyle, type Opts } from './_helpers'
 import DragOverlay from './DragOverlay.vue'
@@ -55,6 +59,14 @@ const props = withDefaults(
 )
 
 const canvas = useCanvasStore()
+// History is captured defensively — outside Pinia (some unit-test paths) this
+// returns null + we silently skip the snapshot. Mirrors resize.ts/drag-drop.ts.
+let history: ReturnType<typeof useHistoryStore> | null = null
+try {
+  history = useHistoryStore()
+} catch {
+  history = null
+}
 const rootEl = ref<HTMLDivElement | null>(null)
 
 // Find the live (reactive) element in store; computed re-runs on patch.
@@ -145,6 +157,106 @@ const overlayGeometry = computed(() => {
   }
 })
 
+// ----- TKT-151 / TKT-152 / TKT-163 — static selection chrome -----
+//
+// `elementType` mirrors the same lookup the wrapperClass uses. We hoist it as
+// a computed so the handle-render template + delete-button template share one
+// source of truth.
+const elementType = computed<string>(() => {
+  const t = element.value?.printElementType?.type
+  return typeof t === 'string' ? t : 'unknown'
+})
+
+// TKT-163 — per-etype handle whitelist. The resize.ts module owns the V1
+// quirk table; we simply consume it. Unknown etypes fall back to the
+// 8-handle vocabulary (the same default interact.js uses).
+const handlePositions = computed<readonly HandlePosition[]>(() =>
+  getHandlesForType(elementType.value)
+)
+
+// TKT-151 — show the static delete button / size box ONLY when the element
+// is selected, not locked, NOT during an in-flight drag/resize gesture
+// (DragOverlay owns the in-gesture readout — V1 inventory interactions.md
+// §1 line 1402: `.size-box` hidden while position-guides show).
+const showStaticChrome = computed<boolean>(
+  () =>
+    isSelected.value &&
+    !isLocked.value &&
+    overlayMode.value === 'idle' &&
+    !!element.value
+)
+
+// TKT-151 — readout for the static size-box chip. Always pt → mm with one
+// decimal place, matching DragOverlay's display vocabulary.
+const PT_PER_MM = 72 / 25.4 // ≈ 2.8346
+function ptToMmStr(p: number): string {
+  const mm = p / PT_PER_MM
+  return (Math.round(mm * 10) / 10).toFixed(1)
+}
+const sizeBoxLabel = computed<string>(() => {
+  const w = Number(options.value.width ?? 0)
+  const h = Number(options.value.height ?? 0)
+  return `${ptToMmStr(w)}×${ptToMmStr(h)} mm`
+})
+
+// TKT-152 — handle CSS cursor map. interact.js sets the cursor on hover via
+// the edges config; for the visible dots we mirror the standard direction
+// cursors so the affordance reads correctly even when the cursor isn't
+// directly on the interact.js hit zone.
+const HANDLE_CURSORS: Readonly<Record<HandlePosition, string>> = Object.freeze({
+  n: 'n-resize',
+  s: 's-resize',
+  e: 'e-resize',
+  w: 'w-resize',
+  ne: 'ne-resize',
+  nw: 'nw-resize',
+  se: 'se-resize',
+  sw: 'sw-resize',
+})
+
+// TKT-152 — position styles for each handle dot. Coordinates expressed as
+// percentages so the 8-handle layout follows element bounds for any size.
+const HANDLE_POSITIONS: Readonly<
+  Record<HandlePosition, { top?: string; left?: string; right?: string; bottom?: string }>
+> = Object.freeze({
+  nw: { top: '-4px', left: '-4px' },
+  n: { top: '-4px', left: 'calc(50% - 4px)' },
+  ne: { top: '-4px', right: '-4px' },
+  e: { top: 'calc(50% - 4px)', right: '-4px' },
+  se: { bottom: '-4px', right: '-4px' },
+  s: { bottom: '-4px', left: 'calc(50% - 4px)' },
+  sw: { bottom: '-4px', left: '-4px' },
+  w: { top: 'calc(50% - 4px)', left: '-4px' },
+})
+
+function handleStyle(pos: HandlePosition): Record<string, string> {
+  return {
+    position: 'absolute',
+    ...HANDLE_POSITIONS[pos],
+    cursor: HANDLE_CURSORS[pos],
+  }
+}
+
+// TKT-151 — delete handler. Pulls the element from the store + pushes a
+// history snapshot so the action is undoable. Defensive: no-op when the
+// element id no longer resolves (race with concurrent edits).
+function deleteElement(ev?: MouseEvent): void {
+  if (ev) {
+    ev.preventDefault()
+    ev.stopPropagation()
+  }
+  if (!element.value) return
+  canvas.removeElement(props.panelId, props.elementId)
+  if (history) {
+    try {
+      history.pushSnapshot()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[hiprint-v3:ElementWrapper] history push threw:', err)
+    }
+  }
+}
+
 onMounted(() => {
   if (!props.interactive || !rootEl.value) return
   const el = rootEl.value
@@ -171,11 +283,14 @@ onMounted(() => {
     },
   })
 
-  // 3) Resize — returns its own cleanup.
+  // 3) Resize — returns its own cleanup. TKT-163 passes the etype handle
+  // whitelist so interact.js only resizes from edges that have a matching
+  // visible handle dot.
   cleanupResize = enableElementResize(el, {
     elementId: props.elementId,
     panelId: props.panelId,
     gridSize: canvas.gridSize,
+    handles: handlePositions.value,
     onStart: (startRect) => {
       // TKT-104: flip overlay to resize mode + seed live readout.
       resizeReadout.value = { ...startRect }
@@ -248,6 +363,38 @@ onBeforeUnmount(() => {
       :width="overlayGeometry.width"
       :height="overlayGeometry.height"
     />
+    <!-- TKT-152: visible 8-handle dots — rendered only when the element is
+         selected + unlocked + idle. interact.js handles the actual hit-test
+         from the cardinal edges; the dots are pure visual affordances + a
+         pointer-events:none zone is preserved on the body so they don't
+         hijack the in-element interactions. -->
+    <template v-if="showStaticChrome">
+      <div
+        v-for="pos in handlePositions"
+        :key="`handle-${pos}`"
+        :class="['hiprint-element__handle', `hiprint-element__handle--${pos}`]"
+        :style="handleStyle(pos)"
+        :data-handle="pos"
+        aria-hidden="true"
+      />
+      <!-- TKT-151: floating delete-X button (top-right outside element).
+           Click removes element + pushes history snapshot. -->
+      <button
+        type="button"
+        class="hiprint-element__del-btn"
+        @click="deleteElement"
+        @mousedown.stop
+        @pointerdown.stop
+        aria-label="Delete element"
+      >✕</button>
+      <!-- TKT-151: size readout chip (bottom-right) shown when selected +
+           idle. Drag/resize handoff to DragOverlay so we never double-render
+           the readout. -->
+      <span
+        class="hiprint-element__size-box"
+        aria-hidden="true"
+      >{{ sizeBoxLabel }}</span>
+    </template>
   </div>
 </template>
 
@@ -288,5 +435,70 @@ onBeforeUnmount(() => {
   pointer-events: none;
   user-select: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* TKT-152 — visible 8-handle dots (V1 inventory interactions.md §1
+ * lines 8127-8135: `.resize-panel .resizebtn` 8px square, #409eff blue
+ * with white border + slight shadow). V3 uses #1677ff (current accent)
+ * and keeps 8px square so the visual matches V1 + the styles.md catalog
+ * (§1.17 line 168). pointer-events:none — interact.js owns hit-test on
+ * the cardinal edges; the dots are purely visual hints. */
+.hiprint-element__handle {
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border: 1px solid #1677ff;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+/* TKT-151 — floating delete-X button (V1 inventory interactions.md §1
+ * line 163: `<div class="del-btn">✕</div>` width:16px background:#f56c6c). */
+.hiprint-element__del-btn {
+  position: absolute;
+  top: -22px;
+  right: -4px;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f56c6c;
+  color: #ffffff;
+  border: none;
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+.hiprint-element__del-btn:hover {
+  background: #ef4f4f;
+}
+
+/* TKT-151 — static size readout (V1 inventory interactions.md §1 line 162:
+ * `.resize-panel .size-box` background: rgba(64,158,255,0.9); color: white).
+ * Shown when selected + idle; DragOverlay shows the live readout while a
+ * gesture is in flight. */
+.hiprint-element__size-box {
+  position: absolute;
+  bottom: -16pt;
+  right: 0;
+  padding: 1pt 4pt;
+  background: rgba(22, 119, 255, 0.9);
+  color: #ffffff;
+  font-size: 9pt;
+  font-family: monospace;
+  line-height: 1.2;
+  white-space: nowrap;
+  border-radius: 2pt;
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
 }
 </style>

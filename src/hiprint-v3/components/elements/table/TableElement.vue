@@ -41,8 +41,8 @@
  *    (we do that here), but we keep ElementWrapper for the absolute-positioned
  *    outer frame so drag / resize / selection still work uniformly.
  */
-import { computed } from 'vue'
-import { useCanvasStore } from '@hiprint-v3/stores'
+import { computed, ref } from 'vue'
+import { useCanvasStore, reorderTableColumn } from '@hiprint-v3/stores'
 import { buildTableModel, evalCap } from '@hiprint-v3/internal'
 import {
   openContextMenu,
@@ -150,6 +150,96 @@ function onTheadContext(
   )
   openContextMenu({ x: ev.clientX, y: ev.clientY }, { items })
 }
+
+/**
+ * TKT-155 (Sprint 22d) — header column drag-reorder.
+ *
+ * V1 parity: V1 lets the user drag a thead `<th>` left/right to reorder
+ * columns directly on the canvas (in addition to the property-panel up/down
+ * buttons). V3 keeps both paths — this is the on-canvas direct-manipulation
+ * surface; TablePropertyPanel still has explicit ordering controls.
+ *
+ * Implementation notes:
+ *  - Only enabled in designer mode (`props.editable`). Print preview leaves
+ *    `<th draggable>` off so native browser text selection / copy still works.
+ *  - We track BOTH dragged + drop-target indices per layer so dragover on a
+ *    different layer's `<th>` does NOT highlight (cross-layer reorder is
+ *    intentionally unsupported — multi-layer headers anchor on their
+ *    grouping; see reorderTableColumn rationale in table-ops.ts).
+ *  - `onDragEnd` always clears state so a cancelled drag (Esc / drop outside)
+ *    doesn't leave stale highlight.
+ *  - drop-on-self short-circuits inside reorderTableColumn (no history push).
+ */
+const draggedColumn = ref<{ layerIdx: number; columnIdx: number } | null>(null)
+const dropTargetColumn = ref<{ layerIdx: number; columnIdx: number } | null>(
+  null
+)
+
+function onTheadDragStart(
+  ev: DragEvent,
+  layerIdx: number,
+  columnIdx: number
+): void {
+  if (!props.editable) return
+  draggedColumn.value = { layerIdx, columnIdx }
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = 'move'
+    // Set a string payload so happy-dom and Firefox accept the drag.
+    ev.dataTransfer.setData('text/plain', `col:${layerIdx}:${columnIdx}`)
+  }
+}
+
+function onTheadDragOver(
+  ev: DragEvent,
+  layerIdx: number,
+  columnIdx: number
+): void {
+  if (!props.editable) return
+  const src = draggedColumn.value
+  if (!src) return
+  // Cross-layer drops are not supported — only highlight when the cursor is
+  // over a cell in the SAME layer that owns the dragged column.
+  if (src.layerIdx !== layerIdx) return
+  // preventDefault is required to allow the `drop` event to fire.
+  ev.preventDefault()
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
+  dropTargetColumn.value = { layerIdx, columnIdx }
+}
+
+function onTheadDrop(
+  ev: DragEvent,
+  layerIdx: number,
+  columnIdx: number
+): void {
+  if (!props.editable) return
+  ev.preventDefault()
+  const src = draggedColumn.value
+  draggedColumn.value = null
+  dropTargetColumn.value = null
+  if (!src) return
+  if (src.layerIdx !== layerIdx) return
+  // Drop-on-self handled (no-op) inside reorderTableColumn — history snapshot
+  // is also short-circuited there so undo stack stays clean.
+  reorderTableColumn(props.elementId, layerIdx, src.columnIdx, columnIdx)
+}
+
+function onTheadDragEnd(): void {
+  draggedColumn.value = null
+  dropTargetColumn.value = null
+}
+
+function isDraggingColumn(layerIdx: number, columnIdx: number): boolean {
+  const d = draggedColumn.value
+  return d !== null && d.layerIdx === layerIdx && d.columnIdx === columnIdx
+}
+
+function isDropTargetColumn(layerIdx: number, columnIdx: number): boolean {
+  const t = dropTargetColumn.value
+  if (t === null) return false
+  if (t.layerIdx !== layerIdx || t.columnIdx !== columnIdx) return false
+  // Don't highlight the source cell as its own drop target.
+  return !isDraggingColumn(layerIdx, columnIdx)
+}
 </script>
 
 <template>
@@ -185,7 +275,16 @@ function onTheadContext(
                 border: '0.5pt solid #000',
                 padding: '2pt 4pt',
               }"
+              :class="{
+                'hiprint-column-dragging': isDraggingColumn(layerIdx, colIdx),
+                'hiprint-column-drop-target': isDropTargetColumn(layerIdx, colIdx),
+              }"
+              :draggable="editable ? 'true' : undefined"
               @contextmenu.prevent="onTheadContext($event, layerIdx, colIdx)"
+              @dragstart="onTheadDragStart($event, layerIdx, colIdx)"
+              @dragover="onTheadDragOver($event, layerIdx, colIdx)"
+              @drop="onTheadDrop($event, layerIdx, colIdx)"
+              @dragend="onTheadDragEnd"
             >
               <!-- [Invariant #1] header title is user data → textContent path -->
               {{ cell.title }}
@@ -249,3 +348,33 @@ function onTheadContext(
     </div>
   </ElementWrapper>
 </template>
+
+<style>
+/* TKT-155 (Sprint 22d) — header column drag-reorder visual feedback.
+ *
+ * `.hiprint-column-dragging` dims the source cell while it is being dragged
+ * (matches the convention used by HiprintElementListPanel's .is-dragging row).
+ * `.hiprint-column-drop-target` highlights the column the cursor is over so
+ * the user sees where the drop will land. Both classes are only ever applied
+ * when `props.editable` is true (the template binds them through
+ * isDraggingColumn / isDropTargetColumn, which are no-ops when editable=false
+ * because dragstart short-circuits).
+ *
+ * NOT `<style scoped>` on purpose:
+ *  - The print-parity test (TableElement-render-parity.spec.ts) compares the
+ *    Vue-mounted DOM byte-for-byte against `print/render.ts` output. A scoped
+ *    block injects `data-v-XXXXXXX` attributes onto every rendered element,
+ *    breaking that diff for downstream consumers that share the test.
+ *  - The class selectors below are already prefixed with
+ *    `.hiprint-printElement-tableTarget th` so they cannot collide with
+ *    unrelated tables in business CSS.
+ */
+.hiprint-printElement-tableTarget th.hiprint-column-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+.hiprint-printElement-tableTarget th.hiprint-column-drop-target {
+  background: #fff8e1;
+  box-shadow: inset 2px 0 0 0 #f59e0b;
+}
+</style>

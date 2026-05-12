@@ -175,3 +175,107 @@ describe('TextElement — inline edit', () => {
     w.unmount()
   })
 })
+
+// ============================================================================
+// Sprint 22d TKT-160 — Inline-edit fullwidth-colon parse + sanitization.
+//
+// V1 inventory etypes/text-longtext.md §F.1 (colon parse) + §J.12 (input
+// sanitization replaces enter/newline/tab with spaces before commit). V3 also
+// accepts ASCII `:` as a separator (V1 §J.1 was a bug — only fullwidth split).
+// ============================================================================
+
+async function mountAndStartEdit(): Promise<{
+  w: ReturnType<typeof mount>
+  input: ReturnType<ReturnType<typeof mount>['find']>
+}> {
+  const canvas = useCanvasStore()
+  canvas.addPanel({ id: 'p1', width: 200, height: 200 })
+  canvas.addElement('p1', {
+    id: 'e1',
+    tid: 't.text',
+    printElementType: { type: 'text' },
+    options: { title: 'Name', testData: 'Alice' },
+  })
+  const w = mount(TextElement, {
+    props: {
+      elementId: 'e1',
+      panelId: 'p1',
+      editable: true,
+      interactive: false,
+    },
+    attachTo: document.body,
+  })
+  const content = w.find('.hiprint-printElement-text-content')
+  await content.trigger('dblclick')
+  const input = w.find('input.hiprint-text-inline-edit')
+  return { w, input }
+}
+
+describe('TextElement — TKT-160 inline-edit fullwidth-colon parse', () => {
+  it('parses `title：testData` (fullwidth colon U+FF1A) into both fields', async () => {
+    const canvas = useCanvasStore()
+    const { w, input } = await mountAndStartEdit()
+    await input.setValue('客户：张三')
+    await input.trigger('keydown.enter')
+    const stored = canvas.panels[0]!.printElements[0]!.options as Record<string, unknown>
+    expect(stored.title).toBe('客户')
+    expect(stored.testData).toBe('张三')
+    w.unmount()
+  })
+
+  it('also accepts ASCII `:` separator (V3 fix for V1 quirk §J.1)', async () => {
+    const canvas = useCanvasStore()
+    const { w, input } = await mountAndStartEdit()
+    await input.setValue('Time:14:30')
+    await input.trigger('keydown.enter')
+    const stored = canvas.panels[0]!.printElements[0]!.options as Record<string, unknown>
+    // Greedy regex: first colon splits title from testData.
+    expect(stored.title).toBe('Time')
+    expect(stored.testData).toBe('14:30')
+    w.unmount()
+  })
+
+  it('strips tabs (and \\n/\\r when they survive the single-line input) before committing (V1 §J.12)', async () => {
+    const canvas = useCanvasStore()
+    const { w, input } = await mountAndStartEdit()
+    // HTML spec: single-line <input> strips \r and \n from `.value`. Tabs
+    // survive. The sanitization regex (/[\r\n\t]+/g) handles all three so
+    // exercising the \t path proves the regex even though we cannot
+    // physically feed raw newlines through the input. Real-world entry of
+    // newlines comes through paste handlers that route through this same
+    // path — coverage is preserved at the regex level.
+    const inputEl = input.element as HTMLInputElement
+    inputEl.value = 'multi\tline\twith\ttabs'
+    await input.trigger('input')
+    await input.trigger('keydown.enter')
+    const stored = canvas.panels[0]!.printElements[0]!.options as Record<string, unknown>
+    // All tab chars collapsed to single spaces; trimmed.
+    expect(stored.title).toBe('multi line with tabs')
+    w.unmount()
+  })
+
+  it('no-colon input commits the sanitized value to title only', async () => {
+    const canvas = useCanvasStore()
+    const { w, input } = await mountAndStartEdit()
+    await input.setValue('  Just a name  ')
+    await input.trigger('keydown.enter')
+    const stored = canvas.panels[0]!.printElements[0]!.options as Record<string, unknown>
+    expect(stored.title).toBe('Just a name')
+    // testData unchanged (was 'Alice' at setup).
+    expect(stored.testData).toBe('Alice')
+    w.unmount()
+  })
+
+  it('colon parse + sanitization combine: fullwidth colon with surrounding whitespace', async () => {
+    const canvas = useCanvasStore()
+    const { w, input } = await mountAndStartEdit()
+    const inputEl = input.element as HTMLInputElement
+    inputEl.value = '  日期  ：  2026-05-11\t'
+    await input.trigger('input')
+    await input.trigger('keydown.enter')
+    const stored = canvas.panels[0]!.printElements[0]!.options as Record<string, unknown>
+    expect(stored.title).toBe('日期')
+    expect(stored.testData).toBe('2026-05-11')
+    w.unmount()
+  })
+})

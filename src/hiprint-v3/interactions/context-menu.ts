@@ -375,7 +375,19 @@ export function buildElementContextItems(
   const fullyLocked = isFullyLocked(lockedEl?.options)
   const anyLocked = isAnyLocked(lockedEl?.options)
 
-  return [
+  // Sprint 22d TKT-158/159: multi-select align/distribute live here only
+  // (V1 inventory `interactions.md` §7.1 Group 5 + `toolbar-and-shell.md`
+  // §1.21/§1.22). Visibility is keyed off the CURRENT selection at menu
+  // open time (snapshot — same lifecycle as `disabled` flags above).
+  const selectedCount = canvas.selectedElementIds.size
+
+  // Sprint 22d TKT-159: text/longText etype-specific items
+  // (V1 inventory `etypes/text-longtext.md` §G + §J.8). Detect via
+  // printElementType.type on the right-clicked element.
+  const etype = (lockedEl?.printElementType?.type as string | undefined) ?? ''
+  const isTextEtype = etype === 'text' || etype === 'longText'
+
+  const items: ContextMenuItem[] = [
     {
       id: 'copy',
       label: i18n.__('复制') || 'Copy',
@@ -410,6 +422,42 @@ export function buildElementContextItems(
       label: i18n.__('置底') || 'Send to Back',
       onClick: () => _sendToBack(canvas, elementId, history),
     },
+    {
+      // Sprint 22d TKT-159: "上移一层" / "下移一层" — V1 inventory
+      // §text-longtext.md G line 11509-11522 (per-element zIndex shift).
+      // Available for all etypes (V1 has no etype gating for layer ops).
+      id: 'bring-forward',
+      label: i18n.__('上移一层') || 'Bring Forward',
+      onClick: () => _bringForward(canvas, elementId, history),
+    },
+    {
+      id: 'send-backward',
+      label: i18n.__('下移一层') || 'Send Backward',
+      onClick: () => _sendBackward(canvas, elementId, history),
+    },
+    { id: 'sep-move', label: '', divider: true },
+    // Sprint 22d TKT-159: 4 directional ±1pt move items (all etypes).
+    // Matches arrow-key nudge in `keyboard.ts` (`moveStep = 1`).
+    {
+      id: 'move-up',
+      label: i18n.__('向上') || 'Up 1pt',
+      onClick: () => _moveSelectionOrElement(canvas, history, elementId, 0, -1),
+    },
+    {
+      id: 'move-down',
+      label: i18n.__('向下') || 'Down 1pt',
+      onClick: () => _moveSelectionOrElement(canvas, history, elementId, 0, 1),
+    },
+    {
+      id: 'move-left',
+      label: i18n.__('向左') || 'Left 1pt',
+      onClick: () => _moveSelectionOrElement(canvas, history, elementId, -1, 0),
+    },
+    {
+      id: 'move-right',
+      label: i18n.__('向右') || 'Right 1pt',
+      onClick: () => _moveSelectionOrElement(canvas, history, elementId, 1, 0),
+    },
     { id: 'sep-lock', label: '', divider: true },
     {
       // TKT-027: Lock/Unlock toggle. V1 inventory §H.1 line 11533 — lock
@@ -424,25 +472,121 @@ export function buildElementContextItems(
       icon: anyLocked ? 'unlock' : 'lock',
       onClick: () => _toggleLock(canvas, elementId, history),
     },
-    { id: 'sep-2', label: '', divider: true },
-    {
-      id: 'delete',
-      label: i18n.__('删除') || 'Delete',
-      shortcut: 'Delete',
-      // TKT-027: per V1 inventory §7.3 + §8.3, contextmenu delete respects
-      // the catch-all `lock` (same as keyboard). positionLocked alone does
-      // NOT block delete (V1 quirk preserved).
-      disabled: fullyLocked,
-      onClick: () => _deleteElement(canvas, elementId, history),
-    },
-    { id: 'sep-3', label: '', divider: true },
-    {
-      id: 'properties',
-      label: i18n.__('属性') || 'Properties',
-      // Properties is a no-op here — caller wires via opts.onSelect to open
-      // the property panel. We include it so the menu surface matches V1.
-    },
   ]
+
+  // Sprint 22d TKT-159: text / longText etype-specific items
+  // (V1 inventory etypes/text-longtext.md §G lines 11469-11483 + §J.8).
+  // Hardcoded fontSize=12 and fontWeight='bolder' per V1.
+  if (isTextEtype) {
+    items.push({ id: 'sep-text', label: '', divider: true })
+    items.push({
+      id: 'text-font-12pt',
+      label: i18n.__('字体 12pt') || 'Font 12pt',
+      onClick: () => _setFontSize12(canvas, elementId, history),
+    })
+    items.push({
+      id: 'text-font-bold',
+      label: i18n.__('字体加粗') || 'Bold',
+      onClick: () => _toggleBold(canvas, elementId, history),
+    })
+    items.push({
+      id: 'text-set-color',
+      label: i18n.__('设置颜色') || 'Color',
+      // Color picker delegated to caller via opts.onSelect — opening a native
+      // `<input type=color>` from a menu pick requires a DOM activation token
+      // that the menu pick already consumed. Caller (HiprintCanvas) opens the
+      // color picker imperatively in response to this item id.
+    })
+  }
+
+  // Sprint 22d TKT-158/159: width / height broadcast — V1 inventory §G lines
+  // 11568-11592. Apply first selected element's width/height to all others.
+  // Requires ≥2 selected.
+  if (selectedCount >= 2) {
+    items.push({ id: 'sep-size', label: '', divider: true })
+    items.push({
+      id: 'size-same-width',
+      label: i18n.__('宽度统一') || 'Same Width',
+      onClick: () => _broadcastDimension(canvas, history, 'width'),
+    })
+    items.push({
+      id: 'size-same-height',
+      label: i18n.__('高度统一') || 'Same Height',
+      onClick: () => _broadcastDimension(canvas, history, 'height'),
+    })
+  }
+
+  // Sprint 22d TKT-158: alignment group — V1 inventory §G lines 11542-11592.
+  // Visible only when ≥2 elements selected (matches V1 line 11542).
+  if (selectedCount >= 2) {
+    items.push({ id: 'sep-align', label: '', divider: true })
+    items.push({
+      id: 'align-left',
+      label: i18n.__('左对齐') || 'Align Left',
+      onClick: () => _alignSelection(canvas, history, 'left'),
+    })
+    items.push({
+      id: 'align-center',
+      label: i18n.__('水平居中') || 'Align Center (H)',
+      onClick: () => _alignSelection(canvas, history, 'center'),
+    })
+    items.push({
+      id: 'align-right',
+      label: i18n.__('右对齐') || 'Align Right',
+      onClick: () => _alignSelection(canvas, history, 'right'),
+    })
+    items.push({
+      id: 'align-top',
+      label: i18n.__('顶对齐') || 'Align Top',
+      onClick: () => _alignSelection(canvas, history, 'top'),
+    })
+    items.push({
+      id: 'align-middle',
+      label: i18n.__('垂直居中') || 'Align Middle (V)',
+      onClick: () => _alignSelection(canvas, history, 'middle'),
+    })
+    items.push({
+      id: 'align-bottom',
+      label: i18n.__('底对齐') || 'Align Bottom',
+      onClick: () => _alignSelection(canvas, history, 'bottom'),
+    })
+  }
+
+  // Sprint 22d TKT-158: distribute group — V1 inventory §G lines 11554-11556.
+  // Visible only when ≥3 elements selected (V1 requires ≥3 for even spacing).
+  if (selectedCount >= 3) {
+    items.push({
+      id: 'distribute-horizontal',
+      label: i18n.__('水平等距') || 'Distribute Horizontally',
+      onClick: () => _distributeSelection(canvas, history, 'horizontal'),
+    })
+    items.push({
+      id: 'distribute-vertical',
+      label: i18n.__('垂直等距') || 'Distribute Vertically',
+      onClick: () => _distributeSelection(canvas, history, 'vertical'),
+    })
+  }
+
+  items.push({ id: 'sep-2', label: '', divider: true })
+  items.push({
+    id: 'delete',
+    label: i18n.__('删除') || 'Delete',
+    shortcut: 'Delete',
+    // TKT-027: per V1 inventory §7.3 + §8.3, contextmenu delete respects
+    // the catch-all `lock` (same as keyboard). positionLocked alone does
+    // NOT block delete (V1 quirk preserved).
+    disabled: fullyLocked,
+    onClick: () => _deleteElement(canvas, elementId, history),
+  })
+  items.push({ id: 'sep-3', label: '', divider: true })
+  items.push({
+    id: 'properties',
+    label: i18n.__('属性') || 'Properties',
+    // Properties is a no-op here — caller wires via opts.onSelect to open
+    // the property panel. We include it so the menu surface matches V1.
+  })
+
+  return items
 }
 
 // -----------------------------------------------------------------------------
@@ -631,6 +775,317 @@ function _sendToBack(
   canvas.panels = nextPanels
   // TKT-020: z-order changed → snapshot.
   history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-159: layer-shift +/- 1 (V1 inventory §G lines 11509-11522)
+// -----------------------------------------------------------------------------
+
+/**
+ * Shift an element's `options.zIndex` up by 1. V1 §G 11509-11515 — pure
+ * numeric increment with no max clamp (V1 quirk: stacks unboundedly).
+ */
+function _bringForward(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
+  const hit = _findElement(canvas, elementId)
+  if (!hit) return
+  const o = hit.el.options as Record<string, unknown>
+  const z = Number(o.zIndex ?? 0)
+  canvas.updateElement(hit.panelId, elementId, { options: { zIndex: z + 1 } })
+  history.pushSnapshot()
+}
+
+/**
+ * Shift an element's `options.zIndex` down by 1, clamped at 0.
+ * V1 §G 11516-11522 — `Math.max(0, zIndex - 1)`.
+ */
+function _sendBackward(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
+  const hit = _findElement(canvas, elementId)
+  if (!hit) return
+  const o = hit.el.options as Record<string, unknown>
+  const z = Number(o.zIndex ?? 0)
+  canvas.updateElement(hit.panelId, elementId, {
+    options: { zIndex: Math.max(0, z - 1) },
+  })
+  history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-159: directional ±1pt move (V1 inventory equivalent to
+// arrow-key nudge, surfaced as menu items per V1 §G).
+// -----------------------------------------------------------------------------
+
+/**
+ * Move every selected element by (dx, dy) pt — or fall back to the single
+ * right-clicked element when nothing is selected. Matches arrow-key step
+ * (keyboard.ts `moveStep = 1`) and respects position-lock (locked elements
+ * are silently skipped, V1 parity).
+ */
+function _moveSelectionOrElement(
+  canvas: CanvasStore,
+  history: HistoryStore,
+  elementId: string,
+  dx: number,
+  dy: number
+): void {
+  const ids =
+    canvas.selectedElementIds.size > 0
+      ? Array.from(canvas.selectedElementIds)
+      : [elementId]
+  let mutated = false
+  for (const id of ids) {
+    const hit = _findElement(canvas, id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    // Skip position-locked siblings (V1 parity — same as keyboard nudge).
+    if (o.positionLocked === true || o.lock === true) continue
+    const left = Number(o.left ?? 0) + dx
+    const top = Number(o.top ?? 0) + dy
+    canvas.updateElement(hit.panelId, id, { options: { left, top } })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-159: width / height broadcast (V1 §G lines 11568-11592)
+// -----------------------------------------------------------------------------
+
+/**
+ * Apply the FIRST selected element's `width` (or `height`) to every other
+ * selected element. V1 §G — "等宽" / "等高" right-click items. Requires ≥2
+ * selected (caller gates visibility); no-ops otherwise.
+ */
+function _broadcastDimension(
+  canvas: CanvasStore,
+  history: HistoryStore,
+  dim: 'width' | 'height'
+): void {
+  const selected = canvas.selectedElements
+  if (selected.length < 2) return
+  const first = selected[0]!
+  const fo = first.options as Record<string, unknown>
+  const value = Number(fo[dim] ?? 0)
+  if (!Number.isFinite(value) || value <= 0) return
+  let mutated = false
+  for (let i = 1; i < selected.length; i++) {
+    const el = selected[i]!
+    const hit = _findElement(canvas, el.id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    // V1 quirk: sizeLocked blocks size mutations.
+    if (o.sizeLocked === true || o.lock === true) continue
+    canvas.updateElement(hit.panelId, el.id, { options: { [dim]: value } })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-158: multi-select alignment (V1 §G lines 11546-11566)
+// -----------------------------------------------------------------------------
+
+type AlignType = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+
+/**
+ * Align every selected element to one of six anchors derived from the
+ * selection bounding box. V1 §G 11546-11566. Requires ≥2 selected (caller
+ * gates visibility); no-ops otherwise.
+ */
+function _alignSelection(
+  canvas: CanvasStore,
+  history: HistoryStore,
+  type: AlignType
+): void {
+  const selected = canvas.selectedElements
+  if (selected.length < 2) return
+  const bounds = selected.map((el) => {
+    const o = el.options as Record<string, unknown>
+    return {
+      el,
+      left: Number(o.left ?? 0),
+      top: Number(o.top ?? 0),
+      width: Number(o.width ?? 0),
+      height: Number(o.height ?? 0),
+    }
+  })
+  const minLeft = Math.min(...bounds.map((b) => b.left))
+  const maxRight = Math.max(...bounds.map((b) => b.left + b.width))
+  const minTop = Math.min(...bounds.map((b) => b.top))
+  const maxBottom = Math.max(...bounds.map((b) => b.top + b.height))
+  const centerX = (minLeft + maxRight) / 2
+  const centerY = (minTop + maxBottom) / 2
+  let mutated = false
+  for (const b of bounds) {
+    const hit = _findElement(canvas, b.el.id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    if (o.positionLocked === true || o.lock === true) continue
+    let nextLeft = b.left
+    let nextTop = b.top
+    switch (type) {
+      case 'left':
+        nextLeft = minLeft
+        break
+      case 'center':
+        nextLeft = centerX - b.width / 2
+        break
+      case 'right':
+        nextLeft = maxRight - b.width
+        break
+      case 'top':
+        nextTop = minTop
+        break
+      case 'middle':
+        nextTop = centerY - b.height / 2
+        break
+      case 'bottom':
+        nextTop = maxBottom - b.height
+        break
+    }
+    if (nextLeft === b.left && nextTop === b.top) continue
+    canvas.updateElement(hit.panelId, b.el.id, {
+      options: { left: nextLeft, top: nextTop },
+    })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-158: multi-select distribute (V1 §G lines 11554-11556)
+// -----------------------------------------------------------------------------
+
+/**
+ * Distribute selected elements evenly along an axis. V1 §G — equal spacing
+ * between innermost edges of the bounding box. Requires ≥3 selected (caller
+ * gates visibility); no-ops otherwise.
+ */
+function _distributeSelection(
+  canvas: CanvasStore,
+  history: HistoryStore,
+  direction: 'horizontal' | 'vertical'
+): void {
+  const selected = canvas.selectedElements
+  if (selected.length < 3) return
+  const bounds = selected.map((el) => {
+    const o = el.options as Record<string, unknown>
+    return {
+      el,
+      left: Number(o.left ?? 0),
+      top: Number(o.top ?? 0),
+      width: Number(o.width ?? 0),
+      height: Number(o.height ?? 0),
+    }
+  })
+  const minLeft = Math.min(...bounds.map((b) => b.left))
+  const maxRight = Math.max(...bounds.map((b) => b.left + b.width))
+  const minTop = Math.min(...bounds.map((b) => b.top))
+  const maxBottom = Math.max(...bounds.map((b) => b.top + b.height))
+  let mutated = false
+  if (direction === 'horizontal') {
+    bounds.sort((a, b) => a.left - b.left)
+    const totalW = bounds.reduce((s, b) => s + b.width, 0)
+    const gap = (maxRight - minLeft - totalW) / (bounds.length - 1)
+    let cursor = (bounds[0]?.left ?? 0) + (bounds[0]?.width ?? 0) + gap
+    for (let i = 1; i < bounds.length - 1; i++) {
+      const b = bounds[i]!
+      const hit = _findElement(canvas, b.el.id)
+      if (hit) {
+        const o = hit.el.options as Record<string, unknown>
+        if (!(o.positionLocked === true || o.lock === true)) {
+          canvas.updateElement(hit.panelId, b.el.id, {
+            options: { left: cursor, top: b.top },
+          })
+          mutated = true
+        }
+      }
+      cursor += b.width + gap
+    }
+  } else {
+    bounds.sort((a, b) => a.top - b.top)
+    const totalH = bounds.reduce((s, b) => s + b.height, 0)
+    const gap = (maxBottom - minTop - totalH) / (bounds.length - 1)
+    let cursor = (bounds[0]?.top ?? 0) + (bounds[0]?.height ?? 0) + gap
+    for (let i = 1; i < bounds.length - 1; i++) {
+      const b = bounds[i]!
+      const hit = _findElement(canvas, b.el.id)
+      if (hit) {
+        const o = hit.el.options as Record<string, unknown>
+        if (!(o.positionLocked === true || o.lock === true)) {
+          canvas.updateElement(hit.panelId, b.el.id, {
+            options: { left: b.left, top: cursor },
+          })
+          mutated = true
+        }
+      }
+      cursor += b.height + gap
+    }
+  }
+  if (mutated) history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Sprint 22d TKT-159: text / longText etype-specific actions
+// (V1 inventory etypes/text-longtext.md §G lines 11469-11483 + §J.8)
+// -----------------------------------------------------------------------------
+
+/**
+ * Hardcode `fontSize = 12` on the selection (or the right-clicked element
+ * when no selection). V1 §G 11469-11475 + §J.8 — value is hardcoded to 12,
+ * no UI for picking a custom value via this menu item.
+ */
+function _setFontSize12(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
+  const ids =
+    canvas.selectedElementIds.size > 0
+      ? Array.from(canvas.selectedElementIds)
+      : [elementId]
+  let mutated = false
+  for (const id of ids) {
+    const hit = _findElement(canvas, id)
+    if (!hit) continue
+    canvas.updateElement(hit.panelId, id, { options: { fontSize: 12 } })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
+}
+
+/**
+ * Toggle `fontWeight` between `'bolder'` (V1 default per §J.8) and
+ * `'normal'`. V1 §G 11477-11483 always SET 'bolder' — no toggle in V1.
+ * V3 improves UX by toggling: same item un-bolds an already-bold element.
+ */
+function _toggleBold(
+  canvas: CanvasStore,
+  elementId: string,
+  history: HistoryStore
+): void {
+  const ids =
+    canvas.selectedElementIds.size > 0
+      ? Array.from(canvas.selectedElementIds)
+      : [elementId]
+  let mutated = false
+  for (const id of ids) {
+    const hit = _findElement(canvas, id)
+    if (!hit) continue
+    const o = hit.el.options as Record<string, unknown>
+    const cur = String(o.fontWeight ?? '')
+    const next = cur === 'bolder' || cur === 'bold' ? 'normal' : 'bolder'
+    canvas.updateElement(hit.panelId, id, { options: { fontWeight: next } })
+    mutated = true
+  }
+  if (mutated) history.pushSnapshot()
 }
 
 // -----------------------------------------------------------------------------

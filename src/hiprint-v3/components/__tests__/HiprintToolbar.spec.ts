@@ -226,36 +226,18 @@ describe('HiprintToolbar — store-action wiring', () => {
     w.unmount()
   })
 
-  it('align buttons disabled when no selection', () => {
+  // Sprint 22d TKT-158: align buttons removed from the toolbar (V1 parity —
+  // V1 inventory toolbar-and-shell.md §1.21/§1.22 confirms V1 only renders
+  // alignment in the element right-click contextmenu). Align coverage moved
+  // to `interactions/__tests__/context-menu-align.spec.ts`.
+  it('TKT-158: align buttons are NOT rendered in the toolbar', () => {
     const w = mount(HiprintToolbar)
-    const left = w.find('button[aria-label="Align left"]')
-    expect((left.element as HTMLButtonElement).disabled).toBe(true)
-    w.unmount()
-  })
-
-  it('align left snaps selected elements to leftmost left value', async () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 300, height: 300 })
-    canvas.addElement('p1', {
-      id: 'e1',
-      tid: 't.text',
-      options: { left: 50, top: 10, width: 30, height: 10 },
-    })
-    canvas.addElement('p1', {
-      id: 'e2',
-      tid: 't.text',
-      options: { left: 80, top: 30, width: 30, height: 10 },
-    })
-    canvas.selectMultiple(['e1', 'e2'])
-    const w = mount(HiprintToolbar)
-    await w.vm.$nextTick()
-    await w.find('button[aria-label="Align left"]').trigger('click')
-    const p = canvas.panels[0]
-    const e1 = p?.printElements.find((e) => e.id === 'e1')
-    const e2 = p?.printElements.find((e) => e.id === 'e2')
-    expect((e1?.options as Record<string, unknown>).left).toBe(50)
-    expect((e2?.options as Record<string, unknown>).left).toBe(50)
-    expect(w.emitted('align')).toBeTruthy()
+    expect(w.find('button[aria-label="Align left"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Align center"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Align right"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Align top"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Align middle"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Align bottom"]').exists()).toBe(false)
     w.unmount()
   })
 
@@ -303,22 +285,10 @@ describe('HiprintToolbar — V1 showXxx reactive props', () => {
     w.unmount()
   })
 
-  it('showAlign=false hides all align buttons', () => {
-    const w = mount(HiprintToolbar, { props: { showAlign: false } })
-    expect(w.find('button[aria-label="Align left"]').exists()).toBe(false)
-    expect(w.find('button[aria-label="Align center"]').exists()).toBe(false)
-    expect(w.find('button[aria-label="Align bottom"]').exists()).toBe(false)
-    w.unmount()
-  })
-
-  it('alignItems subset hides excluded align buttons', () => {
-    const w = mount(HiprintToolbar, { props: { alignItems: ['left', 'right'] } })
-    expect(w.find('button[aria-label="Align left"]').exists()).toBe(true)
-    expect(w.find('button[aria-label="Align right"]').exists()).toBe(true)
-    expect(w.find('button[aria-label="Align center"]').exists()).toBe(false)
-    expect(w.find('button[aria-label="Align top"]').exists()).toBe(false)
-    w.unmount()
-  })
+  // Sprint 22d TKT-158: showAlign + alignItems removed from the toolbar
+  // SFC props surface. They are accepted on the compat layer for V1 API
+  // backward compatibility but are silent no-ops — align lives only in
+  // the contextmenu now (V1 inventory §1.21/§1.22).
 
   it('showTemplateSelect=true renders the Templates button', () => {
     const w = mount(HiprintToolbar, { props: { showTemplateSelect: true } })
@@ -609,26 +579,9 @@ describe('HiprintToolbar — V1 onXxx handlers receive tpl as first arg', () => 
     w.unmount()
   })
 
-  it('onAlign fires with (tpl, type)', async () => {
-    const canvas = useCanvasStore()
-    canvas.addPanel({ id: 'p1', width: 300, height: 300 })
-    canvas.addElement('p1', {
-      id: 'e1',
-      tid: 't.text',
-      options: { left: 10, top: 0, width: 30, height: 10 },
-    })
-    canvas.selectMultiple(['e1'])
-    const onAlign = vi.fn()
-    const w = mount(HiprintToolbar, {
-      props: { onAlign, tpl: fakeTpl as never },
-    })
-    await w.vm.$nextTick()
-    await w.find('button[aria-label="Align left"]').trigger('click')
-    expect(onAlign).toHaveBeenCalledTimes(1)
-    expect(onAlign.mock.calls[0]?.[0]).toBe(fakeTpl)
-    expect(onAlign.mock.calls[0]?.[1]).toBe('left')
-    w.unmount()
-  })
+  // Sprint 22d TKT-158: onAlign test deleted (align buttons removed from
+  // the toolbar — coverage moved to interactions/__tests__/context-menu-
+  // align.spec.ts). Callback prop retained on the surface for V1 back-compat.
 })
 
 describe('HiprintToolbar — extraButtons', () => {

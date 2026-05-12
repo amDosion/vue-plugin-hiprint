@@ -22,6 +22,7 @@ import {
   setTableRowspan,
   addTableHeaderLayer,
   removeTableHeaderLayer,
+  reorderTableColumn,
 } from '@hiprint-v3/stores'
 
 beforeEach(() => {
@@ -318,6 +319,94 @@ describe('addTableHeaderLayer / removeTableHeaderLayer', () => {
     expect(getColumns().length).toBe(2)
     history.undo()
     expect(getColumns().length).toBe(1)
+  })
+})
+
+// ============ reorderTableColumn (TKT-155) ============
+
+describe('reorderTableColumn', () => {
+  it('basic — moves column within the specified layer (left to right)', () => {
+    const { getColumns, history } = seedTable([
+      [
+        { title: 'A', field: 'a' },
+        { title: 'B', field: 'b' },
+        { title: 'C', field: 'c' },
+      ],
+    ])
+    reorderTableColumn('e1', 0, 0, 2)
+    const cols = getColumns()
+    expect(cols[0]!.map((c) => c.title)).toEqual(['B', 'C', 'A'])
+    expect(history.canUndo).toBe(true)
+  })
+
+  it('no-op — fromIdx === toIdx skips mutation and history push', () => {
+    const { getColumns, canvas } = seedTable([
+      [
+        { title: 'A', field: 'a' },
+        { title: 'B', field: 'b' },
+      ],
+    ])
+    const before = canvas.panels[0]!.printElements[0]
+    reorderTableColumn('e1', 0, 1, 1)
+    const cols = getColumns()
+    // Order unchanged.
+    expect(cols[0]!.map((c) => c.title)).toEqual(['A', 'B'])
+    // And the element reference is the SAME — no immutable patch happened,
+    // so no history snapshot is wasted (clean undo stack).
+    const after = canvas.panels[0]!.printElements[0]
+    expect(after).toBe(before)
+  })
+
+  it('out-of-bounds layerIdx / fromIdx / toIdx warns and no-ops', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { getColumns } = seedTable([
+      [
+        { title: 'A', field: 'a' },
+        { title: 'B', field: 'b' },
+      ],
+    ])
+    // layerIdx out of bounds
+    reorderTableColumn('e1', 99, 0, 1)
+    expect(getColumns()[0]!.map((c) => c.title)).toEqual(['A', 'B'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockClear()
+    // fromIdx out of bounds
+    reorderTableColumn('e1', 0, 99, 0)
+    expect(getColumns()[0]!.map((c) => c.title)).toEqual(['A', 'B'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockClear()
+    // toIdx out of bounds
+    reorderTableColumn('e1', 0, 0, 99)
+    expect(getColumns()[0]!.map((c) => c.title)).toEqual(['A', 'B'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockClear()
+    // Unknown element id also warns + no-ops.
+    reorderTableColumn('nonexistent', 0, 0, 1)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('multi-layer respect — mutates only the specified layer, others untouched', () => {
+    const { getColumns } = seedTable([
+      // Layer 0 (group row)
+      [
+        { title: 'Group L' },
+        { title: 'Group R' },
+      ],
+      // Layer 1 (leaf row)
+      [
+        { title: 'A', field: 'a' },
+        { title: 'B', field: 'b' },
+        { title: 'C', field: 'c' },
+      ],
+    ])
+    // Move A → end of leaf layer.
+    reorderTableColumn('e1', 1, 0, 2)
+    const cols = getColumns()
+    // Layer 0 untouched.
+    expect(cols[0]!.map((c) => c.title)).toEqual(['Group L', 'Group R'])
+    // Layer 1 mutated.
+    expect(cols[1]!.map((c) => c.title)).toEqual(['B', 'C', 'A'])
   })
 })
 

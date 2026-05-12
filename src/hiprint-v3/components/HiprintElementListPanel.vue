@@ -37,7 +37,7 @@
  *  - All user-controlled labels (title / field) go through `.textContent` via
  *    Vue text interpolation — no `v-html` anywhere (XSS-safe by design).
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   useCanvasStore,
   useHistoryStore,
@@ -72,6 +72,13 @@ const hoverId = ref<string | null>(null)
 const draggingId = ref<string | null>(null)
 const dropTargetId = ref<string | null>(null)
 
+// TKT-156 (Sprint 22d) — DOM ref on the scrollable body so we can call
+// scrollIntoView on the row matching an externally-changed selection
+// (e.g. user clicked an element on the canvas → the list panel should
+// auto-scroll that row into view). See `watch(() => canvas.selectedElementIds)`
+// below for the implementation. Static refs in JSDoc form for type safety.
+const listBodyRef = ref<HTMLElement | null>(null)
+
 // `rows` reflects the active panel's elements in their current order.
 // Reactive over canvas.activePanel + canvas.panels so `reorderElement` /
 // `addElement` / `removeElement` all refresh without manual subscription.
@@ -80,6 +87,53 @@ const rows = computed<CanvasElement[]>(
 )
 
 const selectedIds = computed<Set<string>>(() => canvas.selectedElementIds)
+
+/**
+ * TKT-156 (Sprint 22d) — auto-scroll the row matching the first selected
+ * element into view whenever selection changes.
+ *
+ * Why: the user can select an element by clicking it on the canvas. When the
+ * list panel is open with many rows scrolled out of view, they would lose the
+ * connection between canvas + list. V1 solved this by `scrollIntoView` on the
+ * selected row inside `refreshElementList`; we mirror that here with a Vue
+ * watcher so we don't rely on the canvas store knowing about this component.
+ *
+ * Notes:
+ *  - We use `nextTick` so the row's `.selected-el` class has been applied
+ *    before the scroll (avoids scrolling to a stale layout position).
+ *  - When the panel is closed (`isOpen === false`) the body is not rendered,
+ *    so `listBodyRef.value` is null — the `?.` chain short-circuits safely.
+ *  - We only scroll for the FIRST selected id. Range/multi selects don't
+ *    auto-scroll repeatedly through every row (V1 parity — V1 also only
+ *    scrolled to the first match).
+ *  - `block: 'nearest'` keeps the scroll minimal (don't yank the user's
+ *    viewport unless the row is actually clipped).
+ *  - `scrollIntoView` is guarded with a feature check because happy-dom
+ *    (test runtime) implements it as a noop method on Element but not all
+ *    custom HTMLElement subclasses guarantee its presence — defensive `in`
+ *    check avoids accidental TypeError in unusual jsdom mocks.
+ */
+watch(
+  () => canvas.selectedElementIds,
+  async (ids) => {
+    if (!ids || ids.size === 0) return
+    if (!isOpen.value) return
+    await nextTick()
+    const firstId = ids.values().next().value
+    if (!firstId) return
+    const body = listBodyRef.value
+    if (!body) return
+    const row = body.querySelector(
+      `.hiprint-el-list-row[data-element-id="${firstId}"]`
+    )
+    if (row && 'scrollIntoView' in row) {
+      ;(row as HTMLElement).scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      })
+    }
+  }
+)
 
 function openPanel(): void {
   if (isOpen.value) return
@@ -289,7 +343,7 @@ defineExpose({
     <div v-if="rows.length === 0" class="hiprint-el-list-empty">
       <slot name="empty">No elements</slot>
     </div>
-    <div v-else class="hiprint-el-list-panel-body">
+    <div v-else ref="listBodyRef" class="hiprint-el-list-panel-body">
       <div
         v-for="(el, idx) in rows"
         :key="el.id"
@@ -484,7 +538,24 @@ defineExpose({
 }
 
 /* Type badges. V1 had per-type color stripes; we keep that vocabulary so
- * business CSS overrides for `.tag-table` etc. carry over verbatim. */
+ * business CSS overrides for `.tag-table` etc. carry over verbatim.
+ *
+ * TKT-157 (Sprint 22d) — palette refresh to match V1-INVENTORY etype catalog.
+ * Each color is chosen so the badge stays readable on the row's hover bg
+ * (#f5f7fa) and selected bg (#e3f2fd). Mapping (etype → bg):
+ *   text             → #409eff  (blue,        primary content)
+ *   longText         → #67c23a  (green,       multi-line content)
+ *   image            → #e6a23c  (amber,       media)
+ *   html             → #909399  (gray,        raw markup)
+ *   barcode          → #f56c6c  (red,         scannable)
+ *   qrcode           → #c0c4cc  (light-gray,  scannable secondary)
+ *   hline            → #95d475  (light-green, layout primitive)
+ *   vline            → #b88230  (brown,       layout primitive)
+ *   rect             → #66a182  (teal,        shape)
+ *   oval             → #a37ec0  (purple,      shape)
+ *   table            → #1677ff  (primary,     tabular)
+ *   tableCustomCell  → #6699aa  (slate,       table sub-element)
+ */
 .el-type-tag {
   flex: 0 0 auto;
   display: inline-block;
@@ -499,14 +570,15 @@ defineExpose({
   text-transform: capitalize;
 }
 .el-type-tag.tag-text { background: #409eff; }
-.el-type-tag.tag-longText { background: #2080d6; }
-.el-type-tag.tag-image { background: #67c23a; }
-.el-type-tag.tag-table { background: #e6a23c; }
-.el-type-tag.tag-barcode { background: #303133; }
-.el-type-tag.tag-qrcode { background: #606266; }
+.el-type-tag.tag-longText { background: #67c23a; }
+.el-type-tag.tag-image { background: #e6a23c; }
 .el-type-tag.tag-html { background: #909399; }
-.el-type-tag.tag-hline { background: #909399; }
-.el-type-tag.tag-vline { background: #909399; }
-.el-type-tag.tag-rect { background: #909399; }
-.el-type-tag.tag-oval { background: #909399; }
+.el-type-tag.tag-barcode { background: #f56c6c; }
+.el-type-tag.tag-qrcode { background: #c0c4cc; }
+.el-type-tag.tag-hline { background: #95d475; }
+.el-type-tag.tag-vline { background: #b88230; }
+.el-type-tag.tag-rect { background: #66a182; }
+.el-type-tag.tag-oval { background: #a37ec0; }
+.el-type-tag.tag-table { background: #1677ff; }
+.el-type-tag.tag-tableCustomCell { background: #6699aa; }
 </style>

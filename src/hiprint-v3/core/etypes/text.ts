@@ -16,10 +16,18 @@ import { createBaseElement, type BaseElement, type ElementTypeRef } from '../ele
 import { coerceText } from '@hiprint-v3/internal'
 import type { ElementTypeDef } from '../group'
 
-/** V1/V2 default text options (V1 line 9961+). */
+/**
+ * V1 default text options.
+ *
+ * Sprint 22d TKT-162: width/height aligned to V1 `text.default`
+ * (hiprint.config.js line 472-476): `width:120, height:9.75`.
+ * V3 also keeps explicit `fontSize/textAlign/textContentVerticalAlign` defaults
+ * that V1 left unset (read implicitly from CSS); these are non-conflicting
+ * additions that make the rendered text predictable.
+ */
 export const TEXT_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 100,
-  height: 12,
+  width: 120,
+  height: 9.75,
   fontSize: 9.75,
   textAlign: 'left',
   textContentVerticalAlign: 'top',

@@ -104,10 +104,22 @@ function buildGeneralGroup(): PrintElementTypeGroup {
       ],
     },
     {
+      // Sprint 22d TKT-161: V1 attaches a default formatter that returns a
+      // dashed-box placeholder when no data is bound. Mirrored for parity so
+      // template JSON deserializes to the same shape; the renderer may pick
+      // this up if/when it consumes printElementType.formatter.
       tid: 'defaultModule.html',
       title: 'html',
       type: 'html',
       icon: 'ep:postcard',
+      formatter: function (data: unknown): string {
+        if (data && typeof data === 'string') return data
+        return (
+          '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;' +
+          'border:1px dashed #c0c4cc;color:#909399;font-size:12px;box-sizing:border-box;' +
+          'background:#fafbfc;">自定义 HTML</div>'
+        )
+      },
     },
     {
       tid: 'defaultModule.customText',
@@ -331,11 +343,46 @@ function buildAuxiliaryGroup(): PrintElementTypeGroup {
 function buildUtilityGroup(): PrintElementTypeGroup {
   const types: ElementTypeDef[] = [
     {
+      // Sprint 22d TKT-161: V1 formatter reads templateData.currentDate /
+      // printDate / date OR falls back to `new Date()` and renders
+      // YYYY-MM-DD. Mirrored so the preset's JSON shape matches V1; the
+      // renderer/formatter pipeline will pick this up once it consumes
+      // printElementType.formatter the same way V1 did at bundle.js 9970+.
       tid: 'defaultModule.currentDate',
       title: '当前日期',
       type: 'text',
       icon: 'ep:calendar',
       options: { width: 100, height: 12, fontSize: 9, textAlign: 'left' },
+      formatter: function (
+        _title: unknown,
+        data: unknown,
+        _options: unknown,
+        templateData?: Record<string, unknown>
+      ): string {
+        const src =
+          (templateData &&
+            (templateData.currentDate ||
+              templateData.printDate ||
+              templateData.date)) ||
+          data ||
+          new Date()
+        try {
+          let dt: Date
+          if (src instanceof Date) dt = src
+          else dt = new Date(src as string | number)
+          if (Number.isNaN(dt.getTime())) dt = new Date()
+          const pad = (n: number): string => (n < 10 ? '0' + n : '' + n)
+          return (
+            dt.getFullYear() +
+            '-' +
+            pad(dt.getMonth() + 1) +
+            '-' +
+            pad(dt.getDate())
+          )
+        } catch {
+          return ''
+        }
+      },
     },
     {
       tid: 'defaultModule.signature',

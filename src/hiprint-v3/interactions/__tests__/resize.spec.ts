@@ -76,6 +76,10 @@ vi.mock('interactjs', () => ({
 import {
   enableElementResize,
   disableElementResize,
+  getHandlesForType,
+  handlesToEdges,
+  HANDLE_MAP,
+  DEFAULT_HANDLES,
   type ResizeRect,
 } from '../resize'
 
@@ -407,5 +411,104 @@ describe('disableElementResize', () => {
   // 1 pt ≈ 1.333 px sanity check (DPI 96 in happy-dom).
   it('happy-dom DPI assumption', () => {
     expect(PT_PER_PX).toBeCloseTo(0.75, 4)
+  })
+})
+
+// -----------------------------------------------------------------------------
+// TKT-163 — etype-aware HANDLE_MAP + opts.handles wiring.
+// V1 references: docs/V1-INVENTORY/etypes/shapes.md quirk #5,
+//                docs/V1-INVENTORY/etypes/image-html.md §F.1.
+// -----------------------------------------------------------------------------
+
+describe('TKT-163 — HANDLE_MAP per-etype overrides', () => {
+  it('default vocabulary is all 8 handles', () => {
+    expect(DEFAULT_HANDLES.length).toBe(8)
+    expect(new Set(DEFAULT_HANDLES)).toEqual(
+      new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'])
+    )
+  })
+
+  it('HANDLE_MAP encodes V1 quirks for shapes + image', () => {
+    expect(HANDLE_MAP.hline).toEqual(['e', 'w'])
+    expect(HANDLE_MAP.vline).toEqual(['n', 's'])
+    expect(HANDLE_MAP.rect).toEqual(['s', 'w', 'e', 'se'])
+    expect(HANDLE_MAP.oval).toEqual(['s', 'w', 'e', 'se'])
+    expect(HANDLE_MAP.image).toEqual(['nw', 'ne', 'sw', 'se'])
+  })
+
+  it('getHandlesForType returns DEFAULT_HANDLES for unknown etypes', () => {
+    expect(getHandlesForType('text')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('longText')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('barcode')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('qrcode')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('html')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('table')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType('totally-made-up')).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType(null)).toEqual(DEFAULT_HANDLES)
+    expect(getHandlesForType(undefined)).toEqual(DEFAULT_HANDLES)
+  })
+
+  it('handlesToEdges derives cardinal edges from a handle whitelist', () => {
+    // hline → only e + w edges.
+    expect(handlesToEdges(['e', 'w'])).toEqual({
+      top: false,
+      right: true,
+      bottom: false,
+      left: true,
+    })
+    // vline → only n + s edges.
+    expect(handlesToEdges(['n', 's'])).toEqual({
+      top: true,
+      right: false,
+      bottom: true,
+      left: false,
+    })
+    // rect (V1 quirk: no top) → s + w + e + se. SE contributes BOTH s + e but
+    // the top edge MUST remain false.
+    expect(handlesToEdges(['s', 'w', 'e', 'se'])).toEqual({
+      top: false,
+      right: true,
+      bottom: true,
+      left: true,
+    })
+    // image corners → all four edges (each corner touches two edges).
+    expect(handlesToEdges(['nw', 'ne', 'sw', 'se'])).toEqual({
+      top: true,
+      right: true,
+      bottom: true,
+      left: true,
+    })
+  })
+
+  it('enableElementResize uses opts.handles to constrain interact.js edges', () => {
+    const el = makeEl({ left: 0, top: 0, width: 80, height: 40 })
+    enableElementResize(el, {
+      elementId: 'e1',
+      panelId: 'p1',
+      handles: HANDLE_MAP.rect,
+    })
+    const cfg = getCfg(el)
+    // rect quirk: NO top edge.
+    expect(cfg.edges.top).toBe(false)
+    expect(cfg.edges.right).toBe(true)
+    expect(cfg.edges.bottom).toBe(true)
+    expect(cfg.edges.left).toBe(true)
+  })
+
+  it('opts.handles takes precedence over opts.edges (TKT-163 contract)', () => {
+    const el = makeEl({ left: 0, top: 0, width: 80, height: 40 })
+    enableElementResize(el, {
+      elementId: 'e1',
+      panelId: 'p1',
+      // edges asks for everything,
+      edges: { top: true, right: true, bottom: true, left: true },
+      // handles narrows it down to hline (e + w only).
+      handles: HANDLE_MAP.hline,
+    })
+    const cfg = getCfg(el)
+    expect(cfg.edges.top).toBe(false)
+    expect(cfg.edges.bottom).toBe(false)
+    expect(cfg.edges.right).toBe(true)
+    expect(cfg.edges.left).toBe(true)
   })
 })

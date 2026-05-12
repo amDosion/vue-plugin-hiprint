@@ -22,6 +22,14 @@
 | [0007](0007-print-element-type-registry-export.md) | 暴露 PrintElementTypeRegistry export 分离 data 与 UI builder | accepted |
 | [0008](0008-jspdf-upgrade-dompurify-cve.md) | jspdf 2.5 → 4.2.1 升级清 dompurify CVE | accepted |
 | [0009](0009-fix-discipline-highest-priority.md) | 引入 fix-discipline 规则 (最高优先级) | accepted |
+| [0010](0010-hiprint-bundle-refactor-strangler-fig.md) | V2 Strangler Fig 拆 bundle.js | superseded by 0011 |
+| [0011](0011-v3-modern-ui-architecture.md) | V3 现代化 — 去 jQuery + Vue 3 + TS | accepted |
+| [0024](0024-empty-canvas-click-deselect.md) | 空画布点击总是清选(V3 改善,放弃 V1 quirk) | accepted |
+| [0025](0025-tab-key-cycles-selection.md) | Tab 键循环选中(V3 新增) | accepted |
+| [0026](0026-arrow-nudge-step-v3.md) | 方向键 1pt + Shift=10pt(V3 行业标准) | accepted |
+| [0027](0027-shift-resize-aspect-lock.md) | Shift+resize 锁定 aspect(V3 反转 V1) | accepted |
+| [0028](0028-ctrl-z-input-guard.md) | Ctrl+Z 在 input 内走浏览器默认(V3 改善) | accepted |
+| [0029](0029-quirks-rollup-decision-index.md) | V1 quirks 决议索引 + 整体策略 | accepted |
 
 ## When to write a new ADR
 

@@ -12,9 +12,17 @@ import { createBaseElement, type BaseElement, type ElementTypeRef } from '../ele
 import { resolveField } from '@hiprint-v3/internal'
 import type { ElementTypeDef } from '../group'
 
+/**
+ * V1 default image options.
+ *
+ * Sprint 22d TKT-162: aligned to V1 `image.default`
+ * (hiprint.config.js line 615): `{}`. V1 has no width/height — image
+ * `initSizeByHtml` sizes the element from the loaded src. V3 omits
+ * width/height to match, keeping the explicit `fit:'contain'` as a V3-only
+ * sensible default so business templates render predictably until a real
+ * image dimensions update.
+ */
 export const IMAGE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 100,
-  height: 60,
   fit: 'contain',
 }
 

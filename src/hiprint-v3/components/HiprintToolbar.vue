@@ -11,8 +11,9 @@
  *
  * Props in this SFC:
  *  1. Reactive opts — show* (visibility flags) plus on* (event handlers) plus
- *     paperTypes, scaleMin/Max/Step, alignItems, extraButtons, extraPosition,
- *     panelManagerLabel, addPanelButtonText.
+ *     paperTypes, scaleMin/Max/Step, extraButtons, extraPosition,
+ *     panelManagerLabel, addPanelButtonText. (Sprint 22d TKT-158 removed
+ *     `alignItems` + `showAlign` — align lives in element contextmenu now.)
  *  2. `tpl` — the PrintTemplate so onXxx callbacks receive it per V1 signature
  *     parity (some business callbacks still rely on the first-arg-is-tpl shape).
  *
@@ -50,6 +51,12 @@ export interface ToolbarPaperType {
 
 /**
  * Stable identifier for each button (subset selectable via `props.buttons`).
+ *
+ * Sprint 22d TKT-158: align/distribute buttons removed from the toolbar to
+ * match V1 (V1 inventory `toolbar-and-shell.md` §1.21/§1.22 — V1 only exposes
+ * alignment in the element right-click contextmenu). Align actions are now
+ * surfaced exclusively via `interactions/context-menu.ts` when ≥2 elements
+ * are selected.
  */
 export type ToolbarButtonId =
   | 'undo'
@@ -68,15 +75,14 @@ export type ToolbarButtonId =
   | 'zoomReset'
   | 'gridToggle'
   | 'rulerToggle'
-  | 'alignLeft'
-  | 'alignCenter'
-  | 'alignRight'
-  | 'alignTop'
-  | 'alignMiddle'
-  | 'alignBottom'
   | 'templateSelect'
   | 'businessSelect'
 
+/**
+ * Sprint 22d TKT-158: type retained for compat with `onAlign` callback +
+ * `alignElements()` PrintTemplate signature. No toolbar button references
+ * it anymore.
+ */
 export type ToolbarAlignType =
   | 'left'
   | 'center'
@@ -103,7 +109,11 @@ export interface ToolbarExtraButton {
 }
 
 interface Props {
-  /** Subset of buttons to show. Default: all 22 standard buttons. */
+  /**
+   * Subset of buttons to show. Default: all 16 standard buttons (Sprint 22d
+   * TKT-158 dropped the 6 alignment buttons to match V1 — align lives only
+   * in the element right-click contextmenu).
+   */
   buttons?: readonly ToolbarButtonId[]
   /** Paper-size list shown in select. Defaults to A3/A4/A5/B4/B5. */
   paperTypes?: readonly ToolbarPaperType[]
@@ -140,7 +150,6 @@ interface Props {
   showPaperSelect?: boolean
   showCustomPaper?: boolean
   showRotate?: boolean
-  showAlign?: boolean
   showScale?: boolean
   showRuler?: boolean
   showGrid?: boolean
@@ -185,8 +194,6 @@ interface Props {
   // ---- Panel manager opts ----
   panelManagerLabel?: string
   addPanelButtonText?: string
-  // ---- Align customisation ----
-  alignItems?: readonly ToolbarAlignType[]
   // ---- Extra buttons ----
   extraButtons?: readonly ToolbarExtraButton[]
   extraPosition?: 'start' | 'end'
@@ -215,6 +222,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  // Sprint 22d TKT-158: align buttons removed (V1 parity — align lives in the
+  // element right-click contextmenu only).
   buttons: () => [
     'undo',
     'redo',
@@ -232,12 +241,6 @@ const props = withDefaults(defineProps<Props>(), {
     'zoomIn',
     'gridToggle',
     'rulerToggle',
-    'alignLeft',
-    'alignCenter',
-    'alignRight',
-    'alignTop',
-    'alignMiddle',
-    'alignBottom',
   ],
   // V1 parity: `_defaultPaperTypes` dictionary [V1 bundle.js lines 13296-13303]
   // — A3/A4/A5/B3/B4/B5 with these exact dimensions (mm). Sprint 22a-r rollback
@@ -273,7 +276,6 @@ const props = withDefaults(defineProps<Props>(), {
   showPaperSelect: true,
   showCustomPaper: true,
   showRotate: true,
-  showAlign: true,
   showScale: true,
   showRuler: true,
   showGrid: true,
@@ -294,7 +296,6 @@ const props = withDefaults(defineProps<Props>(), {
   onBusinessSelectClick: undefined,
   panelManagerLabel: '',
   addPanelButtonText: '+',
-  alignItems: () => ['left', 'center', 'right', 'top', 'middle', 'bottom'],
   extraButtons: () => [],
   extraPosition: 'end',
   // Sprint 22c TKT-042/043 imperative overrides — empty by default so V3
@@ -392,12 +393,6 @@ const defaultLabels: Record<string, string> = {
   zoomReset: '100%',
   gridToggle: '▦ Grid',
   rulerToggle: '⌖ Ruler',
-  alignLeft: '⊣ L',
-  alignCenter: '☰ C',
-  alignRight: '⊢ R',
-  alignTop: '⊤ T',
-  alignMiddle: '☱ M',
-  alignBottom: '⊥ B',
   templateSelect: '📋 Templates',
   businessSelect: '🏷 Business',
 }
@@ -441,13 +436,6 @@ function showFlagFor(key: ToolbarButtonId): boolean {
       return props.showGrid
     case 'rulerToggle':
       return props.showRuler
-    case 'alignLeft':
-    case 'alignCenter':
-    case 'alignRight':
-    case 'alignTop':
-    case 'alignMiddle':
-    case 'alignBottom':
-      return props.showAlign && alignSet.value.has(stripAlignPrefix(key))
     case 'templateSelect':
       return props.showTemplateSelect
     case 'businessSelect':
@@ -455,14 +443,6 @@ function showFlagFor(key: ToolbarButtonId): boolean {
     default:
       return true
   }
-}
-
-const alignSet = computed<Set<ToolbarAlignType>>(
-  () => new Set(props.alignItems)
-)
-
-function stripAlignPrefix(key: string): ToolbarAlignType {
-  return key.replace(/^align/, '').toLowerCase() as ToolbarAlignType
 }
 
 function isShown(id: ToolbarButtonId): boolean {
@@ -490,13 +470,6 @@ function isDisabled(id: ToolbarButtonId): boolean {
       return canvas.panels.length <= 1 || !canvas.activePanelId
     case 'zoomOut': return canvas.scale <= props.scaleMin
     case 'zoomIn': return canvas.scale >= props.scaleMax
-    case 'alignLeft':
-    case 'alignCenter':
-    case 'alignRight':
-    case 'alignTop':
-    case 'alignMiddle':
-    case 'alignBottom':
-      return canvas.selectedElementIds.size === 0
     default:
       return false
   }
@@ -777,78 +750,12 @@ function handleRotate(): void {
   emit('rotate', props.tpl)
 }
 
-function handleAlign(type: ToolbarAlignType): void {
-  const ids = canvas.selectedElementIds
-  if (ids.size === 0) {
-    emit('align', props.tpl, type)
-    return
-  }
-  const selected = canvas.selectedElements
-  if (selected.length === 0) {
-    emit('align', props.tpl, type)
-    return
-  }
-  const lefts: number[] = []
-  const tops: number[] = []
-  const rights: number[] = []
-  const bottoms: number[] = []
-  for (const el of selected) {
-    const o = el.options as Record<string, unknown>
-    const left = Number(o.left ?? 0)
-    const top = Number(o.top ?? 0)
-    const width = Number(o.width ?? 0)
-    const height = Number(o.height ?? 0)
-    lefts.push(left)
-    tops.push(top)
-    rights.push(left + width)
-    bottoms.push(top + height)
-  }
-  const anchor = {
-    left: Math.min(...lefts),
-    right: Math.max(...rights),
-    top: Math.min(...tops),
-    bottom: Math.max(...bottoms),
-  }
-  const centerX = (anchor.left + anchor.right) / 2
-  const centerY = (anchor.top + anchor.bottom) / 2
-  const panelId = canvas.activePanelId
-  if (!panelId) {
-    emit('align', props.tpl, type)
-    return
-  }
-  for (const el of selected) {
-    const o = el.options as Record<string, unknown>
-    const width = Number(o.width ?? 0)
-    const height = Number(o.height ?? 0)
-    let nextLeft = Number(o.left ?? 0)
-    let nextTop = Number(o.top ?? 0)
-    switch (type) {
-      case 'left':
-        nextLeft = anchor.left
-        break
-      case 'center':
-        nextLeft = centerX - width / 2
-        break
-      case 'right':
-        nextLeft = anchor.right - width
-        break
-      case 'top':
-        nextTop = anchor.top
-        break
-      case 'middle':
-        nextTop = centerY - height / 2
-        break
-      case 'bottom':
-        nextTop = anchor.bottom - height
-        break
-    }
-    canvas.updateElement(panelId, el.id, {
-      options: { left: nextLeft, top: nextTop },
-    })
-  }
-  history.pushSnapshot()
-  emit('align', props.tpl, type)
-}
+// Sprint 22d TKT-158: `handleAlign` removed from toolbar. Alignment is now
+// surfaced exclusively from the element right-click contextmenu (≥2 selected)
+// via `interactions/context-menu.ts`, which calls `template.alignElements()`
+// + `template.distributeElements()` on the compat PrintTemplate. The `align`
+// emit signature is retained on this component for V1 toolbar parity with
+// any downstream listeners that still subscribe.
 
 function handleToggleGrid(): void {
   gridVisible.value = !gridVisible.value
@@ -1188,74 +1095,13 @@ defineExpose({
       <template v-else>{{ labelFor('rulerToggle') }}</template>
     </button>
 
-    <span class="hiprint-toolbar-sep" aria-hidden="true" />
-
-    <button
-      v-if="isShown('alignLeft')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align left"
-      :disabled="isDisabled('alignLeft')"
-      @click="handleAlign('left')"
-    >
-      <span v-if="useHtmlFor('alignLeft')" v-html="labelFor('alignLeft')" />
-      <template v-else>{{ labelFor('alignLeft') }}</template>
-    </button>
-    <button
-      v-if="isShown('alignCenter')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align center"
-      :disabled="isDisabled('alignCenter')"
-      @click="handleAlign('center')"
-    >
-      <span v-if="useHtmlFor('alignCenter')" v-html="labelFor('alignCenter')" />
-      <template v-else>{{ labelFor('alignCenter') }}</template>
-    </button>
-    <button
-      v-if="isShown('alignRight')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align right"
-      :disabled="isDisabled('alignRight')"
-      @click="handleAlign('right')"
-    >
-      <span v-if="useHtmlFor('alignRight')" v-html="labelFor('alignRight')" />
-      <template v-else>{{ labelFor('alignRight') }}</template>
-    </button>
-    <button
-      v-if="isShown('alignTop')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align top"
-      :disabled="isDisabled('alignTop')"
-      @click="handleAlign('top')"
-    >
-      <span v-if="useHtmlFor('alignTop')" v-html="labelFor('alignTop')" />
-      <template v-else>{{ labelFor('alignTop') }}</template>
-    </button>
-    <button
-      v-if="isShown('alignMiddle')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align middle"
-      :disabled="isDisabled('alignMiddle')"
-      @click="handleAlign('middle')"
-    >
-      <span v-if="useHtmlFor('alignMiddle')" v-html="labelFor('alignMiddle')" />
-      <template v-else>{{ labelFor('alignMiddle') }}</template>
-    </button>
-    <button
-      v-if="isShown('alignBottom')"
-      type="button"
-      class="hiprint-toolbar-btn"
-      aria-label="Align bottom"
-      :disabled="isDisabled('alignBottom')"
-      @click="handleAlign('bottom')"
-    >
-      <span v-if="useHtmlFor('alignBottom')" v-html="labelFor('alignBottom')" />
-      <template v-else>{{ labelFor('alignBottom') }}</template>
-    </button>
+    <!--
+      Sprint 22d TKT-158: align/distribute buttons removed from the toolbar
+      (V1 parity — V1 inventory `toolbar-and-shell.md` §1.21/§1.22 confirms
+      V1 only renders alignment in the element right-click contextmenu). The
+      6 align + 2 distribute items now live in `interactions/context-menu.ts`
+      and only appear when ≥2 elements are selected.
+    -->
 
     <!-- Extra buttons (end position; default) -->
     <template v-if="extraPosition !== 'start' && orderedExtraButtons.length > 0">

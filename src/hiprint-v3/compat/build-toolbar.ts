@@ -688,7 +688,9 @@ export function buildToolbar(
     showPaperSelect: options.showPaperSelect,
     showCustomPaper: options.showCustomPaper,
     showRotate: options.showRotate,
-    showAlign: options.showAlign,
+    // Sprint 22d TKT-158: showAlign accepted on the V1 opts surface for
+    // backward compat but no longer forwarded — align buttons were removed
+    // from the toolbar SFC. The option becomes a silent no-op.
     showScale: options.showScale,
     showRuler: undefined,
     showGrid: undefined,
@@ -746,15 +748,12 @@ export function buildToolbar(
           )
         }
       : undefined,
-    onAlign: options.onAlign
-      ? (_tplArg: unknown, type: ToolbarAlignType) => {
-          safeCall(
-            options.onAlign as unknown as (...a: unknown[]) => void,
-            [type, template],
-            'toolbar.onAlign'
-          )
-        }
-      : undefined,
+    // Sprint 22d TKT-158: onAlign accepted on the V1 opts surface (callers
+    // may still subscribe) but the toolbar no longer fires it. Alignment now
+    // happens via `template.alignElements()` from the element contextmenu
+    // (see `interactions/context-menu.ts`). Business code that needs an
+    // observability hook can subscribe via the V3 event bus 'align' event
+    // emitted by `PrintTemplate.alignElements`.
     onScaleChange: options.onScaleChange
       ? (_tplArg: unknown, scale: number) => {
           safeCall(
@@ -775,7 +774,8 @@ export function buildToolbar(
     templateButtonText: options.templateButtonText,
     panelManagerLabel: options.panelManagerLabel,
     addPanelButtonText: options.addPanelButtonText,
-    alignItems: options.alignItems,
+    // Sprint 22d TKT-158: alignItems retained on options for V1 compat but
+    // no longer forwarded to the SFC.
   } as const
 
   // ---- Wrapper SFC owns the reactive refs ----

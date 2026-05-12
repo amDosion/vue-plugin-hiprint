@@ -189,6 +189,20 @@ interface Props {
   saveDialogCategoryOptions?: readonly string[]
   saveDialogSaving?: boolean
   saveDialogTitle?: string
+  // ---- TKT-150 sidebar layout controls ----
+  /** Initial left sidebar (element-list) width in px. Default 200. */
+  initialLeftWidth?: number
+  /** Initial right sidebar (property-panel) width in px. Default 280. */
+  initialRightWidth?: number
+  /** Min/max bounds for the left sidebar (px). */
+  leftMinWidth?: number
+  leftMaxWidth?: number
+  /** Min/max bounds for the right sidebar (px). */
+  rightMinWidth?: number
+  rightMaxWidth?: number
+  /** Initial collapsed state (defaults to false). */
+  leftInitiallyCollapsed?: boolean
+  rightInitiallyCollapsed?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -255,6 +269,16 @@ const props = withDefaults(defineProps<Props>(), {
   saveDialogCategoryOptions: undefined,
   saveDialogSaving: false,
   saveDialogTitle: '保存模板',
+  // TKT-150 defaults — match V1 inventory styles.md §1.6 (sidebar widths)
+  // and toolbar-and-shell.md §column-resize.
+  initialLeftWidth: 200,
+  initialRightWidth: 280,
+  leftMinWidth: 160,
+  leftMaxWidth: 360,
+  rightMinWidth: 160,
+  rightMaxWidth: 480,
+  leftInitiallyCollapsed: false,
+  rightInitiallyCollapsed: false,
 })
 
 const emit = defineEmits<{
@@ -320,6 +344,96 @@ const canvas = useCanvasStore()
 const history = useHistoryStore()
 const tpl = useTemplateStore()
 
+// ============ TKT-150 — sidebar resize / collapse state ============
+//
+// V1 reference: docs/V1-INVENTORY/toolbar-and-shell.md §column-resize +
+// styles.md §1.6 (`.hiprint-designer-resize-bar`, `.hiprint-designer-edge-toggle`).
+//
+// State model:
+//  - `leftWidth` / `rightWidth` track the active sidebar widths in px.
+//    Bound to `:style="{ width: leftWidth + 'px' }"` on the sidebars below.
+//  - `leftCollapsed` / `rightCollapsed` mirror V1's edge-toggle pin state.
+//    When true the corresponding sidebar collapses to 0 width (the toggle pin
+//    remains visible at 24px so the user can expand again).
+//
+// Drag handler:
+//  - Pointer-based (replaces V1 jQuery `mousedown.<ns>` flow). We capture the
+//    start X + start width on pointerdown, then move + up listeners on
+//    `window` update / release. Clamp width into `[min, max]` bounds.
+//
+// Collapse toggle:
+//  - Simple flip; the width ref is preserved so re-expansion restores the
+//    previous size (V1 parity — the user-set width survives a collapse cycle).
+const leftWidth = ref<number>(props.initialLeftWidth)
+const rightWidth = ref<number>(props.initialRightWidth)
+const leftCollapsed = ref<boolean>(props.leftInitiallyCollapsed)
+const rightCollapsed = ref<boolean>(props.rightInitiallyCollapsed)
+
+/**
+ * Effective sidebar widths in px (collapsed → 0). The actual `flex-basis` /
+ * `width` style binding reads this so we don't clobber the saved width when
+ * the user toggles collapse.
+ */
+const effectiveLeftWidth = computed<number>(() =>
+  leftCollapsed.value ? 0 : leftWidth.value
+)
+const effectiveRightWidth = computed<number>(() =>
+  rightCollapsed.value ? 0 : rightWidth.value
+)
+
+/**
+ * TKT-150 — pointer-driven sidebar resize. Mirrors V1's
+ * `.hiprint-designer-resize-bar` mousedown flow (toolbar-and-shell.md §column).
+ *
+ * Pointer events (over the legacy mouse path) so we get pointer capture +
+ * correct release even when the pointer leaves the bar.
+ *
+ * Listener teardown is critical: window-scoped listeners must release on
+ * pointerup OR if the component unmounts mid-drag — `cleanupSidebarDrag`
+ * tracks the active drag so onBeforeUnmount can force release.
+ */
+let cleanupSidebarDrag: (() => void) | null = null
+
+function onSidebarResizeStart(side: 'left' | 'right', ev: PointerEvent): void {
+  // Left mouse button only.
+  if (ev.button !== 0) return
+  // If sidebar is collapsed, treat the drag as "expand from collapsed" by
+  // un-collapsing first (so users can grab the resize bar to recover from
+  // an over-collapsed state).
+  if (side === 'left' && leftCollapsed.value) leftCollapsed.value = false
+  if (side === 'right' && rightCollapsed.value) rightCollapsed.value = false
+
+  const startX = ev.clientX
+  const startW = side === 'left' ? leftWidth.value : rightWidth.value
+  const minW = side === 'left' ? props.leftMinWidth : props.rightMinWidth
+  const maxW = side === 'left' ? props.leftMaxWidth : props.rightMaxWidth
+
+  function onMove(e: PointerEvent): void {
+    const dx = e.clientX - startX
+    // Right sidebar grows when the bar moves LEFT (delta negated).
+    const next = side === 'left' ? startW + dx : startW - dx
+    const clamped = Math.max(minW, Math.min(maxW, next))
+    if (side === 'left') leftWidth.value = clamped
+    else rightWidth.value = clamped
+  }
+
+  function onUp(): void {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    cleanupSidebarDrag = null
+  }
+
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  cleanupSidebarDrag = onUp
+  ev.preventDefault()
+}
+
+function toggleSidebarCollapse(side: 'left' | 'right'): void {
+  if (side === 'left') leftCollapsed.value = !leftCollapsed.value
+  else rightCollapsed.value = !rightCollapsed.value
+}
+
 // ============ Computed layout flags ============
 
 const isDesignMode = computed(() => props.mode === 'design')
@@ -361,6 +475,16 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (cleanupSidebarDrag) {
+    // TKT-150 — release any in-flight sidebar drag listeners so we don't
+    // leak window-scoped pointermove/up handlers after unmount.
+    try {
+      cleanupSidebarDrag()
+    } catch {
+      /* ignore */
+    }
+    cleanupSidebarDrag = null
+  }
   if (props.destroyOnUnmount) {
     tpl.clear()
   }
@@ -469,11 +593,36 @@ defineExpose({
     </header>
 
     <main v-if="isDesignMode" class="hiprint-designer__main">
-      <aside v-if="showElementList" class="hiprint-designer__element-list">
+      <aside
+        v-if="showElementList"
+        class="hiprint-designer__element-list"
+        :class="{ 'hiprint-designer__element-list--collapsed': leftCollapsed }"
+        :style="{ width: effectiveLeftWidth + 'px' }"
+      >
         <slot name="element-list">
           <HiprintElementList />
         </slot>
       </aside>
+
+      <!-- TKT-150: left resize bar + edge toggle. Hosts a 4px draggable bar
+           (V1 `.hiprint-designer-resize-bar` width:4px cursor:col-resize) +
+           a 24px edge toggle pin (V1 `.hiprint-designer-edge-toggle`). -->
+      <div
+        v-if="showElementList"
+        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--left"
+        @pointerdown="onSidebarResizeStart('left', $event)"
+        aria-label="Resize element list panel"
+        role="separator"
+      >
+        <button
+          type="button"
+          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--left"
+          @click.stop="toggleSidebarCollapse('left')"
+          @pointerdown.stop
+          :aria-label="leftCollapsed ? 'Expand element list panel' : 'Collapse element list panel'"
+          :aria-expanded="!leftCollapsed"
+        >{{ leftCollapsed ? '›' : '‹' }}</button>
+      </div>
 
       <section class="hiprint-designer__canvas">
         <slot name="canvas">
@@ -491,7 +640,30 @@ defineExpose({
         </slot>
       </section>
 
-      <aside v-if="showPropertyPanel" class="hiprint-designer__property-panel">
+      <!-- TKT-150: right resize bar + edge toggle. -->
+      <div
+        v-if="showPropertyPanel"
+        class="hiprint-designer__resize-bar hiprint-designer__resize-bar--right"
+        @pointerdown="onSidebarResizeStart('right', $event)"
+        aria-label="Resize property panel"
+        role="separator"
+      >
+        <button
+          type="button"
+          class="hiprint-designer__edge-toggle hiprint-designer__edge-toggle--right"
+          @click.stop="toggleSidebarCollapse('right')"
+          @pointerdown.stop
+          :aria-label="rightCollapsed ? 'Expand property panel' : 'Collapse property panel'"
+          :aria-expanded="!rightCollapsed"
+        >{{ rightCollapsed ? '‹' : '›' }}</button>
+      </div>
+
+      <aside
+        v-if="showPropertyPanel"
+        class="hiprint-designer__property-panel"
+        :class="{ 'hiprint-designer__property-panel--collapsed': rightCollapsed }"
+        :style="{ width: effectiveRightWidth + 'px' }"
+      >
         <slot name="property-panel">
           <HiprintPropertyPanel />
         </slot>
@@ -566,9 +738,17 @@ defineExpose({
 }
 
 .hiprint-designer__element-list {
-  flex: 0 0 200px;
+  /* TKT-150: width is bound inline (`:style="{ width: ... }"`); flex-basis
+   * is supplied via the binding too, so we declare `flex: 0 0 auto`. */
+  flex: 0 0 auto;
   border-right: 1px solid var(--hiprint-designer-divider, #ddd);
   overflow-y: auto;
+  transition: width 0.18s ease;
+}
+.hiprint-designer__element-list--collapsed {
+  /* Hide chrome when collapsed; pin remains accessible via the edge toggle. */
+  border-right: none;
+  overflow: hidden;
 }
 
 .hiprint-designer__canvas {
@@ -581,9 +761,64 @@ defineExpose({
 }
 
 .hiprint-designer__property-panel {
-  flex: 0 0 260px;
+  /* TKT-150: width is bound inline. */
+  flex: 0 0 auto;
   border-left: 1px solid var(--hiprint-designer-divider, #ddd);
   overflow-y: auto;
+  transition: width 0.18s ease;
+}
+.hiprint-designer__property-panel--collapsed {
+  border-left: none;
+  overflow: hidden;
+}
+
+/* TKT-150 — sidebar resize bar (V1 styles.md §1.6 line 76:
+ * `.hiprint-designer-resize-bar` width:4px cursor:col-resize). 4px hit zone
+ * matches V1 exactly; the bar itself rendered 1px wide via background-clip
+ * so it reads as a thin divider. */
+.hiprint-designer__resize-bar {
+  position: relative;
+  flex: 0 0 4px;
+  width: 4px;
+  cursor: col-resize;
+  background: var(--hiprint-designer-divider, #ddd);
+  user-select: none;
+  /* Keep the bar above adjacent sidebar borders. */
+  z-index: 2;
+}
+.hiprint-designer__resize-bar:hover {
+  background: var(--hiprint-designer-divider-active, #aaa);
+}
+/* TKT-150 — edge toggle pin (V1 styles.md §1.6 line 77:
+ * `.hiprint-designer-edge-toggle` position:fixed 24px circle). V3 uses
+ * absolute positioning relative to the resize-bar so the pin tracks the bar
+ * when the main scroll container moves; `position:fixed` (V1's choice) caused
+ * misalignment under shadow-DOM hosts. */
+.hiprint-designer__edge-toggle {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 36px;
+  margin-top: -18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hiprint-designer-pin-bg, #ffffff);
+  color: var(--hiprint-designer-pin-fg, #555);
+  border: 1px solid var(--hiprint-designer-divider, #ddd);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  z-index: 3;
+}
+.hiprint-designer__edge-toggle--left {
+  /* Pin overhangs into the canvas area for easy reach. */
+  left: 4px;
+}
+.hiprint-designer__edge-toggle--right {
+  right: 4px;
 }
 
 .hiprint-designer__preview {

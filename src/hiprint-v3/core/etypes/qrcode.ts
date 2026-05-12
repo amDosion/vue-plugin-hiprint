@@ -10,9 +10,15 @@
 import { createBaseElement, type BaseElement, type ElementTypeRef } from '../element-base'
 import type { ElementTypeDef } from '../group'
 
+/**
+ * V1 default qrcode options.
+ *
+ * Sprint 22d TKT-162: width/height aligned to V1 `qrcode.default`
+ * (hiprint.config.js line 2245-2250): `width:80, height:80, qrcodeType:'qrcode'`.
+ */
 export const QRCODE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 50,
-  height: 50,
+  width: 80,
+  height: 80,
   qrcodeType: 'qrcode',
   qrCodeLevel: 0,
   barColor: '#000000',

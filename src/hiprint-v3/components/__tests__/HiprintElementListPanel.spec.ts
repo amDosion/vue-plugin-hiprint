@@ -384,3 +384,154 @@ describe('HiprintElementListPanel — drag reorder', () => {
     w.unmount()
   })
 })
+
+// ============ TKT-156 + TKT-157 (Sprint 22d) ============
+
+describe('HiprintElementListPanel — data-element-id (TKT-156)', () => {
+  it('every row exposes data-element-id matching the element id', () => {
+    const { ids } = seed({
+      elements: [
+        { options: { title: 'A' } },
+        { options: { title: 'B' } },
+        { options: { title: 'C' } },
+      ],
+    })
+    const w = mount(HiprintElementListPanel, { props: { initiallyOpen: true } })
+    const rows = w.findAll('.hiprint-el-list-row')
+    expect(rows.length).toBe(3)
+    rows.forEach((row, idx) => {
+      expect(row.attributes('data-element-id')).toBe(ids[idx])
+    })
+    w.unmount()
+  })
+})
+
+describe('HiprintElementListPanel — auto-scroll on selection (TKT-156)', () => {
+  /**
+   * The watcher calls `row.scrollIntoView({ block: 'nearest', behavior:
+   * 'smooth' })` whenever `canvas.selectedElementIds` changes externally.
+   * happy-dom does provide `scrollIntoView` on HTMLElement (as a noop), so
+   * we stub it on the row prototype to spy on the call shape. This proves the
+   * panel actually reacted to the canvas selection change and resolved the
+   * correct row via `[data-element-id="..."]`.
+   */
+  it('selecting on the canvas externally scrolls the matching row into view', async () => {
+    const { ids } = seed({
+      elements: [
+        { options: { title: 'A' } },
+        { options: { title: 'B' } },
+        { options: { title: 'C' } },
+      ],
+    })
+    const canvas = useCanvasStore()
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    const w = mount(HiprintElementListPanel, {
+      props: { initiallyOpen: true },
+      attachTo: document.body,
+    })
+    // External selection (mimics user clicking on the canvas).
+    canvas.selectElement(ids[1]!)
+    // Watch + nextTick + nextTick (one tick inside watcher).
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(scrollSpy).toHaveBeenCalledWith({
+      block: 'nearest',
+      behavior: 'smooth',
+    })
+    // Sanity: the row that received the scroll has the correct data-id.
+    const targetRow = scrollSpy.mock.instances[0] as HTMLElement
+    expect(targetRow.getAttribute('data-element-id')).toBe(ids[1])
+    scrollSpy.mockRestore()
+    w.unmount()
+  })
+
+  it('does not scroll when selection is cleared', async () => {
+    const { ids } = seed({
+      elements: [{ options: { title: 'A' } }, { options: { title: 'B' } }],
+    })
+    const canvas = useCanvasStore()
+    // Seed an initial selection so the watcher has fired once already; then
+    // clear it — that should NOT trigger scrollIntoView (size === 0 guard).
+    canvas.selectElement(ids[0]!)
+    const w = mount(HiprintElementListPanel, {
+      props: { initiallyOpen: true },
+      attachTo: document.body,
+    })
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    canvas.clearSelection()
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    scrollSpy.mockRestore()
+    w.unmount()
+  })
+
+  it('does not scroll when the panel is closed (body not rendered)', async () => {
+    const { ids } = seed({
+      elements: [{ options: { title: 'A' } }, { options: { title: 'B' } }],
+    })
+    const canvas = useCanvasStore()
+    const w = mount(HiprintElementListPanel, {
+      props: { initiallyOpen: false },
+      attachTo: document.body,
+    })
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    canvas.selectElement(ids[0]!)
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    expect(scrollSpy).not.toHaveBeenCalled()
+    scrollSpy.mockRestore()
+    w.unmount()
+  })
+})
+
+describe('HiprintElementListPanel — per-type tag colors (TKT-157)', () => {
+  it('every etype in the V1-INVENTORY catalog gets a unique tag-<type> class', () => {
+    seed({
+      elements: [
+        { type: 'text', options: {} },
+        { type: 'longText', options: {} },
+        { type: 'image', options: {} },
+        { type: 'html', options: {} },
+        { type: 'barcode', options: {} },
+        { type: 'qrcode', options: {} },
+        { type: 'hline', options: {} },
+        { type: 'vline', options: {} },
+        { type: 'rect', options: {} },
+        { type: 'oval', options: {} },
+        { type: 'table', options: {} },
+        { type: 'tableCustomCell', options: {} },
+      ],
+    })
+    const w = mount(HiprintElementListPanel, { props: { initiallyOpen: true } })
+    const tags = w.findAll('.el-type-tag')
+    expect(tags.length).toBe(12)
+    const expected = [
+      'tag-text',
+      'tag-longText',
+      'tag-image',
+      'tag-html',
+      'tag-barcode',
+      'tag-qrcode',
+      'tag-hline',
+      'tag-vline',
+      'tag-rect',
+      'tag-oval',
+      'tag-table',
+      'tag-tableCustomCell',
+    ]
+    expected.forEach((cls, idx) => {
+      expect(tags[idx]!.classes()).toContain(cls)
+    })
+    w.unmount()
+  })
+})

@@ -11,9 +11,15 @@ import { createBaseElement, type BaseElement, type ElementTypeRef } from '../ele
 import { coerceText } from '@hiprint-v3/internal'
 import type { ElementTypeDef } from '../group'
 
+/**
+ * V1 default longText options.
+ *
+ * Sprint 22d TKT-162: width/height aligned to V1 `longText.default`
+ * (hiprint.config.js line 882-885): `width:540, height:42`.
+ */
 export const LONG_TEXT_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 200,
-  height: 30,
+  width: 540,
+  height: 42,
   fontSize: 9.75,
   lineHeight: 1.5,
   textAlign: 'left',

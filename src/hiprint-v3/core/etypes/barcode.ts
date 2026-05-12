@@ -10,9 +10,15 @@
 import { createBaseElement, type BaseElement, type ElementTypeRef } from '../element-base'
 import type { ElementTypeDef } from '../group'
 
+/**
+ * V1 default barcode options.
+ *
+ * Sprint 22d TKT-162: width/height aligned to V1 `barcode.default`
+ * (hiprint.config.js line 2062-2068): `width:160, height:40, barcodeType:'code128'`.
+ */
 export const BARCODE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 140,
-  height: 35,
+  width: 160,
+  height: 40,
   barcodeType: 'code128',
   barColor: '#000000',
   barAutoWidth: true,

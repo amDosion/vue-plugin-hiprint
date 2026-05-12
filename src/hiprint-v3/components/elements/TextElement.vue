@@ -147,14 +147,46 @@ function commitEdit(): void {
   const isTitleEdit =
     !isTrue(opts.hideTitle) && typeof opts.title === 'string'
   const prior = String((isTitleEdit ? opts.title : opts.testData) ?? '')
-  const patch: Opts = isTitleEdit
-    ? { title: draftValue.value }
-    : { testData: draftValue.value }
+
+  // Sprint 22d TKT-160 — sanitize + parse per V1 inventory etypes/text-longtext.md
+  // §F.1 + §J.12:
+  //   1. Strip enter/newline/tab → space (V1 quirk J.12 — inline-edit must
+  //      stay single-line; multi-line goes through longText).
+  //   2. Parse `title：testData` (fullwidth colon U+FF1A) into BOTH title +
+  //      testData simultaneously, so users can author both via inline edit.
+  //      Also accept ASCII `:` — V1 §J.1 only honored fullwidth colon, V3
+  //      fixes that bug by also splitting on ASCII (matches the visual cue
+  //      from the colon separator rendered between title and value).
+  //   3. Title-only edits when no colon present (preserves prior behavior).
+  const raw = String(draftValue.value ?? '')
+  const sanitized = raw.replace(/[\r\n\t]+/g, ' ').trim()
+  const colonMatch = sanitized.match(/^([^：:]+)\s*[：:]\s*(.+)$/)
+  let patch: Opts
+  if (colonMatch) {
+    // Both title and testData supplied — patch both. This branch wins
+    // regardless of isTitleEdit because the user explicitly asked for both
+    // values by typing a colon (V1 inventory F.1 — colon parse is the
+    // documented way to author title + value inline).
+    patch = {
+      title: colonMatch[1]!.trim(),
+      testData: colonMatch[2]!.trim(),
+    }
+  } else if (isTitleEdit) {
+    patch = { title: sanitized }
+  } else {
+    patch = { testData: sanitized }
+  }
   canvas.updateElement(props.panelId, props.elementId, { options: patch })
   isEditing.value = false
   // TKT-020: history snapshot on a real edit only. Matches the property
-  // panels' commit-on-blur semantics.
-  if (draftValue.value !== prior) history.pushSnapshot()
+  // panels' commit-on-blur semantics. Compare against the *committed* value
+  // for the relevant field (post-sanitization) rather than the raw draft, so
+  // whitespace-only sanitization changes still snapshot when they actually
+  // changed the stored value.
+  const committedSample = colonMatch
+    ? `${colonMatch[1]!.trim()}：${colonMatch[2]!.trim()}`
+    : sanitized
+  if (committedSample !== prior) history.pushSnapshot()
 }
 
 function cancelEdit(): void {

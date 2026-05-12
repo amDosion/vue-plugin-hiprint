@@ -26,4 +26,6 @@ export {
   setTableRowspan,
   addTableHeaderLayer,
   removeTableHeaderLayer,
+  // TKT-155 (Sprint 22d) — column drag-reorder via thead drag handles.
+  reorderTableColumn,
 } from './table-ops'

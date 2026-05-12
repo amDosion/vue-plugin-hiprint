@@ -65,6 +65,55 @@ describe('buildDefaultElementTypeGroups', () => {
     expect(allTypes.has('qrcode')).toBe(true)
   })
 
+  it('[TKT-161 + TKT-170] contains all V1 default-etyps-provider tids', () => {
+    // Sprint 22d: extended-coverage list — every preset declared in V1
+    // src/hiprint/etypes/default-etyps-provider.js lines 24-440 must have a
+    // V3 counterpart so JSON templates roundtrip and the element-list panel
+    // shows the same item set as V1.
+    const allTids = new Set<string>()
+    groups.forEach((g) =>
+      g.printElementTypes.forEach((et) => allTids.add(et.tid))
+    )
+    const v1Tids = [
+      // 常规 (V1 line 23-170)
+      'defaultModule.text',
+      'defaultModule.image',
+      'defaultModule.longText',
+      'defaultModule.table',
+      'defaultModule.emptyTable',
+      'defaultModule.html',
+      'defaultModule.customText',
+      'defaultModule.titleRow',
+      // 电商 (V1 line 171-298)
+      'defaultModule.url',
+      'defaultModule.price',
+      'defaultModule.sku',
+      'defaultModule.senderInfo',
+      'defaultModule.receiverInfo',
+      'defaultModule.orderNo',
+      'defaultModule.orderDate',
+      'defaultModule.trackingNo',
+      'defaultModule.totalAmount',
+      // 辅助 (V1 line 299-359)
+      'defaultModule.hline',
+      'defaultModule.vline',
+      'defaultModule.rect',
+      'defaultModule.oval',
+      'defaultModule.barcode',
+      'defaultModule.qrcode',
+      // 实用 (V1 line 360-440)
+      'defaultModule.currentDate',
+      'defaultModule.signature',
+      'defaultModule.signatureImage',
+      'defaultModule.seal',
+    ]
+    v1Tids.forEach((tid) => {
+      expect(allTids.has(tid)).toBe(true)
+    })
+    // V3 should not be missing any V1 tid; allTids ≥ 27 expected.
+    expect(allTids.size).toBeGreaterThanOrEqual(v1Tids.length)
+  })
+
   it('"常规" group contains text + image + longText + table + html', () => {
     const general = groups.find((g) => g.name === '常规')
     expect(general).toBeDefined()

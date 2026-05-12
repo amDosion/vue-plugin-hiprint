@@ -14,9 +14,15 @@
 import { createBaseElement, type BaseElement, type ElementTypeRef } from '../element-base'
 import type { ElementTypeDef } from '../group'
 
+/**
+ * V1 default html options.
+ *
+ * Sprint 22d TKT-162: width/height aligned to V1 `html.default`
+ * (hiprint.config.js line 1773-1776): `width:90, height:90`.
+ */
 export const HTML_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 100,
-  height: 50,
+  width: 90,
+  height: 90,
 }
 
 export const HTML_DEFAULT_TYPE_DEF: ElementTypeDef = {

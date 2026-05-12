@@ -37,6 +37,85 @@ import { findElement, isSizeLocked } from './lock'
 // Public types
 // -----------------------------------------------------------------------------
 
+/**
+ * TKT-163 — etype-aware resize handle positions.
+ *
+ * V1 inventory quirks (see `docs/V1-INVENTORY/etypes/shapes.md` quirk #5 +
+ * `image-html.md` §F.1):
+ *  - `hline`: horizontal only — handles `['e', 'w']`.
+ *  - `vline`: vertical only — handles `['n', 's']`.
+ *  - `rect` / `oval`: V1 quirk — NO top edge handle. We keep `['s', 'w', 'e', 'se']`.
+ *  - `image`: 4 corners only `['nw', 'ne', 'sw', 'se']` (rotate handled separately).
+ *  - others (text/longText/barcode/qrcode/table/html): full 8-handle set.
+ *
+ * The full 8-handle vocabulary mirrors V1 `.resize-panel .resizebtn` classes.
+ */
+export type HandlePosition =
+  | 'n'
+  | 's'
+  | 'e'
+  | 'w'
+  | 'ne'
+  | 'nw'
+  | 'se'
+  | 'sw'
+
+export const DEFAULT_HANDLES: readonly HandlePosition[] = Object.freeze([
+  'nw',
+  'n',
+  'ne',
+  'e',
+  'se',
+  's',
+  'sw',
+  'w',
+])
+
+/**
+ * Per-etype handle whitelist. Etypes absent from this map fall back to the
+ * full `DEFAULT_HANDLES` set (the V1 base behavior).
+ *
+ * Keep the arrays frozen + readonly so accidental mutation in callers is
+ * surfaced at compile time.
+ */
+export const HANDLE_MAP: Readonly<Record<string, readonly HandlePosition[]>> =
+  Object.freeze({
+    hline: Object.freeze(['e', 'w']) as readonly HandlePosition[],
+    vline: Object.freeze(['n', 's']) as readonly HandlePosition[],
+    rect: Object.freeze(['s', 'w', 'e', 'se']) as readonly HandlePosition[],
+    oval: Object.freeze(['s', 'w', 'e', 'se']) as readonly HandlePosition[],
+    image: Object.freeze(['nw', 'ne', 'sw', 'se']) as readonly HandlePosition[],
+  })
+
+/**
+ * Resolve the handle whitelist for an etype. Unknown etypes return the
+ * default 8-handle vocabulary (so unknown legacy templates keep working).
+ */
+export function getHandlesForType(
+  etype: string | null | undefined
+): readonly HandlePosition[] {
+  if (!etype) return DEFAULT_HANDLES
+  return HANDLE_MAP[etype] ?? DEFAULT_HANDLES
+}
+
+/**
+ * Map a handle whitelist into an interact.js `edges` config. interact.js only
+ * supports the 4 cardinal edges (`top|right|bottom|left`) — corners are
+ * implied by simultaneous edges. We enable an edge iff at least one handle in
+ * the whitelist touches it.
+ */
+export function handlesToEdges(
+  handles: readonly HandlePosition[]
+): { top: boolean; right: boolean; bottom: boolean; left: boolean } {
+  const set = new Set<HandlePosition>(handles)
+  return {
+    top: set.has('n') || set.has('ne') || set.has('nw'),
+    right: set.has('e') || set.has('ne') || set.has('se'),
+    bottom: set.has('s') || set.has('se') || set.has('sw'),
+    left: set.has('w') || set.has('nw') || set.has('sw'),
+  }
+}
+
 export interface ResizeRect {
   /** Left position in pt. */
   left: number
@@ -74,6 +153,16 @@ export interface ElementResizeOptions {
     bottom?: boolean
     left?: boolean
   }
+  /**
+   * TKT-163 — etype-aware handle whitelist. When supplied (e.g.
+   * `['e','w']` for hline), it overrides `edges` to only enable the
+   * cardinal edges that any whitelisted handle touches. Provided so the
+   * ElementWrapper can render exactly the matching handle dots + interact.js
+   * only resizes from those edges.
+   *
+   * Precedence: `handles` (this field) > `edges` (legacy field) > all 4.
+   */
+  handles?: readonly HandlePosition[]
   /**
    * TKT-104 — fires once when the resize gesture begins (before any tick).
    * Lets the wrapper flip its overlay to 'resize' mode without subscribing
@@ -176,16 +265,21 @@ export function enableElementResize(
   const minWidth = opts.minWidth ?? 5
   const minHeight = opts.minHeight ?? 5
   const gridSize = opts.gridSize ?? 1
-  // If caller omits `edges`, default to all four. If they pass a partial
-  // object, missing keys are treated as `false` (caller explicitly opted in).
-  const edges: Required<NonNullable<ElementResizeOptions['edges']>> = opts.edges
-    ? {
+  // TKT-163 — `handles` (etype whitelist) takes precedence over the legacy
+  // `edges` field. When neither is provided we default to all four cardinal
+  // edges (= full 8-handle vocabulary).
+  const edges: Required<NonNullable<ElementResizeOptions['edges']>> = (() => {
+    if (opts.handles) return handlesToEdges(opts.handles)
+    if (opts.edges) {
+      return {
         top: opts.edges.top ?? false,
         right: opts.edges.right ?? false,
         bottom: opts.edges.bottom ?? false,
         left: opts.edges.left ?? false,
       }
-    : { top: true, right: true, bottom: true, left: true }
+    }
+    return { top: true, right: true, bottom: true, left: true }
+  })()
 
   // Initialize per-element state.
   const state: ResizeState = {

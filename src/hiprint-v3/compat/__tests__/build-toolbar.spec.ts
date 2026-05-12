@@ -569,29 +569,25 @@ describe('buildToolbar — TKT-100 V1 opts pass-through', () => {
     tpl.destroy()
   })
 
-  it('onAlign hook fires with (type, tpl) signature', async () => {
+  it('Sprint 22d TKT-158: no Align buttons render in toolbar (align moved to contextmenu)', async () => {
     const tpl = new PrintTemplate()
     const onAlign = vi.fn()
     const ctrl = buildToolbar(host, tpl, { onAlign })
-    // Align buttons are disabled until at least one element is selected.
-    // Add an element + select it via canvas store (bypasses the Zod element
-    // schema which would otherwise drop a JSON element without printElementType).
-    const canvas = ctrl.getCanvasApi()
-    const panelId = canvas.panels[0]!.id
-    const added = canvas.addElement(panelId, {
-      tid: 'configModule.text',
-      options: { left: 10, top: 10, width: 50, height: 20 },
-    })
-    expect(added).toBeTruthy()
-    canvas.selectElement(added!.id)
+    // V1 inventory §1.21/§1.22: V1 only exposes alignment via the element
+    // right-click contextmenu. Sprint 22d rolled back the V3 toolbar
+    // alignment buttons to match V1. The `onAlign` callback is still
+    // accepted on the opts surface for V1 back-compat but no DOM button
+    // fires it from the toolbar — alignment fires from contextmenu via
+    // `template.alignElements()` (see context-menu-align.spec.ts).
     await nextTick()
-    const al = host.querySelector('[aria-label="Align left"]') as HTMLButtonElement
-    expect(al.disabled).toBe(false)
-    al.click()
-    expect(onAlign).toHaveBeenCalled()
-    const [type, tplArg] = onAlign.mock.calls[0]!
-    expect(type).toBe('left')
-    expect(tplArg).toBe(tpl)
+    expect(host.querySelector('[aria-label="Align left"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Align center"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Align right"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Align top"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Align middle"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Align bottom"]')).toBeNull()
+    // Callback never fires — the toolbar no longer invokes it.
+    expect(onAlign).not.toHaveBeenCalled()
     ctrl.destroy()
     tpl.destroy()
   })

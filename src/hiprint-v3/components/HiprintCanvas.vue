@@ -347,6 +347,38 @@ function onGuidePointerUp(e: PointerEvent): void {
   if (shouldDelete) canvas.removeGuideLine(state.guideId)
 }
 
+// ----- TKT-154 — transient ruler-handle cursor markers -----
+//
+// Two thin triangular marks rendered on the rulers track the user's cursor
+// position over the active paper. Distinct from TKT-102 user-drawn guides
+// (those are persistent dashed lines stored in `canvas.guideLines`).
+//
+// V1 reference: docs/V1-INVENTORY/styles.md §1.11 line 125
+// (`.hiprint-ruler-handle` background: rgba(64,158,255,0.7); cursor: move).
+//
+// State:
+//  - `cursorPos`: null when the pointer is not over the paper; otherwise the
+//    paper-pt coords (already scale-corrected by `clientToPaperPt`).
+//  - Handles render inside the existing ruler SVG, positioned by `pos` in pt
+//    so they stay aligned with paper geometry under any zoom.
+//  - Resets on pointerleave so we never leave a stale marker behind.
+const cursorPos = ref<{ x: number; y: number } | null>(null)
+
+function onPaperPointerMove(e: PointerEvent): void {
+  if (props.readonly) return
+  const x = clientToPaperPt('v', e.clientX, e.clientY)
+  const y = clientToPaperPt('h', e.clientX, e.clientY)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    cursorPos.value = null
+    return
+  }
+  cursorPos.value = { x, y }
+}
+
+function onPaperPointerLeave(): void {
+  cursorPos.value = null
+}
+
 // ----- TKT-103 smart-guide preview overlay -----
 const smartPreviews = ref<readonly SmartGuidePreview[]>([])
 let unsubscribeSmartGuide: (() => void) | null = null
@@ -395,6 +427,8 @@ onBeforeUnmount(() => {
       'hiprint-canvas--with-ruler': canvas.rulerVisible && !readonly,
     }"
     @contextmenu="onContextMenu"
+    @pointermove="onPaperPointerMove"
+    @pointerleave="onPaperPointerLeave"
   >
     <!-- Ruler tracks (CV-004: SVG with real mm number labels).
          Minor tick every 1 mm, major tick + numeric label every 10 mm.
@@ -432,6 +466,17 @@ onBeforeUnmount(() => {
       >
         {{ t.mm }}
       </text>
+      <!-- TKT-154 — transient cursor marker on the top (horizontal) ruler.
+           Triangle pointing down so the apex aligns with the cursor's x
+           position. Pointer-events:none so it never blocks ruler-drag. -->
+      <polygon
+        v-if="cursorPos && cursorPos.x >= 0 && cursorPos.x <= rulerWidthPt"
+        class="hiprint-ruler-handle hiprint-ruler-handle-h"
+        :points="`${cursorPos.x - 3},0 ${cursorPos.x + 3},0 ${cursorPos.x},${RULER_THICKNESS}`"
+        fill="rgba(64,158,255,0.7)"
+        stroke="rgba(64,158,255,0.9)"
+        stroke-width="0.5"
+      />
     </svg>
     <svg
       v-if="canvas.rulerVisible && !readonly"
@@ -465,6 +510,16 @@ onBeforeUnmount(() => {
       >
         {{ t.mm }}
       </text>
+      <!-- TKT-154 — transient cursor marker on the left (vertical) ruler.
+           Triangle pointing right so the apex aligns with the cursor's y. -->
+      <polygon
+        v-if="cursorPos && cursorPos.y >= 0 && cursorPos.y <= rulerHeightPt"
+        class="hiprint-ruler-handle hiprint-ruler-handle-v"
+        :points="`0,${cursorPos.y - 3} 0,${cursorPos.y + 3} ${RULER_THICKNESS},${cursorPos.y}`"
+        fill="rgba(64,158,255,0.7)"
+        stroke="rgba(64,158,255,0.9)"
+        stroke-width="0.5"
+      />
     </svg>
     <template v-if="activePanel">
       <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">

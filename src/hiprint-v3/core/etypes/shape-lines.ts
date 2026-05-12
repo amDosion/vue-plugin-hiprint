@@ -13,11 +13,20 @@ import type { ElementTypeDef } from '../group'
 
 // ============ HLine ============
 
+/**
+ * V1 default hline options.
+ *
+ * Sprint 22d TKT-162: aligned to V1 `hline.default`
+ * (hiprint.config.js line 1325-1329): `width:90, height:9, borderWidth:0.75`.
+ * V3 keeps the explicit `borderTop:'solid'` + `borderColor:'#000000'` defaults
+ * so the renderer emits a visible line without depending on print-lock.css
+ * fallback that V3 hasn't shipped.
+ */
 export const HLINE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 200,
-  height: 1,
+  width: 90,
+  height: 9,
   borderTop: 'solid',
-  borderWidth: 1,
+  borderWidth: 0.75,
   borderColor: '#000000',
 }
 
@@ -30,11 +39,20 @@ export const HLINE_DEFAULT_TYPE_DEF: ElementTypeDef = {
 
 // ============ VLine ============
 
+/**
+ * V1 default vline options.
+ *
+ * Sprint 22d TKT-162: aligned to V1 `vline.default`
+ * (hiprint.config.js line 1436-1440): `width:9, height:90`.
+ * V1's `borderWidth: undefined` relies on print-lock.css `0.75pt` fallback;
+ * V3 sets `borderWidth:0.75` explicitly to keep the visible line under V3's
+ * print stylesheet (which doesn't ship the V1 !important fallback).
+ */
 export const VLINE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 1,
-  height: 100,
+  width: 9,
+  height: 90,
   borderLeft: 'solid',
-  borderWidth: 1,
+  borderWidth: 0.75,
   borderColor: '#000000',
 }
 
@@ -47,11 +65,20 @@ export const VLINE_DEFAULT_TYPE_DEF: ElementTypeDef = {
 
 // ============ Rect ============
 
+/**
+ * V1 default rect options.
+ *
+ * Sprint 22d TKT-162: aligned to V1 `rect.default`
+ * (hiprint.config.js line 1555-1559): `width:90, height:90`.
+ * V1's `borderWidth: undefined` relies on print-lock.css `0.75pt` fallback;
+ * V3 sets `borderWidth:0.75` explicitly so the rect outline is visible
+ * without the V1 fallback CSS.
+ */
 export const RECT_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 100,
-  height: 60,
+  width: 90,
+  height: 90,
   borderStyle: 'solid',
-  borderWidth: 1,
+  borderWidth: 0.75,
   borderColor: '#000000',
 }
 
@@ -64,11 +91,21 @@ export const RECT_DEFAULT_TYPE_DEF: ElementTypeDef = {
 
 // ============ Oval ============
 
+/**
+ * V1 default oval options.
+ *
+ * Sprint 22d TKT-162: aligned to V1 `oval.default`
+ * (hiprint.config.js line 1674-1678): `width:90, height:90`.
+ * V1's `borderWidth: undefined` relies on print-lock.css `0.75pt` fallback;
+ * V3 sets `borderWidth:0.75` explicitly. V3 keeps `borderRadius:50` so
+ * OvalElement.vue's `50%` rendering can degrade to a panel-driven value
+ * if a business consumer rebinds the percentage to a number.
+ */
 export const OVAL_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 60,
-  height: 60,
+  width: 90,
+  height: 90,
   borderStyle: 'solid',
-  borderWidth: 1,
+  borderWidth: 0.75,
   borderColor: '#000000',
   borderRadius: 50,
 }

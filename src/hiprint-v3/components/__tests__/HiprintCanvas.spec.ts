@@ -244,3 +244,110 @@ describe('HiprintCanvas — reactivity', () => {
     w.unmount()
   })
 })
+
+/**
+ * TKT-154 — transient ruler-handle cursor markers.
+ *
+ * Distinct from TKT-102 user-drawn guides (persistent dashed lines stored in
+ * `canvas.guideLines`). These are ephemeral triangular indicators that track
+ * the cursor while it hovers over the paper area.
+ *
+ * Notes on test fidelity:
+ *  - happy-dom doesn't compute getBoundingClientRect() for unattached
+ *    elements, so we mount with `attachTo: document.body` and stub the
+ *    paper rect via `Object.defineProperty` so `clientToPaperPt` returns
+ *    finite coords. The marker visibility only depends on a finite
+ *    cursorPos and an active paper element.
+ */
+describe('HiprintCanvas — TKT-154 ruler-handle cursor markers', () => {
+  function paperRect(
+    canvasEl: Element,
+    rect: Partial<DOMRect>
+  ): void {
+    const paper = canvasEl.querySelector('.hiprint-printPaper') as HTMLElement
+    if (!paper) return
+    const r: DOMRect = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 100,
+      right: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+      ...rect,
+    } as DOMRect
+    paper.getBoundingClientRect = () => r
+  }
+
+  it('renders no ruler-handle marker when cursor has not moved', () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    expect(w.element.querySelector('.hiprint-ruler-handle')).toBeNull()
+    w.unmount()
+  })
+
+  it('renders both horizontal + vertical ruler-handle markers on pointermove', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    paperRect(w.element, { left: 50, top: 50, right: 650, bottom: 900 })
+    // Pointermove on the canvas root → onPaperPointerMove updates cursorPos.
+    w.element.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 120 })
+    )
+    await w.vm.$nextTick()
+    const hHandle = w.element.querySelector('.hiprint-ruler-handle-h')
+    const vHandle = w.element.querySelector('.hiprint-ruler-handle-v')
+    expect(hHandle).not.toBeNull()
+    expect(vHandle).not.toBeNull()
+    w.unmount()
+  })
+
+  it('pointerleave clears the markers', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: false },
+      attachTo: document.body,
+    })
+    paperRect(w.element, { left: 50, top: 50, right: 650, bottom: 900 })
+    w.element.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 120 })
+    )
+    await w.vm.$nextTick()
+    expect(w.element.querySelector('.hiprint-ruler-handle')).not.toBeNull()
+    w.element.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
+    await w.vm.$nextTick()
+    expect(w.element.querySelector('.hiprint-ruler-handle')).toBeNull()
+    w.unmount()
+  })
+
+  it('readonly mode never renders ruler-handle markers', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 595.28, height: 841.89 })
+    canvas.rulerVisible = true
+    const w = mount(HiprintCanvas, {
+      props: { readonly: true },
+      attachTo: document.body,
+    })
+    paperRect(w.element, { left: 50, top: 50, right: 650, bottom: 900 })
+    w.element.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 120 })
+    )
+    await w.vm.$nextTick()
+    expect(w.element.querySelector('.hiprint-ruler-handle')).toBeNull()
+    w.unmount()
+  })
+})

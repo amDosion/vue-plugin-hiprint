@@ -321,6 +321,80 @@ export function setTableRowspan(
   commit(canvas, history, panelId, elementId, layers)
 }
 
+/**
+ * Reorder a column within a single header layer (TKT-155).
+ *
+ * Moves the column at `fromIdx` to `toIdx` inside `layers[layerIdx]` ONLY —
+ * other layers are left untouched so multi-layer headers preserve their
+ * grouping structure. This matches V1's column header drag-reorder which also
+ * splices within one layer at a time (V1 bundle line ~7330-7380 reorderColumn
+ * path — group cells in upper layers stay anchored, leaf cells move).
+ *
+ * Semantics:
+ *  - `fromIdx === toIdx` → no-op (no mutation, no history push). Avoids
+ *    spurious snapshots from drag-and-drop that ends on the source cell.
+ *  - Out-of-bounds `layerIdx`, `fromIdx`, or `toIdx` → no-op + warn
+ *    (Invariant #8 — never throw on a UI typo).
+ *  - Splice is array-immutable: clone the inner layer array, remove + insert,
+ *    then commit through the shared `commit()` helper so the element ref is
+ *    new (Vue reactivity diff fires) and history snapshot is pushed.
+ *
+ * V1 reference: column drag handler at bundle line ~7330. V3 simplification:
+ *  we do not auto-merge / split group cells when columns cross group
+ *  boundaries — callers should reorder within a logical group, and the
+ *  property panel still owns multi-layer restructuring.
+ */
+export function reorderTableColumn(
+  elementId: string,
+  layerIdx: number,
+  fromIdx: number,
+  toIdx: number
+): void {
+  const canvas = useCanvasStore()
+  const history = useHistoryStore()
+  const hit = readLayers(canvas, elementId)
+  if (!hit) {
+    console.warn('[hiprint] reorderTableColumn: element not found', elementId)
+    return
+  }
+  const { panelId, layers } = hit
+  if (layerIdx < 0 || layerIdx >= layers.length) {
+    console.warn(
+      '[hiprint] reorderTableColumn: layerIdx out of bounds',
+      layerIdx,
+      'layers',
+      layers.length
+    )
+    return
+  }
+  const layer = layers[layerIdx]!
+  if (fromIdx < 0 || fromIdx >= layer.length) {
+    console.warn(
+      '[hiprint] reorderTableColumn: fromIdx out of bounds',
+      fromIdx,
+      'len',
+      layer.length
+    )
+    return
+  }
+  if (toIdx < 0 || toIdx >= layer.length) {
+    console.warn(
+      '[hiprint] reorderTableColumn: toIdx out of bounds',
+      toIdx,
+      'len',
+      layer.length
+    )
+    return
+  }
+  // Drop-on-self → no-op (no history snapshot to avoid undo-stack noise).
+  if (fromIdx === toIdx) return
+  // Immutable splice — clone the inner layer (cloneLayers already cloned
+  // the outer + this inner), then move the column.
+  const moved = layer.splice(fromIdx, 1)[0]!
+  layer.splice(toIdx, 0, moved)
+  commit(canvas, history, panelId, elementId, layers)
+}
+
 // ============ Public helpers (TKT-105 — header layers) ============
 
 /**

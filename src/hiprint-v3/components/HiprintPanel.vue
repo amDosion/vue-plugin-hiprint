@@ -62,6 +62,41 @@ const panel = computed(() =>
 const isActive = computed(() => canvas.activePanelId === props.panelId)
 
 /**
+ * TKT-153 — paper page-number badge.
+ *
+ * V1 inventory `interactions.md` §14.1 / §14.2:
+ *  - `.hiprint-paperNumber` rendered when multiple papers exist (V1 line 9420 /
+ *    10912 — `createPaperNumber(text, isDesignMode)`).
+ *  - `panel.paperNumberDisabled === true` toggles `.hiprint-paperNumber-disabled`
+ *    (V1 line 10843 — even though V1 actually `.hide()`s, the CSS class is the
+ *    documented hook; V3 keeps the hook so hosts/CSS can selectively style).
+ *  - Positioned at bottom-right of the paper (outside printable area; V1 uses
+ *    `paperNumberLeft/Top`, here we hard-code 4pt for V3 baseline).
+ *
+ * Hidden in readonly mode (V1 `isDesignMode` gate from line 10912).
+ * Pointer-events:none so it never intercepts canvas pointer gestures.
+ *
+ * `pageIndex` here mirrors the 1-based index displayed; with one panel we
+ * still render nothing because V1 only paints page numbers when there is more
+ * than one paper.
+ */
+const showPaperNumber = computed<boolean>(() => {
+  if (props.readonly) return false
+  if (canvas.panels.length <= 1) return false
+  return true
+})
+
+const paperNumberIndex = computed<number>(() => {
+  const idx = canvas.panels.findIndex((p) => p.id === props.panelId)
+  return idx < 0 ? 1 : idx + 1
+})
+
+const paperNumberDisabled = computed<boolean>(() => {
+  const p = panel.value
+  return !!(p && (p as { paperNumberDisabled?: unknown }).paperNumberDisabled)
+})
+
+/**
  * Paper style — width/height in pt to match V3 renderPanel output. We use
  * mm.toPt() so design-time geometry == print geometry. Scale is applied via
  * transform so it doesn't break absolute child positioning.
@@ -191,6 +226,15 @@ onBeforeUnmount(() => {
         class="hiprint-panel-footer-marker"
         :style="footerMarkerStyle"
       />
+      <!-- TKT-153: paper page-number badge. Only when multi-panel + not
+           readonly. `.hiprint-paperNumber-disabled` is added when the panel
+           opts in via `paperNumberDisabled` flag (V1 line 10843 parity). -->
+      <span
+        v-if="showPaperNumber"
+        class="hiprint-paperNumber"
+        :class="{ 'hiprint-paperNumber-disabled': paperNumberDisabled }"
+        aria-hidden="true"
+      >{{ paperNumberIndex }}</span>
     </div>
   </div>
 </template>
@@ -207,5 +251,23 @@ onBeforeUnmount(() => {
 }
 .hiprint-printPanel--readonly .hiprint-printPaper {
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.08) !important;
+}
+/* TKT-153 — paper page-number badge (V1 styles.md §1.1 line 32-33).
+ * Bottom-right of the paper, outside the design grid. Non-interactive. */
+.hiprint-paperNumber {
+  position: absolute;
+  bottom: 4pt;
+  right: 4pt;
+  font-size: 9pt;
+  color: #999;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+  z-index: 2;
+}
+.hiprint-paperNumber-disabled {
+  /* V1 hides the badge entirely when disabled; CSS class is the documented
+   * hook so theme overrides can choose a different treatment. */
+  display: none;
 }
 </style>

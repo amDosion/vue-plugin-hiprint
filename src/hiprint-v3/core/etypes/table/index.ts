@@ -24,9 +24,14 @@ import {
 export { normalizeTableColumn, type TableColumnEntity }
 export type { TableHeaderColumnEntity } from './cell'
 
-/** Default options applied to a fresh table element. */
+/**
+ * V1 default table options.
+ *
+ * Sprint 22d TKT-162: width aligned to V1 `table.default`
+ * (hiprint.config.js line 1216-1218): `width:550`.
+ */
 export const TABLE_DEFAULT_OPTIONS: Record<string, unknown> = {
-  width: 540,
+  width: 550,
   testData: '[]',
   repeatHeader: true,
   rowHeight: 22,
