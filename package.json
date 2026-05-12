@@ -37,7 +37,9 @@
     "print"
   ],
   "files": [
-    "dist"
+    "dist/*.js",
+    "dist/*.css",
+    "dist/image/**"
   ],
   "scripts": {
     "dev": "vite",
