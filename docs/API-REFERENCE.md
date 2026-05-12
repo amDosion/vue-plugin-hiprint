@@ -108,6 +108,22 @@ import 'vue-plugin-hiprint/dist/vue-plugin-hiprint.css'
 | `ippPrint(options)` | IPP 协议打印 |
 | `ippRequest(options)` | 发送 IPP 请求 |
 
+### 内核挂载方法（通过 `hiprint.xxx` 访问，不在 23 个 export 内）
+
+下列方法挂在 `hiprint` 对象上，但不是 `src/index.js` 的具名导出。访问方式：
+
+```js
+import { hiprint } from 'vue-plugin-hiprint'
+hiprint.hiwebSocket.setHost('ws://localhost:17521', 'your-token', cb)
+hiprint.refreshPrinterList()
+```
+
+| 名称 | 用途 |
+|---|---|
+| `hiprint.hiwebSocket` | WebSocket 客户端单例（含 `setHost(host, token, cb)` / `opened` / `getPrinterList()` / `send()` / `ippPrint()` / `ippRequest()`）。**生产必须 `setHost` 覆盖默认 token**，否则会 `console.warn` |
+| `hiprint.refreshPrinterList()` | 主动触发客户端刷新打印机列表，触发后通过 `hiwebSocket.getPrinterList()` 取最新结果 |
+| `hiprint.updateElementType(tid, options)` | 修改已注册元素类型的某个 option（如默认字体大小） |
+
 ---
 
 ## 核心：PrintTemplate
@@ -481,7 +497,17 @@ A: 需要 jspdf 字体。本库默认依赖 `jspdf@^2.5.1`，如果业务方升�
 
 ### Q: 怎么自定义工具栏 / 隐藏某些按钮？
 
-A: 见 `integration-guide.md` 第 5.4 节，`buildToolbar(host, { ...buttons })`。
+A: 完整 opts 列表见 [`integration-guide.md` 第 5.4 节](integration-guide.md)。本文件仅列高频项与已实现但未在 integration-guide 列出的回调:
+
+| opts 字段 | 签名 / 类型 | 用途 |
+|---|---|---|
+| `onSave` / `onPrint` / `onPreview` / `onClear` / `onAlign` / `onRotate` | `(json/template) => void` | 工具栏按钮点击回调 |
+| `onPaperChange` | `(paperType, w, h) => void` | 纸张切换 |
+| `onScaleChange` | `(scale) => void` | 缩放变化 |
+| `onBusinessSelect` | `(item, data, tpl, toolbarApi) => void` | 业务下拉选择 |
+| `onTemplateSelect` | `(item, json, tpl, toolbarApi) => void` | 模板选择成功 |
+| `onTemplateSelectError` | `(err, item, tpl, toolbarApi) => void` | 模板加载失败（**已实现但 integration-guide 未列**）。失败时 toolbar 自动关闭 dialog 避免卡死，业务方在此回调中显示自定义错误提示 |
+| `onCustomPaperOpen` | `(tpl, toolbarApi) => false \| void` | 自定义纸张 popover 打开前钩子（**已实现但 integration-guide 未列**）。**返回 `false` 拦截默认 popover**，业务方可用自己的弹窗组件替代 |
 
 ### Q: 静默打印报"找不到客户端"？
 
