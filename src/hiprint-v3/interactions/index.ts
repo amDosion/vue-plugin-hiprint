@@ -30,6 +30,23 @@ export type {
   InteractionRegistration,
 } from './types'
 
+// ---- TKT-103 smart-guides ----
+export {
+  SMART_GUIDE_SNAP_PT,
+  computeSnap,
+  boxFromElement,
+  setSmartGuidePreviews,
+  clearSmartGuidePreviews,
+  getSmartGuidePreviews,
+  onSmartGuidePreviewChange,
+} from './smart-guides'
+export type {
+  ElementBox,
+  SmartGuidePreview,
+  SnapResult,
+  ComputeSnapOptions,
+} from './smart-guides'
+
 // ---- P16.2 resize ----
 export { enableElementResize, disableElementResize } from './resize'
 export type { ResizeRect, ElementResizeOptions } from './resize'
@@ -39,7 +56,12 @@ export { watchPanelSize } from './panel-reflow'
 export type { PanelSize, WatchPanelSizeOptions } from './panel-reflow'
 
 // ---- P16.3 context menu ----
-export { openContextMenu, buildElementContextItems } from './context-menu'
+export {
+  openContextMenu,
+  buildElementContextItems,
+  // TKT-107 (Sprint 22c): right-click thead column editor.
+  buildTableColumnContextItems,
+} from './context-menu'
 export type {
   ContextMenuItem,
   ContextMenuOptions,

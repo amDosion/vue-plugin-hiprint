@@ -41,6 +41,7 @@ import {
 import { isAnyLocked, isFullyLocked } from '@hiprint-v3/interactions/lock'
 import type { CanvasElement } from '@hiprint-v3/stores'
 import { computeBaseStyle, type Opts } from './_helpers'
+import DragOverlay from './DragOverlay.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -78,7 +79,28 @@ const isSelected = computed<boolean>(() =>
 const isLocked = computed<boolean>(() => isAnyLocked(options.value))
 const isFullLock = computed<boolean>(() => isFullyLocked(options.value))
 
-const wrapperStyle = computed(() => computeBaseStyle(options.value))
+// TKT-101: per-element visibility toggle. Driven by the element-list-panel
+// eye icon. When `options.hidden === true`:
+//   - On the designer canvas we render with `visibility:hidden` so the
+//     element still occupies its slot (useful for layout review) and we
+//     drop `pointer-events` so it can't be clicked / dragged accidentally.
+//   - The print pipeline (`renderTemplate` in `print/render.ts`) skips the
+//     element entirely so hidden elements never reach the printed page.
+// Both behaviors mirror V1 `el.designTarget.hide()` / `.show()` plus the
+// runtime convention that hidden elements are not part of the print result.
+const isHidden = computed<boolean>(() => options.value.hidden === true)
+
+const wrapperStyle = computed(() => {
+  const base = computeBaseStyle(options.value)
+  if (isHidden.value) {
+    return {
+      ...base,
+      visibility: 'hidden' as const,
+      pointerEvents: 'none' as const,
+    }
+  }
+  return base
+})
 
 const wrapperClass = computed(() => {
   const type =
@@ -91,6 +113,8 @@ const wrapperClass = computed(() => {
     // TKT-027: visual hook for locked elements (any lock). Panel CSS uses
     // this to hide resize handles + show a lock cursor.
     { 'hiprint-element--locked': isLocked.value },
+    // TKT-101: visual hook for hidden elements (eye toggle in element-list).
+    { 'hiprint-element--hidden': isHidden.value },
   ]
 })
 
@@ -98,6 +122,28 @@ const wrapperClass = computed(() => {
 
 let cleanupSelection: (() => void) | null = null
 let cleanupResize: (() => void) | null = null
+
+// TKT-104 — drag/resize overlay mode. `idle` keeps overlay hidden via v-show
+// inside DragOverlay. Flipped to 'drag' by drag onStart, 'resize' by resize
+// onStart, back to 'idle' on end. `resizeReadout` tracks live geometry during
+// resize because the store is patched only at resize-end (DOM holds truth).
+const overlayMode = ref<'idle' | 'drag' | 'resize'>('idle')
+const resizeReadout = ref<{ left: number; top: number; width: number; height: number }>({
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+})
+
+const overlayGeometry = computed(() => {
+  if (overlayMode.value === 'resize') return resizeReadout.value
+  return {
+    left: Number(options.value.left ?? 0),
+    top: Number(options.value.top ?? 0),
+    width: Number(options.value.width ?? 0),
+    height: Number(options.value.height ?? 0),
+  }
+})
 
 onMounted(() => {
   if (!props.interactive || !rootEl.value) return
@@ -112,11 +158,16 @@ onMounted(() => {
     elementId: props.elementId,
     panelId: props.panelId,
     gridSize: canvas.gridSize,
+    onStart: () => {
+      // TKT-104: flip overlay to drag mode.
+      overlayMode.value = 'drag'
+    },
     onEnd: (finalPos) => {
       // Patch is already applied per-frame by enableElementDrag's move handler.
       // The onEnd callback exists for parent components that want to react
       // (e.g. history snapshot). We just no-op; finalPos is already in store.
       void finalPos
+      overlayMode.value = 'idle'
     },
   })
 
@@ -125,6 +176,15 @@ onMounted(() => {
     elementId: props.elementId,
     panelId: props.panelId,
     gridSize: canvas.gridSize,
+    onStart: (startRect) => {
+      // TKT-104: flip overlay to resize mode + seed live readout.
+      resizeReadout.value = { ...startRect }
+      overlayMode.value = 'resize'
+    },
+    onResize: (rect) => {
+      // TKT-104: mirror tick rect so size-readout chip tracks the cursor.
+      resizeReadout.value = { ...rect }
+    },
     onEnd: (finalRect) => {
       // Push final rect back to the store. Drag updates options.left/top
       // per-frame; resize updates the DOM directly + emits the final rect
@@ -137,6 +197,7 @@ onMounted(() => {
           height: finalRect.height,
         },
       })
+      overlayMode.value = 'idle'
     },
   })
 })
@@ -177,6 +238,16 @@ onBeforeUnmount(() => {
       aria-hidden="true"
       title="Locked"
     >🔒</div>
+    <!-- TKT-104: cross-hairs + size readout overlay rendered during drag
+         (overlayMode='drag') or resize (overlayMode='resize'). DragOverlay
+         handles visibility via v-show so DOM stays mounted between gestures. -->
+    <DragOverlay
+      :mode="overlayMode"
+      :left="overlayGeometry.left"
+      :top="overlayGeometry.top"
+      :width="overlayGeometry.width"
+      :height="overlayGeometry.height"
+    />
   </div>
 </template>
 

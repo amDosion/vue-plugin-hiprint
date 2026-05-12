@@ -63,6 +63,19 @@ export interface Panel {
 
 export type SelectionMode = 'replace' | 'add' | 'toggle'
 
+/**
+ * TKT-102 — user-drawn guide line.
+ *
+ * A dashed line pulled from the ruler onto the canvas to mark a position.
+ * `axis: 'h'` runs horizontally; `axis: 'v'` runs vertically. `pos` is in pt
+ * (matches canvas coord system). Snap logic in TKT-103 reads guideLines.
+ */
+export interface GuideLine {
+  id: string
+  axis: 'h' | 'v'
+  pos: number
+}
+
 // ============ Helpers ============
 
 /**
@@ -127,6 +140,15 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
   /** Whether ruler tracks (top + left) render in the designer canvas.
    *  HiprintCanvas/Panel read this to show/hide ruler overlay. */
   const rulerVisible = ref<boolean>(true)
+
+  /**
+   * TKT-102 — user-drawn guide lines.
+   *
+   * Created by dragging from a ruler bar and committed on pointerup.
+   * Rendered as a `.hiprint-guide-line` layer above the paper background and
+   * below elements. Snap logic in TKT-103 reads this during drag-move.
+   */
+  const guideLines = ref<GuideLine[]>([])
 
   // -------- Getters --------
 
@@ -296,6 +318,40 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     return newEl
   }
 
+  /**
+   * Reorder an element within its panel from `fromIdx` to `toIdx`.
+   *
+   * Used by the element-list-panel drag-and-drop UX (TKT-101) to let users
+   * change list order without leaving keyboard / mouse flow. Out-of-range
+   * indices, same-index calls, and unknown panel ids are silently ignored —
+   * callers may pass `findIndex` results without pre-validation. Element
+   * identities are preserved (splice + insert); only the printElements array
+   * reference is replaced so Vue diff fires.
+   *
+   * Mirrors `reorderPanel` semantics so consumers can switch between
+   * panel-row and element-row reordering without learning two APIs.
+   */
+  function reorderElement(
+    panelId: string,
+    fromIdx: number,
+    toIdx: number
+  ): void {
+    const pIdx = panels.value.findIndex((p) => p.id === panelId)
+    if (pIdx < 0) return
+    const panel = panels.value[pIdx]
+    if (!panel) return
+    const len = panel.printElements.length
+    if (fromIdx < 0 || fromIdx >= len || toIdx < 0 || toIdx >= len) return
+    if (fromIdx === toIdx) return
+    const nextEls = panel.printElements.slice()
+    const [moved] = nextEls.splice(fromIdx, 1)
+    if (!moved) return
+    nextEls.splice(toIdx, 0, moved)
+    const nextPanels = panels.value.slice()
+    nextPanels[pIdx] = { ...panel, printElements: nextEls }
+    panels.value = nextPanels
+  }
+
   /** Remove element by id from given panel. */
   function removeElement(panelId: string, elementId: string): void {
     const idx = panels.value.findIndex((p) => p.id === panelId)
@@ -454,6 +510,50 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     gridSize.value = g
   }
 
+  // -------- TKT-102 guide-line actions --------
+
+  /**
+   * Add a user-drawn guide line. Rejects non-finite pos (warn + sentinel
+   * record with empty id so the caller can detect failure).
+   */
+  function addGuideLine(axis: 'h' | 'v', pos: number): GuideLine {
+    if (!Number.isFinite(pos)) {
+      console.warn('[hiprint] addGuideLine ignored: non-finite pos', pos)
+      return { id: '', axis, pos: 0 }
+    }
+    const guide: GuideLine = { id: generateId(), axis, pos }
+    guideLines.value = [...guideLines.value, guide]
+    return guide
+  }
+
+  /** Remove guide line by id. No-op for unknown ids (legitimate user gesture). */
+  function removeGuideLine(id: string): void {
+    const next = guideLines.value.filter((g) => g.id !== id)
+    if (next.length === guideLines.value.length) return
+    guideLines.value = next
+  }
+
+  /** Update guide line position (immutable patch). Rejects non-finite pos. */
+  function updateGuideLine(id: string, pos: number): void {
+    if (!Number.isFinite(pos)) {
+      console.warn('[hiprint] updateGuideLine ignored: non-finite pos', pos)
+      return
+    }
+    const idx = guideLines.value.findIndex((g) => g.id === id)
+    if (idx < 0) return
+    const cur = guideLines.value[idx]
+    if (!cur) return
+    const next = guideLines.value.slice()
+    next[idx] = { ...cur, pos }
+    guideLines.value = next
+  }
+
+  /** Clear all guide lines. */
+  function clearGuideLines(): void {
+    if (guideLines.value.length === 0) return
+    guideLines.value = []
+  }
+
   /**
    * Reset the entire canvas (used by useTemplateStore.loadFromJson + clear).
    * Internal: not part of the typical mutation API; composables should prefer
@@ -465,6 +565,7 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     activePanelId.value = null
     scale.value = 1
     gridSize.value = 5
+    guideLines.value = []
   }
 
   return {
@@ -476,6 +577,7 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     gridSize,
     gridVisible,
     rulerVisible,
+    guideLines,
     // getters
     activePanel,
     selectedElements,
@@ -488,6 +590,7 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     updatePanel,
     reorderPanel,
     addElement,
+    reorderElement,
     removeElement,
     updateElement,
     clearSelection,
@@ -497,6 +600,10 @@ export const useCanvasStore = defineStore('hiprint-v3-canvas', () => {
     moveElementBetweenPanels,
     setScale,
     setGridSize,
+    addGuideLine,
+    removeGuideLine,
+    updateGuideLine,
+    clearGuideLines,
     $reset,
   }
 })

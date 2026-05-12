@@ -38,6 +38,8 @@ import QrcodePropertyPanel from './property/QrcodePropertyPanel.vue'
 import ShapePropertyPanel from './property/ShapePropertyPanel.vue'
 import HtmlPropertyPanel from './property/HtmlPropertyPanel.vue'
 import TablePropertyPanel from './property/TablePropertyPanel.vue'
+import TextPropertyPanel from './property/TextPropertyPanel.vue'
+import LongTextPropertyPanel from './property/LongTextPropertyPanel.vue'
 
 const canvas = useCanvasStore()
 const history = useHistoryStore()
@@ -66,6 +68,11 @@ const dispatchedTypes = new Set<string>([
   // in Sprint 22a and has been rolled back here. See
   // `docs/V3-PARITY-MATRIX/06-table.md` VIOLATION 1.1 / Section 19.
   'table',
+  // Sprint 22c TKT-108: dedicated text/longText panels surface the full
+  // V1 option surface (57 + 44 fields respectively) instead of the ~12
+  // common fields the generic fallback exposed.
+  'text',
+  'longText',
 ])
 
 // ============ Derived ============
@@ -278,7 +285,20 @@ const showFont = computed<boolean>(() => {
 const showFieldBinding = computed<boolean>(() => {
   const t = elementType.value
   if (!t) return false
-  return ['text', 'longText', 'image', 'barcode', 'qrcode', 'html'].includes(t)
+  // Sprint 22c TKT-108: `tableCustomCell` is a table-cell custom content
+  // type that displays a field value. The generic fallback editor is the
+  // last surface offering its binding controls; the dedicated text /
+  // longText / image / barcode / qrcode / html panels already expose them
+  // before reaching this branch.
+  return [
+    'text',
+    'longText',
+    'image',
+    'barcode',
+    'qrcode',
+    'html',
+    'tableCustomCell',
+  ].includes(t)
 })
 const showBorder = computed<boolean>(() => {
   // Lines/shapes have their own stroke editor; everything else gets border.
@@ -325,6 +345,14 @@ const showBorder = computed<boolean>(() => {
       />
       <TablePropertyPanel
         v-else-if="isTableType"
+        :element="single"
+      />
+      <TextPropertyPanel
+        v-else-if="elementType === 'text'"
+        :element="single"
+      />
+      <LongTextPropertyPanel
+        v-else-if="elementType === 'longText'"
         :element="single"
       />
     </template>

@@ -134,6 +134,65 @@ describe('useCanvasStore', () => {
     })
   })
 
+  describe('reorderElement — TKT-101 element-list drag reorder', () => {
+    it('reorders an element forward within its panel + preserves ids', () => {
+      const c = useCanvasStore()
+      const p = c.addPanel({ width: 210, height: 297 })
+      const a = c.addElement(p.id, { tid: 'x', options: { title: 'A' } })!
+      const b = c.addElement(p.id, { tid: 'x', options: { title: 'B' } })!
+      const cc = c.addElement(p.id, { tid: 'x', options: { title: 'C' } })!
+      c.reorderElement(p.id, 0, 2)
+      const ids = c.panels[0]!.printElements.map((e) => e.id)
+      expect(ids).toEqual([b.id, cc.id, a.id])
+    })
+
+    it('no-ops when fromIdx === toIdx (no array replacement)', () => {
+      const c = useCanvasStore()
+      const p = c.addPanel({ width: 210, height: 297 })
+      c.addElement(p.id, { tid: 'x' })
+      c.addElement(p.id, { tid: 'y' })
+      const before = c.panels[0]!.printElements
+      c.reorderElement(p.id, 1, 1)
+      expect(c.panels[0]!.printElements).toBe(before)
+    })
+
+    it('no-ops on out-of-range indices', () => {
+      const c = useCanvasStore()
+      const p = c.addPanel({ width: 210, height: 297 })
+      const a = c.addElement(p.id, { tid: 'x' })!
+      const b = c.addElement(p.id, { tid: 'y' })!
+      const before = c.panels[0]!.printElements
+      c.reorderElement(p.id, -1, 0)
+      c.reorderElement(p.id, 0, 99)
+      c.reorderElement(p.id, 5, 1)
+      expect(c.panels[0]!.printElements).toBe(before)
+      // Identities untouched.
+      expect(c.panels[0]!.printElements[0]?.id).toBe(a.id)
+      expect(c.panels[0]!.printElements[1]?.id).toBe(b.id)
+    })
+
+    it('moves last element to first position (boundary reorder)', () => {
+      const c = useCanvasStore()
+      const p = c.addPanel({ width: 210, height: 297 })
+      const a = c.addElement(p.id, { tid: 'x' })!
+      const b = c.addElement(p.id, { tid: 'y' })!
+      const cc = c.addElement(p.id, { tid: 'z' })!
+      c.reorderElement(p.id, 2, 0)
+      const ids = c.panels[0]!.printElements.map((e) => e.id)
+      expect(ids).toEqual([cc.id, a.id, b.id])
+    })
+
+    it('no-ops + does not throw for unknown panel id', () => {
+      const c = useCanvasStore()
+      const p = c.addPanel({ width: 210, height: 297 })
+      c.addElement(p.id, { tid: 'x' })
+      c.addElement(p.id, { tid: 'y' })
+      expect(() => c.reorderElement('nope', 0, 1)).not.toThrow()
+      // Original panel untouched.
+      expect(c.panels[0]!.printElements.length).toBe(2)
+    })
+  })
+
   describe('updateElement — immutable patch', () => {
     it('replaces element reference after patch (Vue reactivity)', () => {
       const c = useCanvasStore()

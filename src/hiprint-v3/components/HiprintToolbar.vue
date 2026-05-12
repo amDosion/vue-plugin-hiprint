@@ -190,6 +190,28 @@ interface Props {
   // ---- Extra buttons ----
   extraButtons?: readonly ToolbarExtraButton[]
   extraPosition?: 'start' | 'end'
+  // ---- Sprint 22c TKT-042/043: imperative overrides driven by toolbarCtrl ----
+  /**
+   * Map of button id → boolean. When `true`, the corresponding button is
+   * forced disabled regardless of normal `isDisabled()` rules. Drives
+   * `toolbarCtrl.enableButton(id)` / `disableButton(id)`.
+   */
+  disabledButtonIds?: Readonly<Record<string, boolean>>
+  /**
+   * Map of button id → label string. Replaces the default label for that
+   * button. Drives `toolbarCtrl.setButtonText(id, text)`.
+   * The string is rendered as plain text (XSS-safe — no v-html).
+   */
+  labelOverrides?: Readonly<Record<string, string>>
+  // ---- Sprint 22c TKT-100: V1 *ButtonText opts (pass-through, text-only) ----
+  saveButtonText?: string
+  previewButtonText?: string
+  printButtonText?: string
+  clearButtonText?: string
+  customPaperButtonText?: string
+  rotateButtonText?: string
+  businessButtonText?: string
+  templateButtonText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -275,6 +297,19 @@ const props = withDefaults(defineProps<Props>(), {
   alignItems: () => ['left', 'center', 'right', 'top', 'middle', 'bottom'],
   extraButtons: () => [],
   extraPosition: 'end',
+  // Sprint 22c TKT-042/043 imperative overrides — empty by default so V3
+  // reactive consumers see no behaviour change.
+  disabledButtonIds: () => ({}),
+  labelOverrides: () => ({}),
+  // Sprint 22c TKT-100 V1 button-text opts — undefined means "use default".
+  saveButtonText: undefined,
+  previewButtonText: undefined,
+  printButtonText: undefined,
+  clearButtonText: undefined,
+  customPaperButtonText: undefined,
+  rotateButtonText: undefined,
+  businessButtonText: undefined,
+  templateButtonText: undefined,
 })
 
 /**
@@ -368,6 +403,19 @@ const defaultLabels: Record<string, string> = {
 }
 
 function defaultLabelFor(key: string): string {
+  // Sprint 22c TKT-100: V1 *ButtonText opts win over the default emoji label.
+  // Order: labelOverrides (imperative TKT-043) > V1 text prop > default.
+  switch (key) {
+    case 'save': if (props.saveButtonText) return props.saveButtonText; break
+    case 'preview': if (props.previewButtonText) return props.previewButtonText; break
+    case 'print': if (props.printButtonText) return props.printButtonText; break
+    case 'clear': if (props.clearButtonText) return props.clearButtonText; break
+    case 'rotate': if (props.rotateButtonText) return props.rotateButtonText; break
+    case 'templateSelect':
+      if (props.templateButtonText) return props.templateButtonText; break
+    case 'businessSelect':
+      if (props.businessButtonText) return props.businessButtonText; break
+  }
   return defaultLabels[key] ?? key
 }
 
@@ -432,6 +480,8 @@ function isShown(id: ToolbarButtonId): boolean {
 }
 
 function isDisabled(id: ToolbarButtonId): boolean {
+  // Sprint 22c TKT-042: imperative disableButton(id) override always wins.
+  if (props.disabledButtonIds && props.disabledButtonIds[id]) return true
   switch (id) {
     case 'undo': return !history.canUndo
     case 'redo': return !history.canRedo
@@ -453,6 +503,10 @@ function isDisabled(id: ToolbarButtonId): boolean {
 }
 
 function labelFor(id: ToolbarButtonId): string {
+  // Sprint 22c TKT-043: imperative setButtonText(id, text) override wins
+  // over both V1 *ButtonText props and the default emoji label.
+  const override = props.labelOverrides ? props.labelOverrides[id] : undefined
+  if (typeof override === 'string') return override
   return defaultLabelFor(id)
 }
 

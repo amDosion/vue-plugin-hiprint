@@ -36,7 +36,9 @@ import {
   enableLasso,
   enableSelectionShortcuts,
   openContextMenu,
+  onSmartGuidePreviewChange,
   type ContextMenuController,
+  type SmartGuidePreview,
 } from '@hiprint-v3/interactions'
 import {
   TextElement,
@@ -261,6 +263,100 @@ function onContextMenu(e: MouseEvent): void {
   )
 }
 
+// ----- TKT-102 user-drawn guide-line drag state -----
+//
+// Two gesture flows resolve here:
+//  - 'creating': pointerdown on a ruler bar → addGuideLine + drag along axis
+//  - 'moving'  : pointerdown on existing guide → updateGuideLine along axis
+// pointerup decides: outside paper or back inside ruler band → removeGuideLine.
+
+interface GuideDragState {
+  kind: 'creating' | 'moving'
+  axis: 'h' | 'v'
+  guideId: string
+}
+const guideDragState = ref<GuideDragState | null>(null)
+
+/**
+ * Translate viewport coords → paper-pt along the relevant axis. NaN if no
+ * active paper element (caller must check; store rejects NaN).
+ */
+function clientToPaperPt(axis: 'h' | 'v', clientX: number, clientY: number): number {
+  const paper = findActivePaperEl()
+  if (!paper) return Number.NaN
+  const rect = paper.getBoundingClientRect()
+  const scale = canvas.scale > 0 ? canvas.scale : 1
+  if (axis === 'h') return (clientY - rect.top) / scale
+  return (clientX - rect.left) / scale
+}
+
+function onRulerPointerDown(axis: 'h' | 'v', e: PointerEvent): void {
+  if (props.readonly) return
+  if (e.button !== 0) return
+  const pos = clientToPaperPt(axis, e.clientX, e.clientY)
+  if (!Number.isFinite(pos)) return
+  const guide = canvas.addGuideLine(axis, Math.max(0, pos))
+  if (!guide.id) return
+  guideDragState.value = { kind: 'creating', axis, guideId: guide.id }
+  window.addEventListener('pointermove', onGuidePointerMove)
+  window.addEventListener('pointerup', onGuidePointerUp, { once: true })
+  e.preventDefault()
+}
+
+function onGuideLinePointerDown(g: { id: string; axis: 'h' | 'v' }, e: PointerEvent): void {
+  if (props.readonly) return
+  if (e.button !== 0) return
+  guideDragState.value = { kind: 'moving', axis: g.axis, guideId: g.id }
+  window.addEventListener('pointermove', onGuidePointerMove)
+  window.addEventListener('pointerup', onGuidePointerUp, { once: true })
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+function onGuidePointerMove(e: PointerEvent): void {
+  const state = guideDragState.value
+  if (!state) return
+  const pos = clientToPaperPt(state.axis, e.clientX, e.clientY)
+  if (!Number.isFinite(pos)) return
+  canvas.updateGuideLine(state.guideId, pos)
+}
+
+function onGuidePointerUp(e: PointerEvent): void {
+  const state = guideDragState.value
+  guideDragState.value = null
+  window.removeEventListener('pointermove', onGuidePointerMove)
+  if (!state) return
+  const wrap = canvasEl.value
+  if (!wrap) return
+  const wrapRect = wrap.getBoundingClientRect()
+  // 20px tolerant band (≈ 14pt at 96dpi + slack) on the correct ruler side.
+  const RULER_BAND_PX = 20
+  const inTopBand =
+    e.clientY >= wrapRect.top && e.clientY <= wrapRect.top + RULER_BAND_PX
+  const inLeftBand =
+    e.clientX >= wrapRect.left && e.clientX <= wrapRect.left + RULER_BAND_PX
+  const outsideCanvas =
+    e.clientX < wrapRect.left ||
+    e.clientX > wrapRect.right ||
+    e.clientY < wrapRect.top ||
+    e.clientY > wrapRect.bottom
+  const shouldDelete =
+    outsideCanvas ||
+    (state.axis === 'h' && inTopBand) ||
+    (state.axis === 'v' && inLeftBand)
+  if (shouldDelete) canvas.removeGuideLine(state.guideId)
+}
+
+// ----- TKT-103 smart-guide preview overlay -----
+const smartPreviews = ref<readonly SmartGuidePreview[]>([])
+let unsubscribeSmartGuide: (() => void) | null = null
+
+onMounted(() => {
+  unsubscribeSmartGuide = onSmartGuidePreviewChange((next) => {
+    smartPreviews.value = next
+  })
+})
+
 onBeforeUnmount(() => {
   cleanupLasso?.()
   cleanupKeyboard?.()
@@ -280,6 +376,13 @@ onBeforeUnmount(() => {
     /* ignore */
   }
   activeMenu = null
+  try {
+    unsubscribeSmartGuide?.()
+  } catch {
+    /* ignore */
+  }
+  unsubscribeSmartGuide = null
+  window.removeEventListener('pointermove', onGuidePointerMove)
 })
 </script>
 
@@ -306,6 +409,7 @@ onBeforeUnmount(() => {
       :height="RULER_THICKNESS"
       preserveAspectRatio="xMinYMin meet"
       aria-hidden="true"
+      @pointerdown="onRulerPointerDown('h', $event)"
     >
       <line
         v-for="t in topTicks"
@@ -337,6 +441,7 @@ onBeforeUnmount(() => {
       :height="rulerHeightPt"
       preserveAspectRatio="xMinYMin meet"
       aria-hidden="true"
+      @pointerdown="onRulerPointerDown('v', $event)"
     >
       <line
         v-for="t in leftTicks"
@@ -363,6 +468,51 @@ onBeforeUnmount(() => {
     </svg>
     <template v-if="activePanel">
       <HiprintPanel :panel-id="activePanel.id" :readonly="readonly">
+        <!-- TKT-102 / TKT-103 — guide line + smart-guide preview layers,
+             rendered inside the paper so they scale + position with the
+             paper-pt coord system. -->
+        <template #overlay>
+          <div class="hiprint-guide-layer" aria-hidden="true">
+            <div
+              v-for="g in canvas.guideLines"
+              :key="g.id"
+              :class="[
+                'hiprint-guide-line',
+                g.axis === 'h'
+                  ? 'hiprint-guide-line--h'
+                  : 'hiprint-guide-line--v',
+                {
+                  'hiprint-guide-dragging':
+                    guideDragState && guideDragState.guideId === g.id,
+                },
+              ]"
+              :style="
+                g.axis === 'h'
+                  ? { top: g.pos + 'pt', left: '0', right: '0', height: '0' }
+                  : { left: g.pos + 'pt', top: '0', bottom: '0', width: '0' }
+              "
+              :data-guide-id="g.id"
+              :data-guide-axis="g.axis"
+              @pointerdown="onGuideLinePointerDown(g, $event)"
+            />
+            <div
+              v-for="(p, idx) in smartPreviews"
+              :key="`smart-${idx}-${p.axis}-${p.pos}`"
+              :class="[
+                'hiprint-smart-guide',
+                p.axis === 'h'
+                  ? 'hiprint-smart-guide--h'
+                  : 'hiprint-smart-guide--v',
+              ]"
+              :style="
+                p.axis === 'h'
+                  ? { top: p.pos + 'pt', left: '0', right: '0', height: '0' }
+                  : { left: p.pos + 'pt', top: '0', bottom: '0', width: '0' }
+              "
+              :data-smart-guide-kind="p.kind"
+            />
+          </div>
+        </template>
         <component
           v-for="el in activePanel.printElements"
           :key="el.id"
@@ -427,5 +577,47 @@ onBeforeUnmount(() => {
   top: 14pt;
   left: 0;
   width: 14pt;
+}
+/* TKT-102: rulers grabbable for guide creation. Override pointer-events:none
+   on the ruler base class so pointerdown reaches us. */
+.hiprint-canvas--with-ruler .hiprint-canvas__ruler--top {
+  cursor: ns-resize;
+  pointer-events: auto;
+}
+.hiprint-canvas--with-ruler .hiprint-canvas__ruler--left {
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+/* TKT-102 guide-line + TKT-103 smart-guide layers. */
+.hiprint-guide-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.hiprint-guide-line {
+  position: absolute;
+  pointer-events: auto;
+}
+.hiprint-guide-line--h {
+  border-top: 1px dashed #1677ff;
+  cursor: ns-resize;
+}
+.hiprint-guide-line--v {
+  border-left: 1px dashed #1677ff;
+  cursor: ew-resize;
+}
+.hiprint-guide-dragging {
+  opacity: 0.7;
+}
+.hiprint-smart-guide {
+  position: absolute;
+  pointer-events: none;
+}
+.hiprint-smart-guide--h {
+  border-top: 1px dashed #fa8c16;
+}
+.hiprint-smart-guide--v {
+  border-left: 1px dashed #fa8c16;
 }
 </style>

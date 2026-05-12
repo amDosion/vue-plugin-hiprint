@@ -17,13 +17,21 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
+// Sprint 22c TKT-108 — text/longText now dispatch to dedicated panels.
+// These existing fallback-editor tests use `tableCustomCell` as the
+// stand-in non-dispatched etype with `showFont=true` so the generic
+// editor's Position/Font/Align/Border/Background/Binding fieldsets render.
 function seedSingleText(): void {
   const canvas = useCanvasStore()
   canvas.addPanel({ id: 'p1', width: 200, height: 200 })
   canvas.addElement('p1', {
     id: 'e1',
-    tid: 'default.text',
-    printElementType: { type: 'text', title: 'text', field: 'name' },
+    tid: 'default.tableCustomCell',
+    printElementType: {
+      type: 'tableCustomCell',
+      title: 'cell',
+      field: 'name',
+    },
     options: {
       left: 10,
       top: 20,
@@ -429,16 +437,54 @@ describe('HiprintPropertyPanel — dispatch (Wave 2 PP-005/007/008/010/011)', ()
     w.unmount()
   })
 
-  it('fallback generic editor renders for text element (not in dispatch list)', async () => {
+  // Sprint 22c TKT-108: text/longText now dispatch to dedicated panels
+  // (TextPropertyPanel / LongTextPropertyPanel) instead of falling through
+  // to the generic editor. Multi-select still uses the generic fallback.
+  it('renders TextPropertyPanel for single text element (Sprint 22c TKT-108)', async () => {
     seedSingleEtype('text', { fontSize: 14 })
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
-    // No per-etype panel; existing fallback fieldsets present.
-    expect(w.find('.hiprint-image-property-panel').exists()).toBe(false)
-    expect(w.find('.hiprint-shape-property-panel').exists()).toBe(false)
+    expect(w.find('.hiprint-text-property-panel').exists()).toBe(true)
+    expect(w.find('input.tx-left').exists()).toBe(true)
+    expect(w.find('select.tx-font-family').exists()).toBe(true)
+    expect(w.find('select.tx-text-type').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('renders LongTextPropertyPanel for single longText element (Sprint 22c TKT-108)', async () => {
+    seedSingleEtype('longText', { fontSize: 12, lineHeight: 15 })
+    const w = mount(HiprintPropertyPanel)
+    await w.vm.$nextTick()
+    expect(w.find('.hiprint-longtext-property-panel').exists()).toBe(true)
+    expect(w.find('input.lt-indent').exists()).toBe(true)
+    expect(w.find('input.lt-min-height').exists()).toBe(true)
+    expect(w.find('select.lt-long-text-paginate').exists()).toBe(true)
+    expect(w.find('.hiprint-text-property-panel').exists()).toBe(false)
+  })
+
+  it('text/longText multi-select still uses the generic fallback (Sprint 22c TKT-108)', async () => {
+    const canvas = useCanvasStore()
+    canvas.addPanel({ id: 'p1', width: 400, height: 300 })
+    canvas.addElement('p1', {
+      id: 'e1',
+      tid: 't.text',
+      printElementType: { type: 'text' },
+      options: { left: 0, top: 0, width: 100, height: 20 },
+    })
+    canvas.addElement('p1', {
+      id: 'e2',
+      tid: 't.text',
+      printElementType: { type: 'text' },
+      options: { left: 50, top: 0, width: 100, height: 20 },
+    })
+    canvas.selectMultiple(['e1', 'e2'])
+    const w = mount(HiprintPropertyPanel)
+    await w.vm.$nextTick()
+    expect(w.find('.hiprint-text-property-panel').exists()).toBe(false)
+    expect(w.find('.hiprint-longtext-property-panel').exists()).toBe(false)
+    expect(w.text()).toContain('2 elements selected')
     const legends = w.findAll('legend').map((l) => l.text())
     expect(legends).toContain('Position')
-    expect(legends).toContain('Font')
     w.unmount()
   })
 

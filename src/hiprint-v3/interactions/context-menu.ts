@@ -47,7 +47,14 @@ import {
   offset,
   shift,
 } from '@floating-ui/vue'
-import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
+import {
+  useCanvasStore,
+  useHistoryStore,
+  insertTableColumn,
+  removeTableColumn,
+  setTableColspan,
+  setTableRowspan,
+} from '@hiprint-v3/stores'
 import { i18n } from '../internal/i18n'
 import {
   findElement as findLockedElement,
@@ -624,4 +631,115 @@ function _sendToBack(
   canvas.panels = nextPanels
   // TKT-020: z-order changed → snapshot.
   history.pushSnapshot()
+}
+
+// -----------------------------------------------------------------------------
+// Public: buildTableColumnContextItems (TKT-107)
+// -----------------------------------------------------------------------------
+
+/**
+ * Build the V1-faithful table thead context menu for the cell at
+ * `(layerIdx, columnIdx)` of the table element `elementId`.
+ *
+ * Items mirror V1's `HiTable.initContext` (bundle 7200-7329, V1-INVENTORY §J.2)
+ * for the COLUMN-LEVEL actions only — row-level entries (insertRow above/below,
+ * deleteRow) are excluded for now because row insertion requires a row-merge
+ * algorithm we don't have at this layer (the body is data-driven; users insert
+ * data rows via the data source, not the UI). The 7 items returned are the
+ * subset that mutate `options.columns`:
+ *
+ *   1. 在左侧插入列   insertTableColumn(layerIdx, columnIdx, 'left')
+ *   2. 在右侧插入列   insertTableColumn(layerIdx, columnIdx, 'right')
+ *   3. 删除列         removeTableColumn(layerIdx, columnIdx)
+ *   4. 合并到右侧     setTableColspan(layerIdx, columnIdx, current + 1)
+ *   5. 增加行跨度     setTableRowspan(layerIdx, columnIdx, current + 1)
+ *   6. 减少跨度       setTableRowspan(layerIdx, columnIdx, max(1, current - 1))
+ *   7. 编辑列属性     no-op handler; caller wires via opts.onSelect (matches
+ *                    how the standard "properties" item works in
+ *                    buildElementContextItems).
+ *
+ * The handlers call useCanvasStore()/useHistoryStore() inside table-ops at
+ * mutation time so the active pinia is correct under multi-designer (same
+ * pattern as buildElementContextItems).
+ *
+ * V1 quirk preserved (P.9): "right-click only on thead". Body-cell
+ * contextmenu does NOT call this helper — the table renderer binds
+ * `@contextmenu.prevent` on `<th>` only (TableElement.vue).
+ */
+function _readCellSpan(
+  elementId: string,
+  layerIdx: number,
+  columnIdx: number,
+  key: 'colspan' | 'rowspan'
+): number {
+  const canvas = useCanvasStore()
+  const el = canvas.allElements.find((e) => e.id === elementId)
+  if (!el) return 1
+  const raw = (el.options as Record<string, unknown>).columns
+  let layer: Array<Record<string, unknown>> | undefined
+  if (Array.isArray(raw) && Array.isArray(raw[0])) {
+    layer = raw[layerIdx] as Array<Record<string, unknown>> | undefined
+  } else if (layerIdx === 0) {
+    layer = raw as Array<Record<string, unknown>> | undefined
+  }
+  const cell = layer?.[columnIdx]
+  const v = cell?.[key]
+  return typeof v === 'number' && v >= 1 ? v : 1
+}
+
+export function buildTableColumnContextItems(
+  elementId: string,
+  layerIdx: number,
+  columnIdx: number
+): ContextMenuItem[] {
+  return [
+    {
+      id: 'table-insert-col-left',
+      label: i18n.__('在左侧插入列') || 'Insert column left',
+      onClick: () => insertTableColumn(elementId, layerIdx, columnIdx, 'left'),
+    },
+    {
+      id: 'table-insert-col-right',
+      label: i18n.__('在右侧插入列') || 'Insert column right',
+      onClick: () => insertTableColumn(elementId, layerIdx, columnIdx, 'right'),
+    },
+    {
+      id: 'table-delete-col',
+      label: i18n.__('删除列') || 'Delete column',
+      onClick: () => removeTableColumn(elementId, layerIdx, columnIdx),
+    },
+    { id: 'table-sep-1', label: '', divider: true },
+    {
+      id: 'table-merge-right',
+      label: i18n.__('合并到右侧') || 'Merge with right',
+      onClick: () => {
+        const cur = _readCellSpan(elementId, layerIdx, columnIdx, 'colspan')
+        setTableColspan(elementId, layerIdx, columnIdx, cur + 1)
+      },
+    },
+    {
+      id: 'table-rowspan-inc',
+      label: i18n.__('增加行跨度') || 'Increase rowspan',
+      onClick: () => {
+        const cur = _readCellSpan(elementId, layerIdx, columnIdx, 'rowspan')
+        setTableRowspan(elementId, layerIdx, columnIdx, cur + 1)
+      },
+    },
+    {
+      id: 'table-rowspan-dec',
+      label: i18n.__('减少行跨度') || 'Decrease rowspan',
+      onClick: () => {
+        const cur = _readCellSpan(elementId, layerIdx, columnIdx, 'rowspan')
+        setTableRowspan(elementId, layerIdx, columnIdx, Math.max(1, cur - 1))
+      },
+    },
+    { id: 'table-sep-2', label: '', divider: true },
+    {
+      id: 'table-edit-col',
+      // No-op here — caller wires via opts.onSelect (matches the 'properties'
+      // pattern in buildElementContextItems). The selection panel will open
+      // the column row in TablePropertyPanel.
+      label: i18n.__('编辑列属性') || 'Edit column properties',
+    },
+  ]
 }

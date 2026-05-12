@@ -55,6 +55,13 @@ type InteractModifier = any
 import { useCanvasStore, useHistoryStore } from '@hiprint-v3/stores'
 import { pt, px } from '@hiprint-v3/internal'
 import { isPositionLocked, findElement } from './lock'
+import {
+  boxFromElement,
+  computeSnap,
+  setSmartGuidePreviews,
+  clearSmartGuidePreviews,
+  SMART_GUIDE_SNAP_PT,
+} from './smart-guides'
 import type {
   ElementDragOptions,
   ElementListSourceOptions,
@@ -203,12 +210,14 @@ export function enableElementDrag(
             canvas.selectedElementIds.has(opts.elementId)
           // TKT-020: reset movement flag — only flips true when `move` fires.
           didMove = false
+          // TKT-104: notify caller drag has begun (overlay flips to drag mode).
+          if (opts.onStart) opts.onStart()
         } catch (err) {
           console.warn('[hiprint] enableElementDrag start handler threw:', err)
         }
       },
 
-      move: (event: { dx: number; dy: number }) => {
+      move: (event: { dx: number; dy: number; altKey?: boolean }) => {
         // TKT-027: if drag started on a locked element, ignore move events.
         // V1 parity — locked elements are immovable.
         if (lockedAtStart) return
@@ -221,21 +230,52 @@ export function enableElementDrag(
           // skip the snapshot.
           if (dxPt !== 0 || dyPt !== 0) didMove = true
 
+          // TKT-103: Alt held → disable smart-guide snap (V1 parity).
+          const altHeld = !!event.altKey
+          const snapThreshold = altHeld ? 0 : SMART_GUIDE_SNAP_PT
+
           if (isMultiDrag) {
-            // Multi-select: move ALL selected elements together.
+            // Multi-select: move ALL selected elements together. Smart-guide
+            // snap not applied — V1 also disables alignment lines during
+            // multi-select drag (one anchor per N elements is ambiguous).
             canvas.moveSelection(dxPt, dyPt)
+            // Clear any stale single-drag previews so they don't linger.
+            clearSmartGuidePreviews()
           } else {
-            // Single: patch this one element's options.
+            // Single: compute proposed pt position from store + delta, then
+            // run smart-guide snap before patching.
             const panel = canvas.panels.find((p) => p.id === opts.panelId)
             const elRec = panel?.printElements.find(
               (e) => e.id === opts.elementId
             )
-            const o = (elRec?.options as Record<string, unknown>) ?? {}
-            const left = Number(o.left ?? 0) + dxPt
-            const top = Number(o.top ?? 0) + dyPt
-            canvas.updateElement(opts.panelId, opts.elementId, {
-              options: { left, top },
+            if (!elRec || !panel) {
+              // Element gone (race with delete) — bail without store update.
+              if (opts.onMove) opts.onMove({ x: dxPt, y: dyPt })
+              return
+            }
+            const dragBox = boxFromElement(elRec)
+            const proposed = {
+              left: dragBox.left + dxPt,
+              top: dragBox.top + dyPt,
+              width: dragBox.width,
+              height: dragBox.height,
+            }
+            const others = panel.printElements
+              .filter((e) => e.id !== opts.elementId)
+              .map((e) => boxFromElement(e))
+            const snap = computeSnap({
+              box: proposed,
+              others,
+              guides: canvas.guideLines,
+              threshold: snapThreshold,
+              // gridSize already handled by interact.js modifier on dx/dy
+              // (buildModifiers below). Pass 0 here to skip double-snap.
+              gridSize: 0,
             })
+            canvas.updateElement(opts.panelId, opts.elementId, {
+              options: { left: snap.left, top: snap.top },
+            })
+            setSmartGuidePreviews(snap.previews)
           }
 
           if (opts.onMove) {
@@ -255,6 +295,9 @@ export function enableElementDrag(
           lockedAtStart = false
           return
         }
+        // TKT-103: always clear smart-guide previews on drag-end so no stale
+        // dashed lines remain on the canvas regardless of how the gesture ended.
+        clearSmartGuidePreviews()
         try {
           if (opts.onEnd) {
             const panel = canvas.panels.find((p) => p.id === opts.panelId)

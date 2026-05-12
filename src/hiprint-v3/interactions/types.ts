@@ -49,6 +49,12 @@ export interface ElementDragOptions {
    */
   gridSize?: number
   /**
+   * TKT-104 — fires once at drag start (before any movement). Used by
+   * ElementWrapper to flip the cross-hair/size-readout overlay into 'drag'
+   * mode without subscribing to interact.js directly.
+   */
+  onStart?: () => void
+  /**
    * Optional callback during drag (called on every move). Receives the
    * delta in pt since drag start.
    */

@@ -97,6 +97,12 @@ vi.mock('@hiprint-v3/interactions', () => ({
   disableInteractions,
   openContextMenu,
   buildElementContextItems,
+  // TKT-103 smart-guide preview bus — no-op stubs so HiprintCanvas can
+  // subscribe + components can call them without breaking the wire-up tests.
+  onSmartGuidePreviewChange: () => () => {},
+  setSmartGuidePreviews: () => {},
+  clearSmartGuidePreviews: () => {},
+  getSmartGuidePreviews: () => [],
 }))
 
 // -----------------------------------------------------------------------------

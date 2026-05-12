@@ -149,6 +149,15 @@ export function renderPanel(
   const pageCount = safeNumber(options.pageCount, { min: 1, fallback: 1 })
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i]!
+    // TKT-101: per-element `hidden` toggle (eye icon in element-list-panel).
+    // Hidden elements are skipped entirely from the print output — the
+    // designer keeps them in place visually with visibility:hidden, but the
+    // print pipeline must not emit any DOM for them so the printed page
+    // does not show them or leave reserved layout space.
+    const elOpts = (el.options ?? {}) as Record<string, unknown>
+    if (elOpts.hidden === true) {
+      continue
+    }
     // TKT-025: pageBreak / showInPage / unShowInPage / fixed visibility filter.
     // V1 source: BasePrintElement.showInPage [bundle.js 692-704] +
     //            getPaperHtmlResult pageBreak check [bundle.js 9831].

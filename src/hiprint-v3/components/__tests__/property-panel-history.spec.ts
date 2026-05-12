@@ -74,8 +74,14 @@ function seedSingle(
 // ---------------------------------------------------------------------------
 
 describe('TKT-020 — HiprintPropertyPanel generic editor pushes on commit', () => {
+  // Sprint 22c TKT-108: `text` now dispatches to TextPropertyPanel and
+  // `longText` to LongTextPropertyPanel. The remaining generic editor
+  // surface is exercised by `tableCustomCell` here (one of the few etypes
+  // with Font + Binding fieldsets that still falls through to the generic
+  // path). The per-etype dispatch spec covers TextPropertyPanel /
+  // LongTextPropertyPanel commit boundaries in their own files.
   it('Position X change commit pushes a snapshot', async () => {
-    const { history } = seedSingle('t.text', 'text')
+    const { history } = seedSingle('t.tableCustomCell', 'tableCustomCell')
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
     const before = history.historyEntries.length
@@ -92,7 +98,11 @@ describe('TKT-020 — HiprintPropertyPanel generic editor pushes on commit', () 
   })
 
   it('Title blur commit pushes a snapshot', async () => {
-    const { history } = seedSingle('t.text', 'text', { title: 'old' })
+    const { history } = seedSingle(
+      't.tableCustomCell',
+      'tableCustomCell',
+      { title: 'old' }
+    )
     const w = mount(HiprintPropertyPanel)
     await w.vm.$nextTick()
     const before = history.historyEntries.length

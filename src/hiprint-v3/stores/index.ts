@@ -10,10 +10,20 @@
  */
 
 export { useCanvasStore } from './canvas'
-export type { CanvasElement, Panel, SelectionMode } from './canvas'
+export type { CanvasElement, Panel, SelectionMode, GuideLine } from './canvas'
 export { useHistoryStore } from './history'
 export type { TemplateSnapshot } from './history'
 export { useTemplateStore } from './template'
 export type { TemplateJson, PrintTemplateHandle } from './template'
 export { useSocketStore } from './socket'
 export type { ClientInfo, SocketPayload } from './socket'
+// TKT-105/106/107 (Sprint 22c) — table-etype column-level helpers. Mutate
+// `options.columns` immutably + push history snapshot.
+export {
+  insertTableColumn,
+  removeTableColumn,
+  setTableColspan,
+  setTableRowspan,
+  addTableHeaderLayer,
+  removeTableHeaderLayer,
+} from './table-ops'

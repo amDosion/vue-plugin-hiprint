@@ -43,6 +43,7 @@ import {
 import type { TemplateJson } from '@hiprint-v3/schemas'
 import HiprintToolbar from './HiprintToolbar.vue'
 import HiprintElementList from './HiprintElementList.vue'
+import HiprintElementListPanel from './HiprintElementListPanel.vue'
 import HiprintCanvas from './HiprintCanvas.vue'
 import HiprintPropertyPanel from './HiprintPropertyPanel.vue'
 import HiprintPreview from './HiprintPreview.vue'
@@ -94,6 +95,12 @@ interface Props {
   showToolbar?: boolean
   showElementList?: boolean
   showPropertyPanel?: boolean
+  /** TKT-101: Show the floating element-list panel (☰ widget) overlaid on the
+   *  canvas. Mirrors V1 `panel.createElementListPanel()`. Defaults to true so
+   *  parity is on by default; hosts can disable with `:show-element-list-panel="false"`. */
+  showElementListPanel?: boolean
+  /** TKT-101: Initial open state for the floating element-list panel. */
+  elementListPanelInitiallyOpen?: boolean
   /** Switch between 'design' (default) and 'preview' modes. */
   mode?: 'design' | 'preview'
   /** Whether to clear stores on unmount (default true — fresh state when
@@ -190,6 +197,8 @@ const props = withDefaults(defineProps<Props>(), {
   showToolbar: true,
   showElementList: true,
   showPropertyPanel: true,
+  showElementListPanel: true,
+  elementListPanelInitiallyOpen: false,
   mode: 'design',
   destroyOnUnmount: true,
   previewHandler: undefined,
@@ -470,6 +479,16 @@ defineExpose({
         <slot name="canvas">
           <HiprintCanvas ref="canvasRef" />
         </slot>
+        <!-- TKT-101: Floating element-list panel (☰ widget). Sits inside the
+             canvas section so it overlays the paper area (V1 mounted on
+             `.hiprint-designer-card`). Replaceable via `element-list-panel`
+             named slot when hosts want a custom shell. -->
+        <slot name="element-list-panel">
+          <HiprintElementListPanel
+            v-if="showElementListPanel"
+            :initially-open="elementListPanelInitiallyOpen"
+          />
+        </slot>
       </section>
 
       <aside v-if="showPropertyPanel" class="hiprint-designer__property-panel">
@@ -556,6 +575,9 @@ defineExpose({
   flex: 1 1 auto;
   overflow: auto;
   background: var(--hiprint-designer-canvas-bg, #e8e8e8);
+  /* TKT-101: positioning context for the floating element-list panel
+   *  (HiprintElementListPanel uses position:absolute). */
+  position: relative;
 }
 
 .hiprint-designer__property-panel {

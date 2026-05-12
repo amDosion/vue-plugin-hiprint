@@ -44,6 +44,10 @@
 import { computed } from 'vue'
 import { useCanvasStore } from '@hiprint-v3/stores'
 import { buildTableModel, evalCap } from '@hiprint-v3/internal'
+import {
+  openContextMenu,
+  buildTableColumnContextItems,
+} from '@hiprint-v3/interactions'
 import ElementWrapper from '../ElementWrapper.vue'
 import TableCell from './TableCell.vue'
 
@@ -116,6 +120,36 @@ const rows = computed(() => model.value.rows)
 const footerRows = computed(() => model.value.footerRows)
 const footerHtml = computed(() => model.value.footerHtml)
 const borderClass = computed(() => model.value.borderClass)
+
+/**
+ * TKT-107 (Sprint 22c) — right-click thead context menu.
+ *
+ * V1 P.9 quirk: V1 only binds context on `thead`, NOT on `tbody`. Body-cell
+ * right-click falls through to the browser default. We honour that here:
+ * `@contextmenu.prevent` is bound on each `<th>`, never on `<td>`.
+ *
+ * The menu is only enabled in designer mode (`props.editable === true`).
+ * Preview/print rendering keeps the native browser context menu so end users
+ * can copy table data.
+ *
+ * V1 reference: HiTable.initContext bundle 7200-7329 (gated on
+ * isEnableContextMenu, which we map to `editable === true` in V3).
+ */
+function onTheadContext(
+  ev: MouseEvent,
+  layerIdx: number,
+  columnIdx: number
+): void {
+  if (!props.editable) return
+  // Build items at click time so handlers re-resolve the live element state
+  // (matches the multi-designer pinia capture in buildElementContextItems).
+  const items = buildTableColumnContextItems(
+    props.elementId,
+    layerIdx,
+    columnIdx
+  )
+  openContextMenu({ x: ev.clientX, y: ev.clientY }, { items })
+}
 </script>
 
 <template>
@@ -133,7 +167,12 @@ const borderClass = computed(() => model.value.borderClass)
         :class="borderClass || undefined"
         style="width: 100%; border-collapse: collapse"
       >
-        <!-- Multi-layer thead — uses `<th>` (matching print/render.ts). -->
+        <!--
+          Multi-layer thead — uses `<th>` (matching print/render.ts).
+          TKT-107: @contextmenu.prevent on each <th> opens the column editor
+          (V1 P.9: right-click only on thead — body-cell right-click stays
+          browser-default so end users can copy data).
+        -->
         <thead>
           <tr v-for="(layer, layerIdx) in theadRows" :key="`h-${layerIdx}`">
             <th
@@ -146,6 +185,7 @@ const borderClass = computed(() => model.value.borderClass)
                 border: '0.5pt solid #000',
                 padding: '2pt 4pt',
               }"
+              @contextmenu.prevent="onTheadContext($event, layerIdx, colIdx)"
             >
               <!-- [Invariant #1] header title is user data → textContent path -->
               {{ cell.title }}

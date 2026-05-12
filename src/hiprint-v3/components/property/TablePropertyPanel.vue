@@ -2,64 +2,56 @@
 /**
  * TablePropertyPanel.vue — V3 property editor for the `table` etype.
  *
- * TKT-009 rollback (Sprint 22a-r): four invented options that V1 never had
- * (`rowsPerPage`, `maxPage`, `alternateRowColor`, raw-HTML `footer` textarea)
- * have been removed. They violated V1 parity in three ways:
- *   1. `rowsPerPage` / `maxPage` — V1 inventory P.8 explicitly says these
- *      fields do not exist on V1 tables. V3 was inventing options the
- *      contract V1 round-trip will discard. See `docs/V3-PARITY-MATRIX/06-table.md`
- *      VIOLATION 2.13 / 2.14 / 16.1 / 16.2.
- *   2. `alternateRowColor` — V1 only has the vestigial `striped` boolean
- *      (bundle 9182). The colour-picker variant V3 invented was also a
- *      dead-letter (no renderer ever read it). Matrix VIOLATION 2.62 / 16.4.
- *   3. `footer` (raw HTML textarea) — V1 instead has `footerFormatter`,
- *      a function-string compiled with `new Function('return '+src)()`
- *      (bundle 2038-2041, 2331-2338). V3's `footer` textarea was a
- *      dead-letter never consumed by render layer. Matrix VIOLATION 11.2 / 16.7.
+ * Sprint 22c Stream CE adds the USER-INTERACTION layer on top of the Sprint
+ * 22b BB render-table data layer:
+ *  - TKT-105 multi-layer header UI (layer tabs + add/remove layer).
+ *  - TKT-106 merge cells UI (colspan/rowspan inputs + "merge with right"
+ *    button).
+ *  - TKT-107 right-click thead context menu is wired from TableElement.vue;
+ *    this panel exposes the same mutations via mouse-friendly controls.
  *
- * What this panel now exposes (V1-faithful subset, see V1 inventory P.5-P.9):
- *  1. Columns — per-column inline editor (title / field / width / align)
- *     with reorder (↑↓) and delete (✕) controls. "+ Add column" appends
- *     to the FIRST header layer (row 0). Multi-layer header editing remains
- *     out of scope (preserved untouched via `columns.map(r => r.slice())`).
- *  2. Header / Footer
- *     - `tableHeaderRepeat` — three-state select (every / first / none),
- *       matches V1 bundle 6308. **Replaces** the boolean `columnHeader`
- *       toggle. The old `columnHeader` option was a wrong-type contract
- *       (matrix VIOLATION 16.5).
- *     - `tableFooterRepeat` — three-state select (every / last / no),
- *       matches V1 bundle 6309.
- *     - `headerType` — preserved (none / group) for current callers.
- *     - `footerFormatter` — function-string textarea (monospace) with
- *       JSDoc-style hint. JSON persistence is the literal string source;
- *       compilation (`new Function('return '+src)()`) is the renderer's
- *       responsibility (TKT-022 wires the compile pipeline; this panel
- *       only writes the string).
- *  3. Rows — `rowHeight` only (the V1-faithful field). `rowsPerPage`,
- *     `maxPage`, `alternateRowColor` were removed.
+ * Earlier sprint history (TKT-009 / Sprint 22a-r rollback): four invented
+ * options that V1 never had (`rowsPerPage`, `maxPage`, `alternateRowColor`,
+ * raw-HTML `footer` textarea) were removed. See git history for context.
  *
- * V3 columns shape (TableElement.vue ~81–95):
+ * V3 columns shape (matches render-table.ts + V1-INVENTORY §D.1):
  *   options.columns: Array<Array<{ title, field, width, align|halign,
  *                                  colspan?, rowspan?, format? }>>
  *
- * Mutation path:
- *  canvas.updateElement(panelId, elementId, { options: { ... } })
- *    → applyElementPatch shallow-merges options
- *    → history.pushSnapshot() on commit
+ * Mutation paths:
+ *  - Direct property edits (title / field / width / align): go through local
+ *    `patch()` helper → canvas.updateElement + history.pushSnapshot.
+ *  - Layer add/remove + colspan/rowspan: delegate to `stores/table-ops.ts`
+ *    helpers (single source of truth so right-click context menu hits the
+ *    SAME mutation logic — important for the V1 P.9 "thead-only" right-click).
+ *
+ * Live element resolution: we read `element` from the canvas store by id
+ * rather than relying on `props.element` because the dispatcher
+ * (HiprintPropertyPanel) only re-emits a fresh prop on its next tick after
+ * `applyElementPatch` produces a new object. Reading via the store keeps the
+ * panel in sync the moment a mutation lands — needed for multi-click
+ * interactions (e.g. press "Merge with right" twice in a row to bump colspan
+ * 1→2→3 in the same render frame).
  *
  * Locked invariants:
- *  - All edits use Vue templating ({{ }}) and `:value` bindings — no
+ *  - All edits use Vue templating (`{{ }}`) and `:value` bindings — no
  *    `innerHTML` / `v-html` for user content (XSS).
- *  - Column updates create a fresh `columns` array (immutable patch),
- *    so reactivity + history snapshots fire correctly.
+ *  - Column updates create a fresh `columns` array (immutable patch), so
+ *    reactivity + history snapshots fire correctly.
  *  - boundary moveColumn (col 0 up, last col down) is a no-op.
  *  - `footerFormatter` is persisted as a STRING — not a Function — so it
  *    survives JSON round-trip back to V1 (which compiles on demand).
+ *  - At least 1 header layer is preserved (table-ops enforces this; the ✕
+ *    on the only layer is hidden client-side so users see the constraint).
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   useCanvasStore,
   useHistoryStore,
+  addTableHeaderLayer,
+  removeTableHeaderLayer,
+  setTableColspan,
+  setTableRowspan,
   type CanvasElement,
 } from '@hiprint-v3/stores'
 
@@ -69,8 +61,22 @@ const history = useHistoryStore()
 
 // ============ Derived ============
 
+/**
+ * Look up the live element via canvas store by id. `props.element` is a
+ * snapshot taken when the parent dispatcher last evaluated its `single`
+ * computed; subsequent applyElementPatch calls produce a NEW object but the
+ * prop only refreshes on the next parent tick. Reading from the store
+ * directly closes that gap so multi-step mutations (colspan++ twice in the
+ * same handler chain) read fresh state. Falls back to `props.element` when
+ * the store doesn't yet contain the id (synthetic test mounts).
+ */
+const liveElement = computed<CanvasElement>(() => {
+  const live = canvas.allElements.find((e) => e.id === props.element.id)
+  return live ?? props.element
+})
+
 const opts = computed<Record<string, unknown>>(
-  () => (props.element.options as Record<string, unknown>) ?? {}
+  () => (liveElement.value.options as Record<string, unknown>) ?? {}
 )
 
 /**
@@ -88,6 +94,31 @@ const columns = computed<Array<Array<Record<string, unknown>>>>(() => {
   return [raw as Array<Record<string, unknown>>]
 })
 
+/**
+ * TKT-105: track which header layer the user is editing.
+ *
+ * We use `null` to mean "user has not explicitly picked one" so we can
+ * default to the LEAF layer (the row whose `field`s pull body data — see
+ * render-table.ts flattenLeafColumns) without permanently overriding the
+ * user's choice. As soon as setActiveLayer is called, the explicit pick
+ * sticks until layers are removed (when we clamp).
+ */
+const activeLayerIdx = ref<number | null>(null)
+
+const safeActiveLayerIdx = computed(() => {
+  const n = columns.value.length
+  if (n === 0) return 0
+  // No explicit pick → default to leaf (V1 H.4: leaf is the editable row).
+  if (activeLayerIdx.value == null) return n - 1
+  if (activeLayerIdx.value >= n) return n - 1
+  if (activeLayerIdx.value < 0) return 0
+  return activeLayerIdx.value
+})
+
+function setActiveLayer(idx: number): void {
+  activeLayerIdx.value = idx
+}
+
 // ============ Update flow ============
 
 /**
@@ -98,7 +129,7 @@ const columns = computed<Array<Array<Record<string, unknown>>>>(() => {
 function patch(p: Record<string, unknown>, commit = false): void {
   const panelId = canvas.activePanelId
   if (!panelId) return
-  canvas.updateElement(panelId, props.element.id, { options: p })
+  canvas.updateElement(panelId, liveElement.value.id, { options: p })
   if (commit) history.pushSnapshot()
 }
 
@@ -119,12 +150,18 @@ function updateColumn(
   patch({ columns: next }, true)
 }
 
+/**
+ * TKT-105: append column to the ACTIVE layer (was hard-coded to layer 0).
+ * For multi-layer headers, users typically edit the bottom (leaf) layer; for
+ * single-layer the active layer is 0 anyway.
+ */
 function addColumn(): void {
   const next = cloneColumns()
   if (next.length === 0) next.push([])
-  const row0 = next[0]!
-  row0.push({
-    title: 'col' + (row0.length + 1),
+  const li = Math.min(safeActiveLayerIdx.value, next.length - 1)
+  const row = next[li]!
+  row.push({
+    title: 'col' + (row.length + 1),
     field: '',
     width: 100,
     align: 'left',
@@ -152,6 +189,88 @@ function moveColumn(rowIdx: number, colIdx: number, dir: -1 | 1): void {
   patch({ columns: next }, true)
 }
 
+// ============ TKT-105 — layer management ============
+
+/**
+ * Append a new header layer at the bottom (becomes the new leaf row).
+ * Delegates to table-ops (single mutation path; pushes history).
+ */
+function addLayer(): void {
+  if (!liveElement.value?.id) return
+  addTableHeaderLayer(liveElement.value.id)
+  // After addLayer, columns.value.length has increased by 1; the new bottom
+  // is the new leaf. Setting to null lets safeActiveLayerIdx pick the new
+  // leaf naturally.
+  activeLayerIdx.value = null
+}
+
+/**
+ * Remove the layer at `idx`. table-ops refuses to drop the last layer
+ * (≥ 1 invariant). After removal we clamp the active layer.
+ */
+function removeLayer(idx: number): void {
+  if (!liveElement.value?.id) return
+  if (columns.value.length <= 1) return
+  removeTableHeaderLayer(liveElement.value.id, idx)
+  const surviving = Math.max(0, columns.value.length - 1)
+  if (activeLayerIdx.value != null && activeLayerIdx.value >= surviving) {
+    activeLayerIdx.value = surviving
+  }
+}
+
+// ============ TKT-106 — merge cells UI ============
+
+/**
+ * "Merge with right" button: increment colspan on the current cell by 1.
+ * Render-table's expandColumns logic computes which subsequent cells become
+ * hidden (display:none) based on the merged cell's colspan + the row-merge
+ * function. The property panel only writes the colspan number.
+ */
+function mergeWithRight(layerIdx: number, columnIdx: number): void {
+  if (!liveElement.value?.id) return
+  const layer = columns.value[layerIdx]
+  if (!layer) return
+  const cur = layer[columnIdx]
+  if (!cur) return
+  const currentSpan =
+    typeof cur.colspan === 'number' && cur.colspan >= 1 ? cur.colspan : 1
+  setTableColspan(liveElement.value.id, layerIdx, columnIdx, currentSpan + 1)
+}
+
+function onColspanInput(
+  layerIdx: number,
+  columnIdx: number,
+  ev: Event
+): void {
+  if (!liveElement.value?.id) return
+  const target = ev.target as HTMLInputElement | null
+  if (!target) return
+  const n = Number(target.value)
+  setTableColspan(
+    liveElement.value.id,
+    layerIdx,
+    columnIdx,
+    Number.isFinite(n) ? n : 1
+  )
+}
+
+function onRowspanInput(
+  layerIdx: number,
+  columnIdx: number,
+  ev: Event
+): void {
+  if (!liveElement.value?.id) return
+  const target = ev.target as HTMLInputElement | null
+  if (!target) return
+  const n = Number(target.value)
+  setTableRowspan(
+    liveElement.value.id,
+    layerIdx,
+    columnIdx,
+    Number.isFinite(n) ? n : 1
+  )
+}
+
 // ============ Field-level handlers ============
 
 function onTableHeaderRepeat(ev: Event): void {
@@ -174,10 +293,10 @@ function onHeaderType(ev: Event): void {
 
 /**
  * Write the function-source string for `footerFormatter`. V1 persists
- * formatters as raw source (`"function(opts, allData, ...){ return '<tr>...</tr>' }"`)
- * and compiles on demand with `new Function('return ' + src)()`. We keep that
- * contract: the panel writes a string, the renderer (TKT-022 compileFormatter)
- * is responsible for compilation. Writing an empty string clears the option.
+ * formatters as raw source (e.g. `"function(opts, ...) { return '...' }"`)
+ * and compiles on demand with `new Function('return ' + src)()`. We keep
+ * that contract: the panel writes a string, the renderer compiles it.
+ * Writing an empty string clears the option.
  */
 function onFooterFormatter(ev: Event): void {
   const target = ev.target as HTMLTextAreaElement | null
@@ -210,17 +329,73 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
 
 <template>
   <div class="hiprint-table-property-panel" aria-label="Table properties">
-    <!-- Section 1. Columns -->
+    <!--
+      Section 1. Columns (TKT-105 multi-layer + TKT-106 merge cells)
+
+      Layer tabs: one button per header LAYER (top-down). Active layer is
+      highlighted; clicking switches the visible column list. "+ Add layer"
+      appends a new bottom layer. The ✕ on each tab removes that layer; not
+      rendered when only 1 layer exists (≥ 1 invariant).
+
+      Within the active layer, each column row exposes:
+      - title / field / width / align (V1 H.4)
+      - colspan / rowspan inputs (TKT-106 — write to render-table model)
+      - "Merge →" button (TKT-106 — increment colspan by 1)
+      - move up / down / delete (V1 H.3 reorder)
+    -->
     <fieldset class="hiprint-property-fieldset">
       <legend>Columns</legend>
+
       <div
-        v-for="(row, ri) in columns"
-        :key="`row-${ri}`"
+        class="hiprint-table-layer-tabs"
+        role="tablist"
+        aria-label="Header layers"
+      >
+        <button
+          v-for="(_layer, li) in columns"
+          :key="`tab-${li}`"
+          type="button"
+          role="tab"
+          :aria-selected="li === safeActiveLayerIdx"
+          :class="[
+            'hiprint-property-toggle',
+            'layer-tab',
+            li === safeActiveLayerIdx ? 'is-active' : null,
+          ]"
+          @click="setActiveLayer(li)"
+        >
+          <span>Layer {{ li + 1 }}</span>
+          <span
+            v-if="columns.length > 1"
+            class="layer-tab-remove"
+            role="button"
+            tabindex="0"
+            aria-label="Remove this layer"
+            @click.stop="removeLayer(li)"
+            @keydown.enter.stop="removeLayer(li)"
+            @keydown.space.stop="removeLayer(li)"
+          >
+            ✕
+          </span>
+        </button>
+        <button
+          type="button"
+          class="hiprint-property-toggle layer-add"
+          aria-label="Add header layer"
+          @click="addLayer"
+        >
+          + Add layer
+        </button>
+      </div>
+
+      <div
+        v-if="columns[safeActiveLayerIdx]"
         class="hiprint-table-col-section"
+        :data-layer-idx="safeActiveLayerIdx"
       >
         <div
-          v-for="(col, ci) in row"
-          :key="`col-${ri}-${ci}`"
+          v-for="(col, ci) in columns[safeActiveLayerIdx]"
+          :key="`col-${safeActiveLayerIdx}-${ci}`"
           class="hiprint-table-col-row"
         >
           <input
@@ -230,7 +405,7 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             placeholder="title"
             aria-label="Column title"
             @change="
-              updateColumn(ri, ci, {
+              updateColumn(safeActiveLayerIdx, ci, {
                 title: ($event.target as HTMLInputElement).value,
               })
             "
@@ -242,7 +417,7 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             placeholder="field"
             aria-label="Column field"
             @change="
-              updateColumn(ri, ci, {
+              updateColumn(safeActiveLayerIdx, ci, {
                 field: ($event.target as HTMLInputElement).value,
               })
             "
@@ -254,7 +429,7 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             :value="colNumber(col, 'width', 100)"
             aria-label="Column width"
             @change="
-              updateColumn(ri, ci, {
+              updateColumn(safeActiveLayerIdx, ci, {
                 width: Number(($event.target as HTMLInputElement).value || 100),
               })
             "
@@ -264,7 +439,7 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             :value="colString(col, 'align', 'left')"
             aria-label="Column align"
             @change="
-              updateColumn(ri, ci, {
+              updateColumn(safeActiveLayerIdx, ci, {
                 align: ($event.target as HTMLSelectElement).value,
               })
             "
@@ -273,21 +448,50 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             <option value="center">Center</option>
             <option value="right">Right</option>
           </select>
+          <!-- TKT-106: colspan / rowspan inputs -->
+          <input
+            type="number"
+            min="1"
+            class="col-colspan"
+            :value="colNumber(col, 'colspan', 1)"
+            aria-label="Column colspan"
+            title="Colspan"
+            @change="onColspanInput(safeActiveLayerIdx, ci, $event)"
+          />
+          <input
+            type="number"
+            min="1"
+            class="col-rowspan"
+            :value="colNumber(col, 'rowspan', 1)"
+            aria-label="Column rowspan"
+            title="Rowspan"
+            @change="onRowspanInput(safeActiveLayerIdx, ci, $event)"
+          />
+          <button
+            type="button"
+            class="hiprint-property-toggle col-merge-right"
+            :disabled="ci >= (columns[safeActiveLayerIdx]?.length ?? 0) - 1"
+            aria-label="Merge with right"
+            title="Merge with right cell (increment colspan)"
+            @click="mergeWithRight(safeActiveLayerIdx, ci)"
+          >
+            →|
+          </button>
           <button
             type="button"
             class="hiprint-property-toggle"
             :disabled="ci === 0"
             aria-label="Move column up"
-            @click="moveColumn(ri, ci, -1)"
+            @click="moveColumn(safeActiveLayerIdx, ci, -1)"
           >
             ↑
           </button>
           <button
             type="button"
             class="hiprint-property-toggle"
-            :disabled="ci >= row.length - 1"
+            :disabled="ci >= (columns[safeActiveLayerIdx]?.length ?? 0) - 1"
             aria-label="Move column down"
-            @click="moveColumn(ri, ci, 1)"
+            @click="moveColumn(safeActiveLayerIdx, ci, 1)"
           >
             ↓
           </button>
@@ -295,7 +499,7 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
             type="button"
             class="hiprint-property-toggle col-delete"
             aria-label="Delete column"
-            @click="removeColumn(ri, ci)"
+            @click="removeColumn(safeActiveLayerIdx, ci)"
           >
             ✕
           </button>
@@ -313,10 +517,6 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
     <!-- Section 2. Header / Footer -->
     <fieldset class="hiprint-property-fieldset">
       <legend>Header / Footer</legend>
-      <!--
-        TKT-009: replaced boolean `columnHeader` checkbox with V1's
-        `tableHeaderRepeat` 3-state select (bundle 6308, matrix 2.8 / 16.5).
-      -->
       <label>
         Header repeat
         <select
@@ -329,10 +529,6 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
           <option value="none">None</option>
         </select>
       </label>
-      <!--
-        TKT-009: new V1-faithful `tableFooterRepeat` 3-state select
-        (bundle 6309, matrix 2.9). Previously missing from V3 panel.
-      -->
       <label>
         Footer repeat
         <select
@@ -355,13 +551,6 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
           <option value="group">Group</option>
         </select>
       </label>
-      <!--
-        TKT-009: replaced raw-HTML `footer` textarea (V3-invented, dead-letter)
-        with V1's `footerFormatter` function-source textarea (bundle
-        2038-2041, 2331-2338, matrix 11.2 / 16.7). JSON persists the
-        literal string; renderer compiles via `new Function('return '+src)()`
-        (TKT-022 wires the compile pipeline).
-      -->
       <label>
         Footer formatter (function source)
         <textarea
@@ -378,12 +567,6 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
     <!-- Section 3. Rows -->
     <fieldset class="hiprint-property-fieldset">
       <legend>Rows</legend>
-      <!--
-        TKT-009: rolled back invented options. `rowsPerPage`, `maxPage`
-        (matrix 2.13 / 2.14 / 16.1 / 16.2) and `alternateRowColor`
-        (matrix 2.62 / 16.4) were removed — V1 has no such fields.
-        `rowHeight` is retained as a V1-aligned ergonomic option.
-      -->
       <label>
         Row height (pt)
         <input
@@ -469,11 +652,44 @@ function colNumber(col: Record<string, unknown>, key: string, fb: number): numbe
   flex: 1;
   min-width: 60px;
 }
-.hiprint-table-col-row input.col-width {
-  width: 60px;
+.hiprint-table-col-row input.col-width,
+.hiprint-table-col-row input.col-colspan,
+.hiprint-table-col-row input.col-rowspan {
+  width: 48px;
 }
 .hiprint-table-col-row select.col-align {
   width: 80px;
+}
+.hiprint-table-layer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.hiprint-table-layer-tabs .layer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hiprint-table-layer-tabs .layer-tab.is-active {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+  font-weight: 600;
+}
+.hiprint-table-layer-tabs .layer-tab-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  font-size: 10px;
+  color: #999;
+  cursor: pointer;
+}
+.hiprint-table-layer-tabs .layer-tab-remove:hover {
+  background: #ffe0e0;
+  color: #d4380d;
 }
 .hiprint-property-toggle {
   min-width: 28px;

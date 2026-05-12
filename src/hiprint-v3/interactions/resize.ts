@@ -74,6 +74,12 @@ export interface ElementResizeOptions {
     bottom?: boolean
     left?: boolean
   }
+  /**
+   * TKT-104 — fires once when the resize gesture begins (before any tick).
+   * Lets the wrapper flip its overlay to 'resize' mode without subscribing
+   * to interact.js internals directly.
+   */
+  onStart?: (startRect: ResizeRect) => void
   /** Called on each resize tick (pt). */
   onResize?: (newRect: ResizeRect) => void
   /** Called once on resize gesture end (pt). */
@@ -240,6 +246,16 @@ export function enableElementResize(
         state.aspectLocked = state.forceLock || !!event.shiftKey
         // TKT-020: reset per-gesture movement flag.
         didResize = false
+        // TKT-104: emit starting rect so caller can flip overlay to 'resize'.
+        if (opts.onStart) {
+          const startRect: ResizeRect = {
+            left: parseFloat(el.style.left || '0'),
+            top: parseFloat(el.style.top || '0'),
+            width: parseFloat(el.style.width || '0'),
+            height: parseFloat(el.style.height || '0'),
+          }
+          safeCall(opts.onStart, startRect)
+        }
       },
       move: (event: any) => {
         // Dynamic Shift toggle on every move.

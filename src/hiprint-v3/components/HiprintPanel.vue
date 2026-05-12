@@ -181,6 +181,10 @@ onBeforeUnmount(() => {
         class="hiprint-panel-header-marker"
         :style="headerMarkerStyle"
       />
+      <!-- TKT-102 / TKT-103: parent renders guide-line + smart-guide layers
+           via this slot so they sit inside the paper transform stack (paper-pt
+           coordinates + scale). -->
+      <slot name="overlay" />
       <slot />
       <div
         v-if="footerMarkerStyle"
