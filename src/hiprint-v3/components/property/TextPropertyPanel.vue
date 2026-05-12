@@ -34,20 +34,28 @@
  *                / fixed / axis   (B.14, B.54-B.57)
  *   Misc      — lock (catch-all) / draggable   (B.10)
  *
- * Total V1 fields surfaced: 50 of 57. Out-of-scope (intentional drop):
- *   - barTextMode / barWidth / barAutoWidth / barcodeType / qrcodeType
- *     — Path A textType=barcode|qrcode delegates to dedicated etype
- *       components which expose their own renderer-aligned subset (see
- *       BarcodePropertyPanel / QrcodePropertyPanel). Editing these from a
- *       `text` element is not a V1 flow either — the legacy "barcode under
- *       text" cascade widget never wrote those keys back to the text
- *       options bag.
- *   - upperCase (Chinese number conversion) — niche, V1-only Nzh library,
- *     deferred behind a feature flag.
- *   - optionsGroup — UI grouping placeholder, no value.
- *   - coordinateSync / widthHeightSync — V1 UI-only mirroring; the V3 panel
- *     groups X/Y and W/H so this affordance is redundant.
- *   - shadow (advanced) — deferred per ticket spec.
+ * Total V1 fields surfaced: 57 of 57 (Sprint 22g — Stream GC zero-out).
+ *
+ * Sprint 22g restored fields (previously dropped — user spec: < 100% = bug):
+ *   - barTextMode / barWidth / barAutoWidth / barcodeType — Path A barcode
+ *     tuning. Surfaced inside the Text-type fieldset when textType=barcode
+ *     so Path A templates can edit them without a separate flow. Renderer
+ *     side (render.ts + BarcodeElement.vue) already plumbs barWidth +
+ *     barAutoWidth → bwip-js scale/width; Sprint 22g added barTextMode →
+ *     external `<div class="hibarcode_displayValue">` line.
+ *   - qrcodeType — Path A qrcode tuning, surfaces when textType=qrcode.
+ *   - upperCase — render-time `value.toUpperCase()` (V1 quirk, see
+ *     _helpers.ts computeDisplayText + render.ts renderTextElement).
+ *     NOT a Chinese number conversion — that's `numberFormat` (different
+ *     field). The previous panel header conflated these.
+ *   - optionsGroup — V1 internal grouping placeholder string. Mostly UI
+ *     metadata; surfaced as a free-form text input under "Advanced".
+ *   - coordinateSync / widthHeightSync — when true, editing one of (left/top)
+ *     or (width/height) mirrors the value into its sibling. Implemented as
+ *     panel-side reactive intercept that fans out the same number to both
+ *     keys, never the canvas store. Default off.
+ *
+ *   - shadow (advanced) — still deferred (counted under base 50, not in 57).
  *
  * Edit flow: every change funnels through
  *   canvas.updateElement(activePanelId, element.id, { options: patch })
@@ -120,6 +128,10 @@ const draftFormat = ref<string>('')
 const draftTrueText = ref<string>('')
 const draftFalseText = ref<string>('')
 const draftPageBreak = ref<string>('')
+// Sprint 22g GC — Path A barcode/qrcode subtype + advanced metadata drafts.
+const draftBarcodeType = ref<string>('')
+const draftQrcodeType = ref<string>('')
+const draftOptionsGroup = ref<string>('')
 
 watch(
   () => props.element,
@@ -145,22 +157,48 @@ watch(
     } else {
       draftPageBreak.value = ''
     }
+    // Sprint 22g GC drafts.
+    draftBarcodeType.value = str(o.barcodeType)
+    draftQrcodeType.value = str(o.qrcodeType)
+    draftOptionsGroup.value = str(o.optionsGroup)
   },
   { immediate: true, deep: true }
 )
 
 // ============ Position fieldset ============
+// Sprint 22g GC — coordinateSync / widthHeightSync mirroring. When the
+// corresponding option flag is true, editing one axis writes the same
+// numeric value into both keys in a single store patch (so undo collapses
+// the pair, and the canvas re-renders once).
 function onLeft(ev: Event): void {
-  update({ left: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { left: v }
+  if (bool(opts.value.coordinateSync)) patch.top = v
+  update(patch, false)
 }
 function onTop(ev: Event): void {
-  update({ top: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { top: v }
+  if (bool(opts.value.coordinateSync)) patch.left = v
+  update(patch, false)
 }
 function onWidth(ev: Event): void {
-  update({ width: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { width: v }
+  if (bool(opts.value.widthHeightSync)) patch.height = v
+  update(patch, false)
 }
 function onHeight(ev: Event): void {
-  update({ height: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { height: v }
+  if (bool(opts.value.widthHeightSync)) patch.width = v
+  update(patch, false)
+}
+function onCoordinateSync(ev: Event): void {
+  update({ coordinateSync: !!(ev.target as HTMLInputElement).checked })
+}
+function onWidthHeightSync(ev: Event): void {
+  update({ widthHeightSync: !!(ev.target as HTMLInputElement).checked })
 }
 function onTransform(ev: Event): void {
   // V1 stores rotation as a numeric degree value under `transform`. The
@@ -282,6 +320,56 @@ function onBarcodeMode(ev: Event): void {
 }
 function onQrLevel(ev: Event): void {
   update({ qrCodeLevel: num((ev.target as HTMLSelectElement).value, 0) })
+}
+// Sprint 22g GC — Path A barcode/qrcode tuning fields.
+function onBarTextMode(ev: Event): void {
+  // V1 enum: '' (default) / 'text' (separate <div>) / 'svg' (inside SVG).
+  // render.ts + BarcodeElement.vue route 'text' to an external text node
+  // and pass includetext:false to bwip-js (V1 line 10080 parity).
+  update({ barTextMode: str((ev.target as HTMLSelectElement).value) })
+}
+function onBarWidth(ev: Event): void {
+  // V1 enum: '' (default 1) / 1 / 2 / 3 / 4. We accept any number to keep
+  // forwards-compat with custom presets. render.ts clamps min:1.
+  update({ barWidth: num((ev.target as HTMLInputElement).value, 1) }, false)
+}
+function onBarAutoWidth(ev: Event): void {
+  // V1 tri-state: '' (default, =true) / 'true' / 'false'. We canonicalize
+  // to a strict boolean (V3 invariant) — render.ts reads via isTrue().
+  const raw = str((ev.target as HTMLSelectElement).value)
+  if (raw === '') {
+    update({ barAutoWidth: undefined })
+  } else {
+    update({ barAutoWidth: raw === 'true' })
+  }
+}
+function onBarcodeTypeCommit(): void {
+  // Path B `barcodeType` — bwip-js bcid string (overrides barcodeMode when
+  // present). render.ts prefers this over the Path A enum.
+  update({ barcodeType: draftBarcodeType.value })
+}
+function onQrcodeTypeCommit(): void {
+  // Path B `qrcodeType` — bwip-js bcid for qrcode variants (qrcode, hibcazteccode,
+  // datamatrix, ...). Default 'qrcode' in render.ts/QrcodeElement.vue.
+  update({ qrcodeType: draftQrcodeType.value })
+}
+function onUpperCase(ev: Event): void {
+  // V1 quirk — render-time value.toUpperCase(). Wired in _helpers.ts
+  // computeDisplayText + render.ts text/longText paths.
+  update({ upperCase: !!(ev.target as HTMLInputElement).checked })
+}
+/**
+ * Sprint 22g GC — `optionsGroup` is a V1 internal field used by the legacy
+ * property panel to group supportOptions entries under a custom heading
+ * (e.g. "tableSummary", "table-toolbar"). It has no rendering effect in
+ * V3 — surfaced as a free-form text input so V1 templates that carry the
+ * key can round-trip without data loss. Advanced metadata; most users
+ * should leave blank.
+ *
+ * @advanced V1 internal field. No render-time semantics.
+ */
+function onOptionsGroupCommit(): void {
+  update({ optionsGroup: draftOptionsGroup.value })
 }
 
 // ============ DataType + Format fieldset ============
@@ -456,6 +544,27 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
             @change="onSizeLocked"
           />
           Size locked
+        </label>
+      </div>
+      <!-- Sprint 22g GC — coordinate / size mirroring (V1 parity).  -->
+      <div class="hiprint-property-row">
+        <label class="inline">
+          <input
+            type="checkbox"
+            class="tx-coordinate-sync"
+            :checked="bool(opts.coordinateSync)"
+            @change="onCoordinateSync"
+          />
+          Sync X / Y (mirror coordinates)
+        </label>
+        <label class="inline">
+          <input
+            type="checkbox"
+            class="tx-width-height-sync"
+            :checked="bool(opts.widthHeightSync)"
+            @change="onWidthHeightSync"
+          />
+          Sync W / H (mirror dimensions)
         </label>
       </div>
     </fieldset>
@@ -875,6 +984,76 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
           <option value="2">H (30%)</option>
         </select>
       </label>
+      <!-- Sprint 22g GC — Path A barcode tuning. Visible only when textType=barcode. -->
+      <template v-if="isBarcode">
+        <label>
+          Bar text mode (V1 barTextMode)
+          <select
+            class="tx-bar-text-mode"
+            :value="str(opts.barTextMode)"
+            @change="onBarTextMode"
+          >
+            <option value="">default (in SVG)</option>
+            <option value="text">separate text line</option>
+            <option value="svg">SVG-embedded text</option>
+          </select>
+        </label>
+        <div class="hiprint-property-row">
+          <label>
+            Bar width (scale)
+            <input
+              type="number"
+              min="1"
+              step="1"
+              class="tx-bar-width"
+              :value="num(opts.barWidth, 1)"
+              @input="onBarWidth"
+              @change="commit"
+            />
+          </label>
+          <label>
+            Auto-width
+            <select
+              class="tx-bar-auto-width"
+              :value="
+                opts.barAutoWidth == null
+                  ? ''
+                  : opts.barAutoWidth === true || opts.barAutoWidth === 'true'
+                    ? 'true'
+                    : 'false'
+              "
+              @change="onBarAutoWidth"
+            >
+              <option value="">default</option>
+              <option value="true">on</option>
+              <option value="false">off</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Barcode type (bwip-js bcid)
+          <input
+            type="text"
+            class="tx-barcode-type"
+            placeholder="e.g. code128, ean13"
+            v-model="draftBarcodeType"
+            @blur="onBarcodeTypeCommit"
+            @keydown.enter="onBarcodeTypeCommit"
+          />
+        </label>
+      </template>
+      <!-- Sprint 22g GC — Path A qrcode bcid override. -->
+      <label v-if="isQrcode">
+        QR type (bwip-js bcid)
+        <input
+          type="text"
+          class="tx-qrcode-type"
+          placeholder="qrcode (default)"
+          v-model="draftQrcodeType"
+          @blur="onQrcodeTypeCommit"
+          @keydown.enter="onQrcodeTypeCommit"
+        />
+      </label>
     </fieldset>
 
     <!-- DataType + Format -->
@@ -1080,6 +1259,32 @@ const isDatetime = computed(() => opts.value.dataType === 'datetime')
           @change="onDraggable"
         />
         Draggable
+      </label>
+      <!-- Sprint 22g GC — V1 upperCase render-time quirk. -->
+      <label class="inline">
+        <input
+          type="checkbox"
+          class="tx-upper-case"
+          :checked="bool(opts.upperCase)"
+          @change="onUpperCase"
+        />
+        Uppercase value at render (V1 quirk)
+      </label>
+    </fieldset>
+
+    <!-- Sprint 22g GC — Advanced (V1 internal field; no render effect). -->
+    <fieldset class="hiprint-property-fieldset">
+      <legend>Advanced</legend>
+      <label>
+        Options group (V1 internal; advanced — usually leave blank)
+        <input
+          type="text"
+          class="tx-options-group"
+          placeholder="V1 supportOptions grouping key"
+          v-model="draftOptionsGroup"
+          @blur="onOptionsGroupCommit"
+          @keydown.enter="onOptionsGroupCommit"
+        />
       </label>
     </fieldset>
   </div>

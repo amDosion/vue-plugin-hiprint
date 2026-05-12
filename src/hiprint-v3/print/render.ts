@@ -280,12 +280,18 @@ function renderTextElement(
 
   const raw = getElementValue(element, opts, options)
   // TKT-024: apply dataType + format conversion BEFORE formatter chain.
-  const value = formatValue(raw, {
+  let value = formatValue(raw, {
     dataType: opts.dataType as 'text' | 'datetime' | 'boolean' | undefined,
     format: typeof opts.format === 'string' ? opts.format : undefined,
     trueText: typeof opts.trueText === 'string' ? opts.trueText : undefined,
     falseText: typeof opts.falseText === 'string' ? opts.falseText : undefined,
   })
+  // Sprint 22g GC — V1 `upperCase` quirk: render-time uppercase of the value
+  // (title preserved as authored). Runs after format conversion, before
+  // formatter chain — matches V1 line 10037 ordering.
+  if (isTrue(opts.upperCase)) {
+    value = value.toUpperCase()
+  }
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   // TKT-006: accept string-source formatter as well (V1 parity).
@@ -349,12 +355,16 @@ function renderLongTextElement(
 
   const raw = getElementValue(element, opts, options)
   // TKT-024: apply dataType + format conversion BEFORE formatter chain.
-  const value = formatValue(raw, {
+  let value = formatValue(raw, {
     dataType: opts.dataType as 'text' | 'datetime' | 'boolean' | undefined,
     format: typeof opts.format === 'string' ? opts.format : undefined,
     trueText: typeof opts.trueText === 'string' ? opts.trueText : undefined,
     falseText: typeof opts.falseText === 'string' ? opts.falseText : undefined,
   })
+  // Sprint 22g GC — V1 `upperCase` quirk (longText parity with text path).
+  if (isTrue(opts.upperCase)) {
+    value = value.toUpperCase()
+  }
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   // TKT-006: accept string-source formatter as well (V1 parity).
@@ -415,6 +425,17 @@ function renderBarcodeElement(
     const widthMm = Math.max(0, pt.toMm(widthPt))
     const barAutoWidth = isTrue(opts.barAutoWidth)
 
+    // Sprint 22g GC — V1 `barTextMode` quirk (Path A barcode text positioning).
+    // Maps the V1 enum onto bwip-js `includetext`:
+    //   'svg'   → text inside SVG (bwip includetext: true, no separate node)
+    //   'text'  → separate text DIV under SVG (bwip includetext: false +
+    //             manual `<div class="hibarcode_displayValue">` append)
+    //   ''/undef → default behavior (preserves !hideTitle inside SVG)
+    // V1 line 10068/10080 documents this exact dispatch.
+    const barTextMode =
+      typeof opts.barTextMode === 'string' ? opts.barTextMode : ''
+    const externalText = barTextMode === 'text'
+
     // TKT-023: prefer Path B `barcodeType`; fall back to V1 Path A
     // `barcodeMode` enum (CODE128 / EAN13 / ITF14 / ...) via compat mapping.
     const bcid =
@@ -429,7 +450,8 @@ function renderBarcodeElement(
       scale: safeNumber(opts.barWidth, { fallback: 1, min: 1 }),
       width: !barAutoWidth ? Math.floor(widthMm) : ('' as unknown as number),
       height: Math.floor(heightMm),
-      includetext: !hideTitle,
+      // barTextMode='text' suppresses internal SVG text; we render it below.
+      includetext: !hideTitle && !externalText,
       textsize: Math.floor(safeNumber(opts.fontSize, { fallback: 10 })),
       barcolor: typeof opts.barColor === 'string' ? opts.barColor : '#000',
     } as Parameters<typeof bwipjs.toSVG>[0])
@@ -443,6 +465,15 @@ function renderBarcodeElement(
       const fallback = document.createElement('div')
       fallback.textContent = 'Barcode render failed'
       content.appendChild(fallback)
+    }
+    // Sprint 22g GC — `barTextMode === 'text'` appends a separate text line
+    // below the SVG (V1 line 10080). Always XSS-safe via textContent.
+    if (externalText && !hideTitle) {
+      const dv = document.createElement('div')
+      dv.classList.add('hibarcode_displayValue')
+      dv.style.whiteSpace = 'nowrap'
+      dv.textContent = text
+      content.appendChild(dv)
     }
   } catch (err) {
     console.warn('[hiprint] barcode render failed:', err)

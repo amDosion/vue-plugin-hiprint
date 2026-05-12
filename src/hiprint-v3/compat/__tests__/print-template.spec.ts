@@ -1198,3 +1198,250 @@ describe('TKT-085 audit — destroy guards on all 25 new methods', () => {
     }).not.toThrow()
   })
 })
+
+// ============================================================================
+// Sprint 22g — Stream GB: V1 surface zero-out (12 final methods → 67/67)
+// ============================================================================
+
+describe('TKT-086 isDestroyed', () => {
+  it('returns false before destroy, true after (the one method NOT guarded)', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    expect(tpl.isDestroyed()).toBe(false)
+    tpl.destroy()
+    // Crucially: isDestroyed() is NOT guarded — it IS the destroy probe (V1
+    // line 12551). It must remain callable post-destroy and report `true`.
+    expect(tpl.isDestroyed()).toBe(true)
+  })
+})
+
+describe('TKT-087 getPaneltotal', () => {
+  it('returns the total panel count (not max-index)', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    expect(tpl.getPaneltotal()).toBe(1)
+    tpl.addPrintPanel({ width: 100, height: 100 })
+    tpl.addPrintPanel({ width: 100, height: 100 })
+    expect(tpl.getPaneltotal()).toBe(3)
+    // While `getMaxPanelIndex()` returns N-1, getPaneltotal returns N.
+    expect(tpl.getMaxPanelIndex()).toBe(tpl.getPaneltotal() - 1)
+    tpl.destroy()
+    expect(tpl.getPaneltotal()).toBe(0)
+  })
+})
+
+describe('TKT-088 getPaperType', () => {
+  it('reads the paper-type name for a given panel (default index 0)', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    // Sample panel does not set paperType — default is undefined; after
+    // setPaper('A4') it should resolve to 'A4'.
+    expect(tpl.getPaperType()).toBeUndefined()
+    tpl.setPaper('A4')
+    expect(tpl.getPaperType(0)).toBe('A4')
+    expect(tpl.getPaperType(99)).toBeUndefined()
+    tpl.destroy()
+    expect(tpl.getPaperType()).toBeUndefined()
+  })
+})
+
+describe('TKT-089 getOrient', () => {
+  it('returns 1 (portrait, h>w) or 2 (landscape, w>h)', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    // SAMPLE has 210x297 → portrait → 1.
+    expect(tpl.getOrient()).toBe(1)
+    tpl.rotatePaper() // swap w/h → landscape → 2
+    expect(tpl.getOrient()).toBe(2)
+    expect(tpl.getOrient(99)).toBeUndefined()
+    tpl.destroy()
+    expect(tpl.getOrient()).toBeUndefined()
+  })
+})
+
+describe('TKT-090 getPanel', () => {
+  it('returns the Panel record by index', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    const p = tpl.getPanel(0)
+    expect(p).toBeDefined()
+    expect(p?.name).toBe('1')
+    expect(p?.printElements?.length).toBe(1)
+    expect(tpl.getPanel(5)).toBeUndefined()
+    tpl.destroy()
+    expect(tpl.getPanel()).toBeUndefined()
+  })
+})
+
+describe('TKT-091 getElementByName', () => {
+  it('finds element by options.name, scoped to panel index', () => {
+    const tpl = new PrintTemplate({
+      template: {
+        panels: [
+          {
+            index: 0,
+            name: '1',
+            width: 210,
+            height: 297,
+            printElements: [
+              {
+                options: { left: 0, top: 0, width: 10, height: 10, name: 'foo' },
+                printElementType: { type: 'text', tid: 'm.text' },
+              },
+              {
+                options: { left: 0, top: 0, width: 10, height: 10, name: 'bar' },
+                printElementType: { type: 'text', tid: 'm.text' },
+              },
+            ],
+          },
+        ],
+      } as TemplateJson,
+    })
+    const found = tpl.getElementByName('bar')
+    expect(found).not.toBeNull()
+    expect((found?.options as Record<string, unknown>).name).toBe('bar')
+    expect(tpl.getElementByName('nope')).toBeNull()
+    expect(tpl.getElementByName('')).toBeNull()
+    tpl.destroy()
+    expect(tpl.getElementByName('bar')).toBeNull()
+  })
+})
+
+describe('TKT-092 setFontList / TKT-093 getFontList', () => {
+  it('stores + retrieves font list (fresh copy on read)', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    expect(tpl.getFontList()).toEqual([])
+    tpl.setFontList(['Arial', 'Helvetica'])
+    const fonts = tpl.getFontList()
+    expect(fonts).toEqual(['Arial', 'Helvetica'])
+    // Mutating returned copy must not leak.
+    fonts.push('Comic Sans')
+    expect(tpl.getFontList()).toEqual(['Arial', 'Helvetica'])
+    // Emits font-list-change.
+    let received: unknown = null
+    tpl.on('font-list-change', (list) => {
+      received = list
+    })
+    tpl.setFontList(['Times'])
+    expect(received).toEqual(['Times'])
+    // Non-array input coerces to [].
+    tpl.setFontList(undefined as unknown as string[])
+    expect(tpl.getFontList()).toEqual([])
+    tpl.destroy()
+    expect(tpl.getFontList()).toEqual([])
+  })
+})
+
+describe('TKT-094 setFields / TKT-095 getFields', () => {
+  it('setFields/getFields are V1-canonical aliases of dynamic-field accessors', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    // Default fallback is [] (V1 parity — getFields never returned undefined).
+    expect(tpl.getFields()).toEqual([])
+    tpl.setFields({ orderId: 'order' })
+    expect(tpl.getFields()).toEqual({ orderId: 'order' })
+    // Aliasing: setFields routes through setDynamicFields, so getDynamicFields
+    // sees the same value.
+    expect(tpl.getDynamicFields()).toEqual({ orderId: 'order' })
+    tpl.destroy()
+    expect(tpl.getFields()).toEqual([])
+  })
+})
+
+describe('TKT-096 getFieldsInPanel', () => {
+  it('returns a flat list of every element with options.field set', () => {
+    const tpl = new PrintTemplate({
+      template: {
+        panels: [
+          {
+            index: 0,
+            name: '1',
+            width: 210,
+            height: 297,
+            printElements: [
+              {
+                options: { left: 0, top: 0, width: 10, height: 10, field: 'name', title: '姓名' },
+                printElementType: { type: 'text', tid: 'm.text' },
+              },
+              {
+                // No field → omitted.
+                options: { left: 0, top: 20, width: 10, height: 10 },
+                printElementType: { type: 'text', tid: 'm.text' },
+              },
+              {
+                options: { left: 0, top: 40, width: 10, height: 10, field: 'amount' },
+                printElementType: { type: 'text', tid: 'm.text' },
+              },
+            ],
+          },
+        ],
+      } as TemplateJson,
+    })
+    const fields = tpl.getFieldsInPanel()
+    expect(fields.length).toBe(2)
+    expect(fields[0]?.field).toBe('name')
+    expect(fields[0]?.title).toBe('姓名')
+    expect(fields[1]?.field).toBe('amount')
+    tpl.destroy()
+    expect(tpl.getFieldsInPanel()).toEqual([])
+  })
+})
+
+describe('TKT-097 getTestData', () => {
+  it('merges panel-scoped testData across all panels', () => {
+    const tpl = new PrintTemplate({
+      template: {
+        panels: [
+          {
+            index: 0,
+            name: '1',
+            width: 210,
+            height: 297,
+            printElements: [],
+            testData: { name: 'Alice', amount: 100 },
+          },
+          {
+            index: 1,
+            name: '2',
+            width: 210,
+            height: 297,
+            printElements: [],
+            testData: { amount: 200, currency: 'USD' },
+          },
+        ],
+      } as unknown as TemplateJson,
+    })
+    const data = tpl.getTestData()
+    // Object.assign semantics: later panel overrides earlier.
+    expect(data).toEqual({ name: 'Alice', amount: 200, currency: 'USD' })
+    tpl.destroy()
+    expect(tpl.getTestData()).toEqual({})
+  })
+
+  it('returns {} when no panel carries testData', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    expect(tpl.getTestData()).toEqual({})
+    tpl.destroy()
+  })
+})
+
+describe('Sprint 22g — destroy-guard sweep on all 12 GB-added methods', () => {
+  it('every new method silently no-ops or returns its typed fallback', () => {
+    const tpl = new PrintTemplate({ template: SAMPLE })
+    tpl.destroy()
+
+    // isDestroyed is intentionally NOT guarded — it must report true.
+    expect(tpl.isDestroyed()).toBe(true)
+
+    // Typed fallbacks after destroy.
+    expect(tpl.getPaneltotal()).toBe(0)
+    expect(tpl.getPaperType()).toBeUndefined()
+    expect(tpl.getOrient()).toBeUndefined()
+    expect(tpl.getPanel()).toBeUndefined()
+    expect(tpl.getElementByName('any')).toBeNull()
+    expect(tpl.getFontList()).toEqual([])
+    expect(tpl.getFields()).toEqual([])
+    expect(tpl.getFieldsInPanel()).toEqual([])
+    expect(tpl.getTestData()).toEqual({})
+
+    // Void setters must not throw post-destroy.
+    expect(() => {
+      tpl.setFontList(['X'])
+      tpl.setFields({ a: 1 })
+    }).not.toThrow()
+  })
+})

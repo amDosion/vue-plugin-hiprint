@@ -680,3 +680,304 @@ describe('buildToolbar — TKT-100 V1 opts pass-through', () => {
     tpl.destroy()
   })
 })
+
+// ============ Sprint 22g GA: 21 V1 toolbarCtrl parity methods ============
+//
+// Each test covers one of the 21 new methods added to reach 42/42 V1 coverage.
+// Pattern: build toolbar → invoke method → assert state OR bus event OR
+// returned value → destroy and confirm post-destroy method is a safe no-op.
+
+describe('toolbarCtrl — Sprint 22g GA V1 parity (21 methods)', () => {
+  // ---- Business dialog (V1 §8A.2 rows 3-9) ----
+  it('#1 openBusinessDialog fires bus event with cached items', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const handler = vi.fn()
+    ctrl.on('business-dialog-open', handler)
+    ctrl.setBusinessItems([{ id: 'a' }])
+    ctrl.openBusinessDialog()
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler.mock.calls[0]![0]).toEqual({ items: [{ id: 'a' }] })
+    ctrl.destroy()
+    ctrl.openBusinessDialog() // destroyed-no-op
+    expect(handler).toHaveBeenCalledTimes(1)
+    tpl.destroy()
+  })
+
+  it('#2 closeBusinessDialog fires bus event and invokes opts.onBusinessDialogClose', () => {
+    const tpl = new PrintTemplate()
+    const onClose = vi.fn()
+    const ctrl = buildToolbar(host, tpl, { onBusinessDialogClose: onClose })
+    const handler = vi.fn()
+    ctrl.on('business-dialog-close', handler)
+    ctrl.closeBusinessDialog()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#3 refreshBusinessList calls provider and caches result', async () => {
+    const tpl = new PrintTemplate()
+    const provider = vi.fn().mockResolvedValue([{ id: 'p1' }, { id: 'p2' }])
+    const ctrl = buildToolbar(host, tpl, { businessListProvider: provider })
+    const items = await ctrl.refreshBusinessList()
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(items).toEqual([{ id: 'p1' }, { id: 'p2' }])
+    expect(ctrl.getBusinessItems()).toEqual([{ id: 'p1' }, { id: 'p2' }])
+    ctrl.destroy()
+    expect(await ctrl.refreshBusinessList()).toEqual([])
+    tpl.destroy()
+  })
+
+  it('#4 setBusinessItems replaces cache and fires items-change', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const handler = vi.fn()
+    ctrl.on('business-items-change', handler)
+    ctrl.setBusinessItems([{ id: 'x' }, { id: 'y' }])
+    expect(handler).toHaveBeenCalledWith([{ id: 'x' }, { id: 'y' }])
+    expect(ctrl.getBusinessItems()).toEqual([{ id: 'x' }, { id: 'y' }])
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#5 getBusinessItems returns defensive copy (mutation does not leak)', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    ctrl.setBusinessItems([{ id: '1' }])
+    const out = ctrl.getBusinessItems()
+    out.push({ id: 'leak' })
+    expect(ctrl.getBusinessItems()).toEqual([{ id: '1' }])
+    ctrl.destroy()
+    expect(ctrl.getBusinessItems()).toEqual([])
+    tpl.destroy()
+  })
+
+  it('#6 setBusinessListProvider swaps provider used by refresh', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const p1 = vi.fn().mockResolvedValue([{ id: 'p1' }])
+    ctrl.setBusinessListProvider(p1)
+    await ctrl.refreshBusinessList()
+    expect(p1).toHaveBeenCalledTimes(1)
+    ctrl.setBusinessListProvider(null)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await ctrl.refreshBusinessList()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#7 setBusinessLoader accepts function and null (no throw)', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    expect(() => ctrl.setBusinessLoader(vi.fn())).not.toThrow()
+    expect(() => ctrl.setBusinessLoader(null)).not.toThrow()
+    ctrl.destroy()
+    expect(() => ctrl.setBusinessLoader(null)).not.toThrow()
+    tpl.destroy()
+  })
+
+  // ---- Template dialog (V1 §8A.2 rows 11-12, 17-21) ----
+  it('#8 openTemplateDialog fires bus event with items payload', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const handler = vi.fn()
+    ctrl.on('template-dialog-open', handler)
+    ctrl.setTemplateItems([{ id: 't1' }])
+    ctrl.openTemplateDialog()
+    expect(handler.mock.calls[0]![0]).toEqual({ items: [{ id: 't1' }] })
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#9 closeTemplateDialog fires bus event and invokes onTemplateDialogClose', () => {
+    const tpl = new PrintTemplate()
+    const onClose = vi.fn()
+    const ctrl = buildToolbar(host, tpl, { onTemplateDialogClose: onClose })
+    const handler = vi.fn()
+    ctrl.on('template-dialog-close', handler)
+    ctrl.closeTemplateDialog()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#10 refreshTemplateList caches items and emits change', async () => {
+    const tpl = new PrintTemplate()
+    const provider = vi.fn().mockResolvedValue([{ id: 'tpl1' }])
+    const ctrl = buildToolbar(host, tpl, { templateListProvider: provider })
+    const handler = vi.fn()
+    ctrl.on('template-items-change', handler)
+    const items = await ctrl.refreshTemplateList()
+    expect(items).toEqual([{ id: 'tpl1' }])
+    expect(handler).toHaveBeenCalledWith([{ id: 'tpl1' }])
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#11 setTemplateItems replaces cache (defensive copy)', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const input = [{ id: 'A' }, { id: 'B' }]
+    ctrl.setTemplateItems(input)
+    input.push({ id: 'C' }) // mutate caller's array
+    expect(ctrl.getTemplateItems()).toEqual([{ id: 'A' }, { id: 'B' }])
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#12 getTemplateItems returns defensive copy', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    ctrl.setTemplateItems([{ id: '1' }])
+    const out = ctrl.getTemplateItems()
+    out.push({ id: 'leak' })
+    expect(ctrl.getTemplateItems()).toEqual([{ id: '1' }])
+    ctrl.destroy()
+    expect(ctrl.getTemplateItems()).toEqual([])
+    tpl.destroy()
+  })
+
+  it('#13 setTemplateListProvider swaps provider', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const provider = vi.fn().mockReturnValue([{ id: 'tA' }])
+    ctrl.setTemplateListProvider(provider)
+    const result = await ctrl.refreshTemplateList()
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(result).toEqual([{ id: 'tA' }])
+    ctrl.setTemplateListProvider(null) // clear
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#14 setTemplateLoader accepts function and null', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    expect(() => ctrl.setTemplateLoader(vi.fn())).not.toThrow()
+    expect(() => ctrl.setTemplateLoader(null)).not.toThrow()
+    ctrl.destroy()
+    expect(() => ctrl.setTemplateLoader(null)).not.toThrow()
+    tpl.destroy()
+  })
+
+  // ---- Save dialog (V1 §8A.2 rows 14-15) ----
+  it('#15 openSaveDialog fires bus event with defaultName payload', () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    const handler = vi.fn()
+    ctrl.on('save-dialog-open', handler)
+    ctrl.openSaveDialog('My Template')
+    expect(handler).toHaveBeenCalledWith({ defaultName: 'My Template' })
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  it('#16 closeSaveDialog fires bus event and invokes onSaveDialogClose', () => {
+    const tpl = new PrintTemplate()
+    const onClose = vi.fn()
+    const ctrl = buildToolbar(host, tpl, { onSaveDialogClose: onClose })
+    const handler = vi.fn()
+    ctrl.on('save-dialog-close', handler)
+    ctrl.closeSaveDialog()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+    ctrl.destroy()
+    tpl.destroy()
+  })
+
+  // ---- Direct save (V1 §8A.2 row 31) ----
+  it('#17 triggerSave with {skipPrompt:true} runs onSave directly and returns JSON', () => {
+    const tpl = new PrintTemplate()
+    const onSave = vi.fn()
+    const ctrl = buildToolbar(host, tpl, { onSave })
+    const result = ctrl.triggerSave({ skipPrompt: true, name: 'inline' })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    // Signature: (tpl, json, event, api, ctx)
+    expect(onSave.mock.calls[0]![0]).toBe(tpl)
+    expect(onSave.mock.calls[0]![4]).toEqual({ name: 'inline' })
+    expect(result).toBeTruthy()
+    expect(Array.isArray((result as { panels: unknown[] }).panels)).toBe(true)
+    // String short-form also skip-prompts:
+    onSave.mockClear()
+    ctrl.triggerSave('quickname')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    // Without skipPrompt → opens save dialog instead (returns null)
+    const handler = vi.fn()
+    ctrl.on('save-dialog-open', handler)
+    expect(ctrl.triggerSave()).toBeNull()
+    expect(handler).toHaveBeenCalledTimes(1)
+    ctrl.destroy()
+    expect(ctrl.triggerSave({ skipPrompt: true })).toBeNull()
+    tpl.destroy()
+  })
+
+  // ---- DOM accessors (V1 §8A.2 rows 32-33, 37, 41) ----
+  it('#18 getButton resolves V1 keys to current DOM nodes', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    const saveBtn = ctrl.getButton('save')
+    expect(saveBtn).toBeInstanceOf(HTMLButtonElement)
+    expect(saveBtn?.getAttribute('aria-label')).toBe('Save')
+    // Paper key resolves to <option>
+    const a4 = ctrl.getButton('paper:A4')
+    expect(a4).toBeInstanceOf(HTMLOptionElement)
+    expect((a4 as HTMLOptionElement).value).toBe('A4')
+    // Unknown key returns null
+    expect(ctrl.getButton('nope:xxx')).toBeNull()
+    ctrl.destroy()
+    expect(ctrl.getButton('save')).toBeNull()
+    tpl.destroy()
+  })
+
+  it('#19 getButtons returns a map of all rendered V1-keyed buttons', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    const all = ctrl.getButtons()
+    // Default-rendered set should include at least save / preview / print / undo / redo
+    expect(Object.keys(all)).toEqual(expect.arrayContaining(['save', 'preview', 'print', 'undo', 'redo']))
+    expect(all.save).toBeInstanceOf(HTMLButtonElement)
+    // Adding an extra button surfaces under its custom key as well
+    ctrl.addToolbarButton({ id: 'ext1', label: 'Extra One' })
+    await nextTick()
+    const after = ctrl.getButtons()
+    expect(after.ext1).toBeInstanceOf(HTMLButtonElement)
+    ctrl.destroy()
+    expect(ctrl.getButtons()).toEqual({})
+    tpl.destroy()
+  })
+
+  it('#20 triggerButton clicks the resolved button and returns true', async () => {
+    const tpl = new PrintTemplate()
+    const onPreview = vi.fn()
+    const ctrl = buildToolbar(host, tpl, { onPreview })
+    await nextTick()
+    expect(ctrl.triggerButton('preview')).toBe(true)
+    expect(onPreview).toHaveBeenCalledTimes(1)
+    // Unknown key returns false
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(ctrl.triggerButton('nope')).toBe(false)
+    warn.mockRestore()
+    ctrl.destroy()
+    expect(ctrl.triggerButton('preview')).toBe(false)
+    tpl.destroy()
+  })
+
+  it('#21 getToolbarElement returns the .hiprint-toolbar root element', async () => {
+    const tpl = new PrintTemplate()
+    const ctrl = buildToolbar(host, tpl)
+    await nextTick()
+    const root = ctrl.getToolbarElement()
+    expect(root).toBeInstanceOf(HTMLElement)
+    expect(root?.classList.contains('hiprint-toolbar')).toBe(true)
+    ctrl.destroy()
+    expect(ctrl.getToolbarElement()).toBeNull()
+    tpl.destroy()
+  })
+})

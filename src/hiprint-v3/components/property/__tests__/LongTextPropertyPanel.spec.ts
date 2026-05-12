@@ -292,3 +292,75 @@ describe('LongTextPropertyPanel — field changes', () => {
     w.unmount()
   })
 })
+
+/**
+ * Sprint 22g — Stream GC. Zero-out the dropped 3 fields from Sprint 22c
+ * (93% → 100% coverage).
+ */
+describe('LongTextPropertyPanel — Sprint 22g restored fields (3)', () => {
+  it('coordinateSync mirrors left ⇄ top when enabled (and unmirrors when disabled)', async () => {
+    const { getElement, canvas } = seedLongText({ coordinateSync: true })
+    const w = mount(LongTextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    expect(
+      (w.find('input.lt-coordinate-sync').element as HTMLInputElement).checked
+    ).toBe(true)
+    const left = w.find('input.lt-left')
+    ;(left.element as HTMLInputElement).value = '17'
+    await left.trigger('input')
+    let o = getOpts(getElement())
+    expect(o.left).toBe(17)
+    expect(o.top).toBe(17)
+    // Toggle off; ensure subsequent edits don't mirror. Flip .checked
+    // explicitly before firing change (vue-test-utils does not toggle it).
+    const syncCb = w.find('input.lt-coordinate-sync')
+    ;(syncCb.element as HTMLInputElement).checked = false
+    await syncCb.trigger('change')
+    await w.setProps({
+      element: canvas.panels[0]!.printElements.find((e) => e.id === 'e1')!,
+    })
+    await w.vm.$nextTick()
+    expect(getOpts(getElement()).coordinateSync).toBe(false)
+    const top = w.find('input.lt-top')
+    ;(top.element as HTMLInputElement).value = '99'
+    await top.trigger('input')
+    o = getOpts(getElement())
+    expect(o.top).toBe(99)
+    expect(o.left).toBe(17) // unchanged from the previous mirrored write.
+    w.unmount()
+  })
+
+  it('widthHeightSync mirrors width ⇄ height when enabled', async () => {
+    const { getElement } = seedLongText({ widthHeightSync: true })
+    const w = mount(LongTextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    expect(
+      (w.find('input.lt-width-height-sync').element as HTMLInputElement).checked
+    ).toBe(true)
+    const width = w.find('input.lt-width')
+    ;(width.element as HTMLInputElement).value = '120'
+    await width.trigger('input')
+    const o = getOpts(getElement())
+    expect(o.width).toBe(120)
+    expect(o.height).toBe(120)
+    w.unmount()
+  })
+
+  it('optionsGroup advanced text input commits options.optionsGroup on blur', async () => {
+    const { getElement } = seedLongText()
+    const w = mount(LongTextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const og = w.find('input.lt-options-group')
+    expect(og.exists()).toBe(true)
+    await og.setValue('text-tools')
+    await og.trigger('blur')
+    expect(getOpts(getElement()).optionsGroup).toBe('text-tools')
+    w.unmount()
+  })
+})

@@ -82,6 +82,13 @@ function render(): void {
     const widthMm = Math.max(0, pt.toMm(widthPt))
     const barAutoWidth = isTrue(opts.barAutoWidth)
 
+    // Sprint 22g GC — V1 `barTextMode` quirk (mirror of render.ts barcode).
+    // 'text' → external <div class="hibarcode_displayValue"> below the SVG.
+    // 'svg' / default → text rendered inside the SVG by bwip-js itself.
+    const barTextMode =
+      typeof opts.barTextMode === 'string' ? opts.barTextMode : ''
+    const externalText = barTextMode === 'text'
+
     // TKT-023: prefer Path B `barcodeType`; fall back to V1 Path A
     // `barcodeMode` (CODE128 / EAN13 / ... 18 enum) via compat mapping.
     const bcid =
@@ -96,7 +103,7 @@ function render(): void {
       scale: safeNumber(opts.barWidth, { fallback: 1, min: 1 }),
       width: !barAutoWidth ? Math.floor(widthMm) : ('' as unknown as number),
       height: Math.floor(heightMm),
-      includetext: !hideTitle,
+      includetext: !hideTitle && !externalText,
       textsize: Math.floor(safeNumber(opts.fontSize, { fallback: 10 })),
       barcolor: typeof opts.barColor === 'string' ? opts.barColor : '#000',
     } as Parameters<typeof bwipjs.toSVG>[0])
@@ -109,6 +116,14 @@ function render(): void {
       const fallback = document.createElement('div')
       fallback.textContent = 'Barcode render failed'
       host.appendChild(fallback)
+    }
+    // Sprint 22g GC — separate text line below SVG when barTextMode === 'text'.
+    if (externalText && !hideTitle) {
+      const dv = document.createElement('div')
+      dv.classList.add('hibarcode_displayValue')
+      dv.style.whiteSpace = 'nowrap'
+      dv.textContent = text // [Invariant #1] textContent escapes
+      host.appendChild(dv)
     }
   } catch (err) {
     console.warn('[hiprint-v3:BarcodeElement] render failed:', err)

@@ -379,3 +379,171 @@ describe('TextPropertyPanel — field changes', () => {
     w.unmount()
   })
 })
+
+/**
+ * Sprint 22g — Stream GC. Zero-out the dropped 7 fields from Sprint 22c
+ * (88% → 100% coverage). All seven plus coordinateSync/widthHeightSync
+ * must (a) surface in the panel, (b) round-trip through `canvas.updateElement`
+ * with the V1-compatible key, and (c) honor visibility rules tied to
+ * textType. The barTextMode/upperCase pair additionally drives renderer
+ * behavior — wiring evidence lives in TextElement / render.ts / _helpers.ts
+ * and is asserted indirectly through the panel's write contract.
+ */
+describe('TextPropertyPanel — Sprint 22g restored fields (7 + sync)', () => {
+  it('barTextMode select visible when textType=barcode and writes V1 key', async () => {
+    const { getElement } = seedText({
+      textType: 'barcode',
+      barTextMode: '',
+    })
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const sel = w.find('select.tx-bar-text-mode')
+    expect(sel.exists()).toBe(true)
+    await sel.setValue('text')
+    expect(getOpts(getElement()).barTextMode).toBe('text')
+    // Hidden when textType=text.
+    await w.setProps({
+      element: { ...getElement()!, options: { ...getOpts(getElement()), textType: 'text' } },
+    })
+    await w.vm.$nextTick()
+    expect(w.find('select.tx-bar-text-mode').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('barWidth + barAutoWidth tri-state write V1 keys when textType=barcode', async () => {
+    const { getElement } = seedText({ textType: 'barcode' })
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const bw = w.find('input.tx-bar-width')
+    expect(bw.exists()).toBe(true)
+    ;(bw.element as HTMLInputElement).value = '3'
+    await bw.trigger('input')
+    expect(getOpts(getElement()).barWidth).toBe(3)
+    const baw = w.find('select.tx-bar-auto-width')
+    await baw.setValue('false')
+    expect(getOpts(getElement()).barAutoWidth).toBe(false)
+    await baw.setValue('')
+    expect(getOpts(getElement()).barAutoWidth).toBeUndefined()
+    await baw.setValue('true')
+    expect(getOpts(getElement()).barAutoWidth).toBe(true)
+    w.unmount()
+  })
+
+  it('barcodeType text input commits options.barcodeType on blur (Path B override)', async () => {
+    const { getElement } = seedText({ textType: 'barcode' })
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const bt = w.find('input.tx-barcode-type')
+    expect(bt.exists()).toBe(true)
+    await bt.setValue('ean13')
+    await bt.trigger('blur')
+    expect(getOpts(getElement()).barcodeType).toBe('ean13')
+    // render.ts prefers options.barcodeType over options.barcodeMode — this
+    // panel write hits the bcid used by bwip-js directly.
+    w.unmount()
+  })
+
+  it('qrcodeType text input commits options.qrcodeType when textType=qrcode', async () => {
+    const { getElement } = seedText({ textType: 'qrcode' })
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const qt = w.find('input.tx-qrcode-type')
+    expect(qt.exists()).toBe(true)
+    await qt.setValue('datamatrix')
+    await qt.trigger('blur')
+    expect(getOpts(getElement()).qrcodeType).toBe('datamatrix')
+    w.unmount()
+  })
+
+  it('upperCase checkbox writes options.upperCase (render-time toUpperCase wiring lives in _helpers.computeDisplayText + render.ts)', async () => {
+    const { getElement } = seedText()
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const uc = w.find('input.tx-upper-case')
+    expect(uc.exists()).toBe(true)
+    ;(uc.element as HTMLInputElement).checked = true
+    await uc.trigger('change')
+    expect(getOpts(getElement()).upperCase).toBe(true)
+    w.unmount()
+  })
+
+  it('optionsGroup advanced text input commits options.optionsGroup', async () => {
+    const { getElement } = seedText()
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    const og = w.find('input.tx-options-group')
+    expect(og.exists()).toBe(true)
+    await og.setValue('barcode-tools')
+    await og.trigger('blur')
+    expect(getOpts(getElement()).optionsGroup).toBe('barcode-tools')
+    w.unmount()
+  })
+
+  it('coordinateSync + widthHeightSync checkboxes fan-out on Position writes', async () => {
+    // Toggle coordinateSync on → editing left mirrors into top in the same patch.
+    const { getElement, canvas } = seedText({
+      coordinateSync: true,
+      widthHeightSync: true,
+    })
+    const w = mount(TextPropertyPanel, {
+      props: { element: getElement()! },
+    })
+    await w.vm.$nextTick()
+    // Verify both checkboxes render bound to current options.
+    expect(
+      (w.find('input.tx-coordinate-sync').element as HTMLInputElement).checked
+    ).toBe(true)
+    expect(
+      (w.find('input.tx-width-height-sync').element as HTMLInputElement).checked
+    ).toBe(true)
+    // Drive left → top mirror.
+    const left = w.find('input.tx-left')
+    ;(left.element as HTMLInputElement).value = '42'
+    await left.trigger('input')
+    let o = getOpts(getElement())
+    expect(o.left).toBe(42)
+    expect(o.top).toBe(42)
+    // Drive width → height mirror after element-prop refresh.
+    await w.setProps({
+      element: canvas.panels[0]!.printElements.find((e) => e.id === 'e1')!,
+    })
+    await w.vm.$nextTick()
+    const width = w.find('input.tx-width')
+    ;(width.element as HTMLInputElement).value = '88'
+    await width.trigger('input')
+    o = getOpts(getElement())
+    expect(o.width).toBe(88)
+    expect(o.height).toBe(88)
+    // With sync OFF the mirror does not fire. Manually flip the .checked
+    // state (vue-test-utils' .trigger('change') does not toggle the DOM
+    // checkbox value by itself).
+    const syncCb = w.find('input.tx-coordinate-sync')
+    ;(syncCb.element as HTMLInputElement).checked = false
+    await syncCb.trigger('change')
+    await w.setProps({
+      element: canvas.panels[0]!.printElements.find((e) => e.id === 'e1')!,
+    })
+    await w.vm.$nextTick()
+    expect(getOpts(getElement()).coordinateSync).toBe(false)
+    const top = w.find('input.tx-top')
+    ;(top.element as HTMLInputElement).value = '5'
+    await top.trigger('input')
+    o = getOpts(getElement())
+    expect(o.top).toBe(5)
+    // left untouched by the just-fired onTop because coordinateSync now false.
+    expect(o.left).toBe(42)
+    w.unmount()
+  })
+})

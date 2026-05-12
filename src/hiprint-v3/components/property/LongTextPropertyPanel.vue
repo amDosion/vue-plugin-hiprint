@@ -46,10 +46,17 @@
  *                longTextPaginate
  *   Misc       — draggable
  *
- * Total V1 fields surfaced: 41 of 44 + 1 panel-only override
- * (longTextPaginate). Out-of-scope: `coordinateSync` / `widthHeightSync`
- * (UI-only mirroring, redundant when X/Y and W/H are paired) and
- * `optionsGroup` (placeholder, no value).
+ * Total V1 fields surfaced: 44 of 44 (Sprint 22g — Stream GC zero-out) +
+ * 1 panel-only override (longTextPaginate).
+ *
+ * Sprint 22g restored fields:
+ *   - coordinateSync — when on, editing X/Y mirrors the value into the
+ *     opposite axis in the same store patch.
+ *   - widthHeightSync — when on, editing W/H mirrors the value into the
+ *     opposite dimension (handy for square shapes / aspect-preserving
+ *     manual resize).
+ *   - optionsGroup — V1 internal grouping placeholder string. Advanced
+ *     metadata; no render effect. Surfaced for round-trip compatibility.
  *
  * Dispatched from HiprintPropertyPanel.vue when
  * `elementType === 'longText'` AND exactly one element is selected.
@@ -99,6 +106,8 @@ const draftFormatter = ref<string>('')
 const draftStyler = ref<string>('')
 const draftPageBreak = ref<string>('')
 const draftMinHeight = ref<string>('')
+// Sprint 22g GC — advanced V1 metadata draft.
+const draftOptionsGroup = ref<string>('')
 
 watch(
   () => props.element,
@@ -122,22 +131,52 @@ watch(
     } else {
       draftPageBreak.value = ''
     }
+    // Sprint 22g GC draft.
+    draftOptionsGroup.value = str(o.optionsGroup)
   },
   { immediate: true, deep: true }
 )
 
 // ============ Position ============
+// Sprint 22g GC — coordinateSync / widthHeightSync mirroring (V1 parity).
 function onLeft(ev: Event): void {
-  update({ left: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { left: v }
+  if (bool(opts.value.coordinateSync)) patch.top = v
+  update(patch, false)
 }
 function onTop(ev: Event): void {
-  update({ top: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { top: v }
+  if (bool(opts.value.coordinateSync)) patch.left = v
+  update(patch, false)
 }
 function onWidth(ev: Event): void {
-  update({ width: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { width: v }
+  if (bool(opts.value.widthHeightSync)) patch.height = v
+  update(patch, false)
 }
 function onHeight(ev: Event): void {
-  update({ height: num((ev.target as HTMLInputElement).value, 0) }, false)
+  const v = num((ev.target as HTMLInputElement).value, 0)
+  const patch: Record<string, unknown> = { height: v }
+  if (bool(opts.value.widthHeightSync)) patch.width = v
+  update(patch, false)
+}
+function onCoordinateSync(ev: Event): void {
+  update({ coordinateSync: !!(ev.target as HTMLInputElement).checked })
+}
+function onWidthHeightSync(ev: Event): void {
+  update({ widthHeightSync: !!(ev.target as HTMLInputElement).checked })
+}
+/**
+ * Sprint 22g GC — V1 internal supportOptions grouping key. No render-time
+ * semantics; surfaced for round-trip compat only.
+ *
+ * @advanced V1 internal field. No render effect.
+ */
+function onOptionsGroupCommit(): void {
+  update({ optionsGroup: draftOptionsGroup.value })
 }
 function onTransform(ev: Event): void {
   update({ transform: num((ev.target as HTMLInputElement).value, 0) }, false)
@@ -411,6 +450,27 @@ function onDraggable(ev: Event): void {
         />
         Fixed position (no pagination)
       </label>
+      <!-- Sprint 22g GC — coordinate / size sync (V1 parity). -->
+      <div class="hiprint-property-row">
+        <label class="inline">
+          <input
+            type="checkbox"
+            class="lt-coordinate-sync"
+            :checked="bool(opts.coordinateSync)"
+            @change="onCoordinateSync"
+          />
+          Sync X / Y
+        </label>
+        <label class="inline">
+          <input
+            type="checkbox"
+            class="lt-width-height-sync"
+            :checked="bool(opts.widthHeightSync)"
+            @change="onWidthHeightSync"
+          />
+          Sync W / H
+        </label>
+      </div>
     </fieldset>
 
     <!-- Font -->
@@ -886,6 +946,22 @@ function onDraggable(ev: Event): void {
           @change="onDraggable"
         />
         Draggable
+      </label>
+    </fieldset>
+
+    <!-- Sprint 22g GC — Advanced (V1 internal field; no render effect). -->
+    <fieldset class="hiprint-property-fieldset">
+      <legend>Advanced</legend>
+      <label>
+        Options group (V1 internal; advanced — usually leave blank)
+        <input
+          type="text"
+          class="lt-options-group"
+          placeholder="V1 supportOptions grouping key"
+          v-model="draftOptionsGroup"
+          @blur="onOptionsGroupCommit"
+          @keydown.enter="onOptionsGroupCommit"
+        />
       </label>
     </fieldset>
   </div>

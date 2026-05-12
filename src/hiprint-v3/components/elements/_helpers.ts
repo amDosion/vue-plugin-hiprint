@@ -224,6 +224,13 @@ export function getFormattedValue(
  *
  * TKT-024: value runs through {@link getFormattedValue} (dataType + format)
  * BEFORE composition. Formatter chain runs separately in the caller.
+ *
+ * Sprint 22g (Stream GC): when `options.upperCase === true`, the *value*
+ * portion is uppercased at render time. The title prefix is preserved as
+ * authored — V1 only uppercased the data value, not the title. The
+ * uppercase pass runs AFTER dataType+format conversion but BEFORE title
+ * composition, matching V1 line 10037 ordering (getData → toUpperCase →
+ * title prefix).
  */
 export function computeDisplayText(
   element: CanvasElement | null | undefined,
@@ -231,7 +238,11 @@ export function computeDisplayText(
 ): string {
   if (!element) return ''
   const opts = element.options as Opts
-  const formatted = getFormattedValue(element, data)
+  let formatted = getFormattedValue(element, data)
+  // Sprint 22g GC — upperCase render-time quirk (V1 parity).
+  if (isTrue(opts.upperCase)) {
+    formatted = formatted.toUpperCase()
+  }
   const title = coerceText(opts.title)
   const hideTitle = isTrue(opts.hideTitle)
   const separator = typeof opts.titleSep === 'string' ? opts.titleSep : '：'

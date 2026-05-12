@@ -443,11 +443,26 @@ export interface BuildToolbarOptions {
 }
 
 /**
- * V1 toolbarCtrl surface (subset). Sprint 22c restores the 10 most-used
- * methods documented in V1-INVENTORY §8A.2 (42 V1 methods → 10 here = 24 %).
- * V3 reactive consumers should still prefer `<HiprintToolbar>` props, but
- * legacy `vue-admin-main` callers depending on imperative `toolbarCtrl.xxx()`
- * now work again.
+ * V1 toolbarCtrl surface. Sprint 22c restored the 21 most-used legacy
+ * methods (~50 %); Sprint 22g GA adds the remaining 21 methods documented in
+ * V1-INVENTORY §8A.2 to reach **42/42** V1 coverage. V3 reactive consumers
+ * should still prefer `<HiprintToolbar>` props, but legacy `vue-admin-main`
+ * callers depending on imperative `toolbarCtrl.xxx()` now have full parity.
+ *
+ * Method counts:
+ *   - 21 Sprint 22c V3 conveniences (getScale, setScale, addToolbarButton,
+ *     removeToolbarButton, enableButton, disableButton, setButtonText,
+ *     getActivePanel, setActivePanel, addPanel, removePanel, setPaper,
+ *     rotatePaper, getJson, setJson, on, off, emit, getTemplateApi,
+ *     getCanvasApi, destroy).
+ *   - 21 Sprint 22g GA V1-parity additions (openBusinessDialog,
+ *     closeBusinessDialog, refreshBusinessList, setBusinessItems,
+ *     getBusinessItems, setBusinessListProvider, setBusinessLoader,
+ *     openTemplateDialog, closeTemplateDialog, refreshTemplateList,
+ *     setTemplateItems, getTemplateItems, setTemplateListProvider,
+ *     setTemplateLoader, openSaveDialog, closeSaveDialog, triggerSave,
+ *     getButton, getButtons, triggerButton, getToolbarElement).
+ *   - Total: 42 public methods.
  */
 export interface ToolbarController {
   /** Unmount the toolbar's Vue app + clear reactive refs. Idempotent. */
@@ -545,6 +560,126 @@ export interface ToolbarController {
   getTemplateApi(): PrintTemplate
   /** Underlying canvas store (escape hatch). */
   getCanvasApi(): ReturnType<typeof useCanvasStore>
+
+  // ============ Sprint 22g GA: V1 toolbarCtrl parity surface ============
+  //
+  // The next 21 methods restore the V1 buildToolbar return-value surface
+  // documented in `docs/V1-INVENTORY/toolbar-and-shell.md` §8A.2 (V1 lines
+  // 14722-14856). V3 keeps the V1 method names + signatures so legacy
+  // imperative callers in vue-admin-main work without modification.
+  //
+  // V3 architectural twist: V1 dialogs were jQuery-rendered inside the
+  // toolbar's container; V3 dialogs are Vue 3 reactive SFCs controlled by
+  // the *parent* (business code). The dialog open/close methods therefore
+  // mutate controller-owned state AND fire `business-dialog-open` /
+  // `template-dialog-open` / `save-dialog-open` events on the bus so business
+  // code can drive its own `<BusinessDialog v-model:open>` etc. Items state
+  // is mirrored inside the controller so V1 list-management APIs keep
+  // working without a real DOM dialog.
+
+  // ---- Business dialog (V1 §8A.2 rows 3-9) ----
+  /**
+   * Open the business-select dialog. V3 fires `business-dialog-open` on the
+   * controller bus (business code consumes it to flip its own `v-model:open`)
+   * and updates the cached open state. V1 line 14732-14734.
+   *
+   * If `onBusinessDialogOpen` opts hook is set, it runs first; returning
+   * `false` suppresses the bus event (V1 parity: hook may take over).
+   */
+  openBusinessDialog(): void
+  /** Close the business-select dialog. Mirror of openBusinessDialog. V1 14735-14737. */
+  closeBusinessDialog(): void
+  /**
+   * Call the business list provider and update the cached items.
+   * Returns a Promise that resolves with the new items array. V1 14738-14740.
+   */
+  refreshBusinessList(): Promise<ToolbarListItem[]>
+  /**
+   * Replace the cached business items (skips provider call).
+   * Fires `business-items-change` on the bus. V1 14741-14743.
+   */
+  setBusinessItems(list: ToolbarListItem[]): void
+  /** Get current cached business items (defensive shallow copy). V1 14744-14746. */
+  getBusinessItems(): ToolbarListItem[]
+  /**
+   * Swap the business list provider. Pass `null` to clear. V1 14747-14749.
+   * Subsequent refreshBusinessList() calls the new provider.
+   */
+  setBusinessListProvider(
+    provider: BuildToolbarOptions['businessListProvider'] | null
+  ): void
+  /**
+   * Swap the per-item business loader. Pass `null` to clear. V1 14750-14752.
+   */
+  setBusinessLoader(loader: BuildToolbarOptions['businessLoader'] | null): void
+
+  // ---- Template dialog (V1 §8A.2 rows 11-12, 17-21) ----
+  /** Open the template-select dialog. Fires `template-dialog-open`. V1 14756-14758. */
+  openTemplateDialog(): void
+  /** Close the template-select dialog. V1 14759-14761. */
+  closeTemplateDialog(): void
+  /** Refresh template items via the registered provider. V1 14774-14776. */
+  refreshTemplateList(): Promise<ToolbarListItem[]>
+  /** Replace cached template items. V1 14777-14779. */
+  setTemplateItems(list: ToolbarListItem[]): void
+  /** Get cached template items (defensive copy). V1 14780-14782. */
+  getTemplateItems(): ToolbarListItem[]
+  /** Swap template list provider; `null` clears. V1 14783-14785. */
+  setTemplateListProvider(
+    provider: BuildToolbarOptions['templateListProvider'] | null
+  ): void
+  /** Swap template loader; `null` clears. V1 14786-14788. */
+  setTemplateLoader(loader: BuildToolbarOptions['templateLoader'] | null): void
+
+  // ---- Save dialog (V1 §8A.2 rows 14-15) ----
+  /**
+   * Open the save dialog. `defaultName` pre-fills the name input.
+   * Fires `save-dialog-open` with `{ defaultName }` on the bus. V1 14765-14767.
+   */
+  openSaveDialog(defaultName?: string): void
+  /** Close the save dialog. V1 14768-14770. */
+  closeSaveDialog(): void
+
+  // ---- Direct actions (V1 §8A.2 row 31) ----
+  /**
+   * Programmatic save. Short-form string treated as `name`. With
+   * `{ skipPrompt: true, name }` skips the dialog and runs `onSave` directly
+   * (or downloads the JSON if no `onSave`). V1 14816-14818, 14198-14207.
+   *
+   * Returns the JSON snapshot that was saved, or `null` if the dialog was
+   * opened (deferred path).
+   */
+  triggerSave(
+    payload?:
+      | string
+      | { skipPrompt?: boolean; name?: string; event?: Event | null }
+  ): TemplateJson | null
+
+  // ---- DOM accessors (V1 §8A.2 rows 32-33, 37, 41) ----
+  /**
+   * Get a button element by V1 registry key (e.g. `'save'`, `'preview'`,
+   * `'scale:zoomIn'`, `'paper:A4'`). V3 keys map to aria-label-anchored
+   * `<button>` nodes in the SFC.
+   *
+   * Returns `null` if the button is not currently rendered (e.g. `showSave`
+   * is false). V1 returned `jQuery|null`; V3 returns `HTMLElement|null`
+   * since V3 is jQuery-free.
+   *
+   * V1 14819-14821.
+   */
+  getButton(key: string): HTMLElement | null
+  /** All currently-rendered buttons keyed by V1 registry id. V1 14822-14824. */
+  getButtons(): Record<string, HTMLElement>
+  /**
+   * Programmatically click a registered button. Returns `true` if the button
+   * was found and dispatched, else `false`. V1 14834-14836.
+   */
+  triggerButton(key: string): boolean
+  /**
+   * Root `.hiprint-toolbar` element (escape hatch for direct DOM access).
+   * V1 returned jQuery; V3 returns `HTMLElement|null`. V1 14846.
+   */
+  getToolbarElement(): HTMLElement | null
 
   // ---- escape hatches ----
   /** Underlying Vue app instance (escape hatch — avoid in business code). */
@@ -879,6 +1014,128 @@ export function buildToolbar(
   // currently unused — keep the reference to avoid "declared but never used".
   void templateStore
 
+  // ============ Sprint 22g GA: V1 toolbarCtrl parity state ============
+  //
+  // Controller-scoped mutable state for the 21 V1 dialog / items / save APIs.
+  // V3 dialogs are reactive Vue SFCs owned by the parent app — we don't render
+  // dialogs from the controller itself. Instead the controller mirrors V1's
+  // imperative state and fans out `*-dialog-open` / `*-items-change` events
+  // on the bus so business code can react.
+
+  /** Cached business items (initial seed: empty). Driven by setBusinessItems / refresh. */
+  let businessItemsState: ToolbarListItem[] = []
+  /** Cached template items (initial seed: empty). */
+  let templateItemsState: ToolbarListItem[] = []
+  /** Current business list provider. Falls back to `options.businessListProvider` if unset. */
+  let businessListProvider: BuildToolbarOptions['businessListProvider'] =
+    options.businessListProvider
+  /** Current business per-item loader. */
+  let businessLoader: BuildToolbarOptions['businessLoader'] = options.businessLoader
+  /** Current template list provider. */
+  let templateListProvider: BuildToolbarOptions['templateListProvider'] =
+    options.templateListProvider
+  /** Current template per-item loader. */
+  let templateLoader: BuildToolbarOptions['templateLoader'] = options.templateLoader
+
+  /**
+   * V1 button-key → SFC aria-label map. Used by `getButton/getButtons/triggerButton`.
+   *
+   * The SFC renders each toolbar button with `aria-label="<en label>"` (see
+   * HiprintToolbar.vue lines 844-1115). V1's registry keys are documented in
+   * `docs/V1-INVENTORY/toolbar-and-shell.md` §1.1-§1.22. This map adapts the
+   * V1 key vocabulary to the V3 DOM (V3 has no jQuery and no per-button data
+   * attribute beyond `aria-label`).
+   *
+   * Buttons not present here (e.g. `paper:A4`) are looked up dynamically.
+   */
+  const V1_KEY_ARIA_MAP: Record<string, string> = {
+    undo: 'Undo',
+    redo: 'Redo',
+    save: 'Save',
+    preview: 'Preview',
+    print: 'Print',
+    pdf: 'Download PDF',
+    clear: 'Clear template',
+    rotate: 'Rotate paper',
+    'paper:custom': 'Custom paper size',
+    'panels:add': 'Add panel',
+    'panels:remove': 'Remove panel',
+    'scale:zoomOut': 'Zoom out',
+    'scale:zoomReset': 'Reset zoom',
+    'scale:zoomIn': 'Zoom in',
+    'grid:toggle': 'Toggle grid',
+    'ruler:toggle': 'Toggle ruler',
+    templateSelect: 'Templates',
+    businessSelect: 'Business',
+  }
+
+  /**
+   * Resolve a V1 button key to a DOM element inside `target`.
+   *
+   * 1. `paper:<name>` — look up `<option value=<name>>` inside the paper
+   *    `<select>` (V3 uses a select, not per-button DOM nodes for paper).
+   *    Returns the `<option>` for inspection / synthetic change events.
+   * 2. Known keys (V1_KEY_ARIA_MAP) — match by aria-label.
+   * 3. Extra buttons added via `addToolbarButton` — match by aria-label = btn.key.
+   * 4. Fallback — try `aria-label === key` directly.
+   */
+  function resolveButtonByKey(key: string): HTMLElement | null {
+    if (!key || typeof key !== 'string') return null
+    const root: HTMLElement = target as HTMLElement
+    // Paper-key special case: V3 paper picker is a <select>, not buttons.
+    if (key.startsWith('paper:') && key !== 'paper:custom') {
+      const label = key.slice('paper:'.length)
+      const select = root.querySelector<HTMLSelectElement>(
+        'select[aria-label="Paper size"]'
+      )
+      if (!select) return null
+      const option = select.querySelector<HTMLOptionElement>(
+        'option[value="' + CSS.escape(label) + '"]'
+      )
+      return option ?? null
+    }
+    const aria = V1_KEY_ARIA_MAP[key] ?? key
+    return root.querySelector<HTMLElement>(
+      'button[aria-label="' + CSS.escape(aria) + '"]'
+    )
+  }
+
+  /**
+   * Default save path: prefer `onSave` hook with V1 signature; else
+   * Blob-download the JSON as `<name>.json`. Mirrors V1 lines 14086-14092.
+   */
+  function runDefaultSave(name?: string, event?: Event | null): TemplateJson {
+    const json = template.getJson()
+    if (typeof options.onSave === 'function') {
+      safeCall(
+        options.onSave as unknown as (...a: unknown[]) => void,
+        [template, json, event ?? null, undefined, { name }],
+        'toolbar.onSave'
+      )
+      return json
+    }
+    // Fallback — V1 downloadTemplateJson(json, name+'.json') [V1 13593-13610].
+    if (typeof document === 'undefined' || typeof URL === 'undefined') {
+      return json
+    }
+    try {
+      const blob = new Blob([JSON.stringify(json, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = (name && name.length ? name : 'template') + '.json'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.warn('[hiprint] toolbar.triggerSave: download fallback failed:', err)
+    }
+    return json
+  }
+
   const controller: ToolbarController = {
     _app: app,
     _container: target,
@@ -903,6 +1160,15 @@ export function buildToolbar(
         bus.clear('paper-change')
         bus.clear('element-change')
         bus.clear('history-change')
+        // Sprint 22g GA: clear V1 toolbarCtrl parity bus channels too.
+        bus.clear('business-dialog-open')
+        bus.clear('business-dialog-close')
+        bus.clear('business-items-change')
+        bus.clear('template-dialog-open')
+        bus.clear('template-dialog-close')
+        bus.clear('template-items-change')
+        bus.clear('save-dialog-open')
+        bus.clear('save-dialog-close')
       } catch {
         /* ignore */
       }
@@ -1186,6 +1452,345 @@ export function buildToolbar(
     getCanvasApi(): ReturnType<typeof useCanvasStore> {
       setActivePinia(pinia)
       return useCanvasStore()
+    },
+
+    // ============ Sprint 22g GA: V1 toolbarCtrl parity (21 methods) ============
+
+    // ---------- V1 §8A.2 #3 openBusinessDialog ----------
+    openBusinessDialog(): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.openBusinessDialog')
+      )
+        return
+      // V1 parity: onBusinessDialogOpen hook runs first; falsy=false suppresses.
+      if (typeof options.onBusinessDialogOpen === 'function') {
+        const result = safeCall(
+          options.onBusinessDialogOpen as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, items: businessItemsState }],
+          'toolbar.onBusinessDialogOpen'
+        )
+        if (result === false) return
+      }
+      bus.trigger('business-dialog-open', { items: businessItemsState })
+    },
+
+    // ---------- V1 §8A.2 #4 closeBusinessDialog ----------
+    closeBusinessDialog(): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.closeBusinessDialog')
+      )
+        return
+      if (typeof options.onBusinessDialogClose === 'function') {
+        safeCall(
+          options.onBusinessDialogClose as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.onBusinessDialogClose'
+        )
+      }
+      bus.trigger('business-dialog-close')
+    },
+
+    // ---------- V1 §8A.2 #5 refreshBusinessList ----------
+    async refreshBusinessList(): Promise<ToolbarListItem[]> {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.refreshBusinessList')
+      )
+        return []
+      if (typeof businessListProvider !== 'function') {
+        console.warn(
+          '[hiprint] toolbar.refreshBusinessList: no businessListProvider set'
+        )
+        return businessItemsState.slice()
+      }
+      try {
+        const result = await Promise.resolve(businessListProvider(template, undefined))
+        if (Array.isArray(result)) {
+          businessItemsState = result.slice()
+          bus.trigger('business-items-change', businessItemsState.slice())
+        }
+      } catch (err) {
+        console.error('[hiprint] toolbar.refreshBusinessList: provider rejected:', err)
+        if (typeof options.onBusinessError === 'function') {
+          safeCall(
+            options.onBusinessError as unknown as (...a: unknown[]) => void,
+            [err, null, template],
+            'toolbar.onBusinessError'
+          )
+        }
+      }
+      return businessItemsState.slice()
+    },
+
+    // ---------- V1 §8A.2 #6 setBusinessItems ----------
+    setBusinessItems(list: ToolbarListItem[]): void {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setBusinessItems'))
+        return
+      if (!Array.isArray(list)) {
+        console.warn('[hiprint] toolbar.setBusinessItems: list must be an array')
+        return
+      }
+      businessItemsState = list.slice()
+      bus.trigger('business-items-change', businessItemsState.slice())
+    },
+
+    // ---------- V1 §8A.2 #7 getBusinessItems ----------
+    getBusinessItems(): ToolbarListItem[] {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getBusinessItems'))
+        return []
+      return businessItemsState.slice()
+    },
+
+    // ---------- V1 §8A.2 #8 setBusinessListProvider ----------
+    setBusinessListProvider(
+      provider: BuildToolbarOptions['businessListProvider'] | null
+    ): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'toolbar.setBusinessListProvider'
+        )
+      )
+        return
+      businessListProvider =
+        typeof provider === 'function' ? provider : undefined
+    },
+
+    // ---------- V1 §8A.2 #9 setBusinessLoader ----------
+    setBusinessLoader(loader: BuildToolbarOptions['businessLoader'] | null): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setBusinessLoader')
+      )
+        return
+      businessLoader = typeof loader === 'function' ? loader : undefined
+      void businessLoader // referenced via closure; consumed by business code
+    },
+
+    // ---------- V1 §8A.2 #11 openTemplateDialog ----------
+    openTemplateDialog(): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.openTemplateDialog')
+      )
+        return
+      if (typeof options.onTemplateDialogOpen === 'function') {
+        const result = safeCall(
+          options.onTemplateDialogOpen as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, items: templateItemsState }],
+          'toolbar.onTemplateDialogOpen'
+        )
+        if (result === false) return
+      }
+      bus.trigger('template-dialog-open', { items: templateItemsState })
+    },
+
+    // ---------- V1 §8A.2 #12 closeTemplateDialog ----------
+    closeTemplateDialog(): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.closeTemplateDialog')
+      )
+        return
+      if (typeof options.onTemplateDialogClose === 'function') {
+        safeCall(
+          options.onTemplateDialogClose as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.onTemplateDialogClose'
+        )
+      }
+      bus.trigger('template-dialog-close')
+    },
+
+    // ---------- V1 §8A.2 #17 refreshTemplateList ----------
+    async refreshTemplateList(): Promise<ToolbarListItem[]> {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.refreshTemplateList')
+      )
+        return []
+      if (typeof templateListProvider !== 'function') {
+        console.warn(
+          '[hiprint] toolbar.refreshTemplateList: no templateListProvider set'
+        )
+        return templateItemsState.slice()
+      }
+      try {
+        const result = await Promise.resolve(templateListProvider(template, undefined))
+        if (Array.isArray(result)) {
+          templateItemsState = result.slice()
+          bus.trigger('template-items-change', templateItemsState.slice())
+        }
+      } catch (err) {
+        console.error('[hiprint] toolbar.refreshTemplateList: provider rejected:', err)
+      }
+      return templateItemsState.slice()
+    },
+
+    // ---------- V1 §8A.2 #18 setTemplateItems ----------
+    setTemplateItems(list: ToolbarListItem[]): void {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setTemplateItems'))
+        return
+      if (!Array.isArray(list)) {
+        console.warn('[hiprint] toolbar.setTemplateItems: list must be an array')
+        return
+      }
+      templateItemsState = list.slice()
+      bus.trigger('template-items-change', templateItemsState.slice())
+    },
+
+    // ---------- V1 §8A.2 #19 getTemplateItems ----------
+    getTemplateItems(): ToolbarListItem[] {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getTemplateItems'))
+        return []
+      return templateItemsState.slice()
+    },
+
+    // ---------- V1 §8A.2 #20 setTemplateListProvider ----------
+    setTemplateListProvider(
+      provider: BuildToolbarOptions['templateListProvider'] | null
+    ): void {
+      if (
+        assertNotDestroyed(
+          this as { _destroyed: boolean },
+          'toolbar.setTemplateListProvider'
+        )
+      )
+        return
+      templateListProvider =
+        typeof provider === 'function' ? provider : undefined
+    },
+
+    // ---------- V1 §8A.2 #21 setTemplateLoader ----------
+    setTemplateLoader(loader: BuildToolbarOptions['templateLoader'] | null): void {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.setTemplateLoader')
+      )
+        return
+      templateLoader = typeof loader === 'function' ? loader : undefined
+      void templateLoader
+    },
+
+    // ---------- V1 §8A.2 #14 openSaveDialog ----------
+    openSaveDialog(defaultName?: string): void {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.openSaveDialog'))
+        return
+      if (typeof options.onSaveDialogOpen === 'function') {
+        const result = safeCall(
+          options.onSaveDialogOpen as unknown as (...a: unknown[]) => boolean | void,
+          [{ template, defaultName }],
+          'toolbar.onSaveDialogOpen'
+        )
+        if (result === false) return
+      }
+      bus.trigger('save-dialog-open', { defaultName })
+    },
+
+    // ---------- V1 §8A.2 #15 closeSaveDialog ----------
+    closeSaveDialog(): void {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.closeSaveDialog'))
+        return
+      if (typeof options.onSaveDialogClose === 'function') {
+        safeCall(
+          options.onSaveDialogClose as unknown as (...a: unknown[]) => void,
+          [{ template }],
+          'toolbar.onSaveDialogClose'
+        )
+      }
+      bus.trigger('save-dialog-close')
+    },
+
+    // ---------- V1 §8A.2 #31 triggerSave ----------
+    triggerSave(
+      payload?:
+        | string
+        | { skipPrompt?: boolean; name?: string; event?: Event | null }
+    ): TemplateJson | null {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.triggerSave'))
+        return null
+      // Normalize string short-form (V1 14816): treat as { name }.
+      let name: string | undefined
+      let skipPrompt = false
+      let event: Event | null | undefined
+      if (typeof payload === 'string') {
+        name = payload
+        skipPrompt = true
+      } else if (payload && typeof payload === 'object') {
+        name = payload.name
+        skipPrompt = payload.skipPrompt === true
+        event = payload.event ?? null
+      }
+      if (skipPrompt) {
+        return runDefaultSave(name, event ?? null)
+      }
+      // V1 14816-14818: triggerSave without skipPrompt opens the save dialog.
+      this.openSaveDialog(name)
+      return null
+    },
+
+    // ---------- V1 §8A.2 #32 getButton ----------
+    getButton(key: string): HTMLElement | null {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getButton'))
+        return null
+      return resolveButtonByKey(key)
+    },
+
+    // ---------- V1 §8A.2 #33 getButtons ----------
+    getButtons(): Record<string, HTMLElement> {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getButtons'))
+        return {}
+      const out: Record<string, HTMLElement> = {}
+      for (const key of Object.keys(V1_KEY_ARIA_MAP)) {
+        const el = resolveButtonByKey(key)
+        if (el) out[key] = el
+      }
+      // Include extra buttons (registered via addToolbarButton / opts.extraButtons).
+      for (const btn of extraButtonsRef.value) {
+        const el = target.querySelector<HTMLElement>(
+          'button[aria-label="' + CSS.escape(btn.label ?? btn.key) + '"]'
+        )
+        if (el) out[btn.key] = el
+      }
+      return out
+    },
+
+    // ---------- V1 §8A.2 #37 triggerButton ----------
+    triggerButton(key: string): boolean {
+      if (assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.triggerButton'))
+        return false
+      const el = resolveButtonByKey(key)
+      if (!el) {
+        console.warn('[hiprint] toolbar.triggerButton: unknown key:', key)
+        return false
+      }
+      if (el instanceof HTMLOptionElement) {
+        // Paper-key option: synthesize a change on the parent select.
+        const select = el.parentElement as HTMLSelectElement | null
+        if (select && select.tagName === 'SELECT') {
+          select.value = el.value
+          select.dispatchEvent(new Event('change', { bubbles: true }))
+          return true
+        }
+        return false
+      }
+      if (el instanceof HTMLButtonElement) {
+        if (el.disabled) {
+          console.warn(
+            '[hiprint] toolbar.triggerButton: button is disabled:',
+            key
+          )
+          return false
+        }
+        el.click()
+        return true
+      }
+      // Fallback for non-button elements (e.g. a <span> chip): dispatch click.
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      return true
+    },
+
+    // ---------- V1 §8A.2 #41 getToolbarElement ----------
+    getToolbarElement(): HTMLElement | null {
+      if (
+        assertNotDestroyed(this as { _destroyed: boolean }, 'toolbar.getToolbarElement')
+      )
+        return null
+      return target.querySelector<HTMLElement>('.hiprint-toolbar') ?? target
     },
   }
   return controller

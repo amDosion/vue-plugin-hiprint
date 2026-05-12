@@ -322,6 +322,13 @@ export class PrintTemplate {
    */
   private _dynamicFields: Record<string, unknown> | unknown[] | undefined = undefined
 
+  /**
+   * Font list (V1 PrintTemplate.fontList equivalent — line 12898/12901). Used
+   * by the property panel font dropdown to populate selectable typefaces.
+   * Stored on the instance + emitted as `'font-list-change'` on mutation.
+   */
+  private _fontList: string[] = []
+
   /** Destroyed flag — gates all public methods (Invariant #1). */
   public _destroyed: boolean = false
 
@@ -1600,6 +1607,223 @@ export class PrintTemplate {
     const hit = findPanelOfElement(canvas, elId)
     if (!hit) return {}
     return { ...(hit.el.options as Record<string, unknown>) }
+  }
+
+  // ===========================================================================
+  // Sprint 22g — Stream GB: V1 surface zero-out (12 final V1-named methods)
+  // ===========================================================================
+  //
+  // After Sprint 22c added 41 methods (raising V1 coverage from 14 → 55), 12
+  // V1-named methods still remained. These are the introspection / fields /
+  // font-list / panel-probing accessors that V1 exposed for property-panel and
+  // dynamic-data binding consumers. With these 12 the V3 compat class reaches
+  // 67/67 V1 surface parity (toolbar-and-shell.md §Section 7).
+
+  // -------- TKT-086 isDestroyed --------
+
+  /**
+   * Probe whether destroy() has been called. The one V1 method that is
+   * intentionally NOT guarded (it IS the destroy probe).
+   *
+   * V1 ref: bundle.js line 12551-12553 (isDestroyed()).
+   */
+  public isDestroyed(): boolean {
+    return !!this._destroyed
+  }
+
+  // -------- TKT-087 getPaneltotal --------
+
+  /**
+   * V1-named alias returning the total panel count (NOT max-index — that is
+   * `getMaxPanelIndex`). V1 ref: bundle.js line 12516-12518.
+   *
+   * Returns 0 after destroy.
+   */
+  public getPaneltotal(): number {
+    if (assertNotDestroyed(this, 'getPaneltotal')) return 0
+    setActivePinia(this._pinia)
+    return useCanvasStore().panels.length
+  }
+
+  // -------- TKT-088 getPaperType --------
+
+  /**
+   * Return the paper-type name for a given panel index (default 0). Returns
+   * `undefined` if the panel doesn't exist or is destroyed.
+   *
+   * V1 ref: bundle.js line 12642-12644 (getPaperType(t)) — defaults `t=0`.
+   */
+  public getPaperType(panelIndex: number = 0): string | undefined {
+    if (assertNotDestroyed(this, 'getPaperType')) return undefined
+    setActivePinia(this._pinia)
+    const panel = useCanvasStore().panels[panelIndex]
+    return panel?.paperType
+  }
+
+  // -------- TKT-089 getOrient --------
+
+  /**
+   * Return 1 (portrait) or 2 (landscape) for the requested panel, based on
+   * width vs height. V1 ref: bundle.js line 12645-12647.
+   *
+   * Returns `undefined` if the panel doesn't exist or template destroyed.
+   */
+  public getOrient(panelIndex: number = 0): 1 | 2 | undefined {
+    if (assertNotDestroyed(this, 'getOrient')) return undefined
+    setActivePinia(this._pinia)
+    const panel = useCanvasStore().panels[panelIndex]
+    if (!panel) return undefined
+    // V1 semantics: h > w ⇒ portrait (1); w > h ⇒ landscape (2); square ⇒
+    // portrait by convention (V1 returned 1 because the comparison was strict).
+    return panel.height > panel.width ? 1 : 2
+  }
+
+  // -------- TKT-090 getPanel --------
+
+  /**
+   * Read a panel record by index (default 0). Returns undefined if missing
+   * or destroyed. Result is the live store object — callers SHOULD treat it
+   * as read-only and use `update()` to mutate.
+   *
+   * V1 ref: bundle.js line 12876-12878 (getPanel(t)) — V1 returned the live
+   * PrintPanel instance; V3 returns the Panel record from canvas store.
+   */
+  public getPanel(panelIndex: number = 0): Panel | undefined {
+    if (assertNotDestroyed(this, 'getPanel')) return undefined
+    setActivePinia(this._pinia)
+    return useCanvasStore().panels[panelIndex]
+  }
+
+  // -------- TKT-091 getElementByName --------
+
+  /**
+   * Find first element in the given panel (default 0) whose `options.name`
+   * matches `name`. V1 used this for element-by-name lookup during data
+   * binding — element-tag identification was via `options.name`, not tid.
+   *
+   * V1 ref: bundle.js line 12873-12875 (getElementByName(t, e)) — V1 forwarded
+   * to PrintPanel.getElementByName.
+   *
+   * Returns null when not found / destroyed / panel missing / empty name.
+   */
+  public getElementByName(name: string, panelIndex: number = 0): CanvasElement | null {
+    if (assertNotDestroyed(this, 'getElementByName')) return null
+    if (!name) return null
+    setActivePinia(this._pinia)
+    const panel = useCanvasStore().panels[panelIndex]
+    if (!panel) return null
+    return (
+      panel.printElements.find(
+        (el) => (el.options as Record<string, unknown>).name === name
+      ) ?? null
+    )
+  }
+
+  // -------- TKT-092 setFontList / TKT-093 getFontList --------
+
+  /**
+   * Set the available font list. V1 ref: bundle.js line 12898-12900
+   * (setFontList(t)). Emits `'font-list-change'`.
+   *
+   * Non-array input is coerced to `[]` (V1 stored as-is; V3 normalizes to
+   * keep getFontList's return type honest).
+   */
+  public setFontList(list: string[]): void {
+    if (assertNotDestroyed(this, 'setFontList')) return
+    this._fontList = Array.isArray(list) ? list.slice() : []
+    this._eventBus.trigger('font-list-change', this._fontList)
+  }
+
+  /**
+   * Read the current font list. V1 ref: bundle.js line 12901-12903.
+   * Returns `[]` (never undefined) when destroyed or unset — matches V1's
+   * "this.fontList || []" lazy default.
+   *
+   * Returned array is a fresh shallow copy (mutation does not leak).
+   */
+  public getFontList(): string[] {
+    if (assertNotDestroyed(this, 'getFontList')) return []
+    return this._fontList.slice()
+  }
+
+  // -------- TKT-094 setFields / TKT-095 getFields --------
+
+  /**
+   * V1-canonical name for {@link setDynamicFields}. Maintained as a thin alias
+   * so V1 consumers that called `template.setFields(...)` continue to work
+   * unchanged. V1 ref: bundle.js line 12904-12906.
+   */
+  public setFields(fields: Record<string, unknown> | unknown[]): void {
+    this.setDynamicFields(fields)
+  }
+
+  /**
+   * V1-canonical name for {@link getDynamicFields}. V1 fallback was `[]` (not
+   * `undefined`), so we coerce here for parity.
+   *
+   * V1 ref: bundle.js line 12907-12909.
+   */
+  public getFields(): Record<string, unknown> | unknown[] {
+    if (assertNotDestroyed(this, 'getFields')) return []
+    return this._dynamicFields ?? []
+  }
+
+  // -------- TKT-096 getFieldsInPanel --------
+
+  /**
+   * Return a flat array of every element across all panels whose `options.field`
+   * is set. V1 used this to populate property-panel field dropdowns scoped
+   * to fields actually referenced inside the template (vs the full
+   * dynamicFields registry).
+   *
+   * V1 ref: bundle.js line 12916-12921 (getFieldsInPanel()) — V1 concatenated
+   * the result of PrintPanel.getFieldsInPanel() across all panels.
+   *
+   * Returns `[]` if destroyed.
+   */
+  public getFieldsInPanel(): Array<Record<string, unknown>> {
+    if (assertNotDestroyed(this, 'getFieldsInPanel')) return []
+    setActivePinia(this._pinia)
+    const out: Array<Record<string, unknown>> = []
+    for (const panel of useCanvasStore().panels) {
+      for (const el of panel.printElements) {
+        const opts = el.options as Record<string, unknown>
+        const fieldKey = opts.field
+        if (typeof fieldKey === 'string' && fieldKey.length > 0) {
+          out.push({
+            field: fieldKey,
+            title: opts.title,
+            id: el.id,
+            tid: el.tid,
+            panelIndex: panel.index,
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  // -------- TKT-097 getTestData --------
+
+  /**
+   * Merged test data from all panels (each panel may hold panel-scoped test
+   * data under `panel.testData` — preserved by canvas store's index signature).
+   * V1 ref: bundle.js line 12922-12927 — V1 did
+   * `Object.assign({}, ...panels.map(p => p.getTestData()))`.
+   *
+   * Returns `{}` when destroyed or no panel-scoped test data present.
+   */
+  public getTestData(): Record<string, unknown> {
+    if (assertNotDestroyed(this, 'getTestData')) return {}
+    setActivePinia(this._pinia)
+    const merged: Record<string, unknown> = {}
+    for (const panel of useCanvasStore().panels) {
+      const td = (panel as Record<string, unknown>).testData
+      if (td && typeof td === 'object' && !Array.isArray(td)) {
+        Object.assign(merged, td as Record<string, unknown>)
+      }
+    }
+    return merged
   }
 
   /**
